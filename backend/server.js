@@ -1,254 +1,345 @@
 const express = require('express');
 const cors = require('cors');
-const TelegramBot = require('node-telegram-bot-api');
+const fs = require('fs').promises;
+const path = require('path');
+const { spawn } = require('child_process');
 
 const app = express();
+const PORT = 3001;
+
 app.use(cors());
 app.use(express.json());
 
-let bot = null;
-let dialogChains = {
-  blocks: [],
-  connections: [],
-  startBlockId: null
-};
+// Храним активные процессы ботов
+const activeProcesses = new Map();
 
-// Функция для создания клавиатуры из кнопок
-const createKeyboard = (blockId) => {
-  const block = dialogChains.blocks.find(b => b.id === blockId);
-  if (!block || !block.buttons) return {};
+const STATE_FILE = path.join(__dirname, 'editorState.json');
 
-  // Группируем кнопки по 2 в ряд для лучшей визуальной организации
-  const buttonRows = [];
-  for (let i = 0; i < block.buttons.length; i += 2) {
-    const row = block.buttons.slice(i, i + 2).map(button => ({
-      text: button.text
-    }));
-    buttonRows.push(row);
-  }
+// Функция для ожидания
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // Добавляем кнопку возврата в главное меню, если это не стартовый блок
-  if (blockId !== dialogChains.startBlockId) {
-    buttonRows.push([{ text: '🏠 Главное меню' }]);
-  }
-
-  return {
-    reply_markup: {
-      keyboard: buttonRows,
-      resize_keyboard: true,
-      one_time_keyboard: false
-    }
-  };
-};
-
-// Функция для отправки сообщения блока
-const sendBlockMessage = async (chatId, blockId) => {
-  const block = dialogChains.blocks.find(b => b.id === blockId);
-  if (!block) return;
-  
-  // Проверяем наличие текста сообщения
-  if (!block.message || block.message.trim() === '') {
-    console.warn(`Warning: Empty message in block ${blockId}`);
-    return;
-  }
-
+// Вспомогательная функция для чтения состояния
+async function readState() {
   try {
-    await bot.sendMessage(
-      chatId,
-      block.message,
-      createKeyboard(blockId)
-    );
+    const data = await fs.readFile(STATE_FILE, 'utf8');
+    return JSON.parse(data);
   } catch (error) {
-    console.error(`Error sending message for block ${blockId}:`, error);
-    throw error;
+    console.error('Error reading state:', error);
+    return {
+      bots: [],
+      activeBot: null
+    };
   }
-};
+}
 
-// Функция для поиска следующего блока по кнопке
-const findNextBlock = (currentBlockId, buttonText) => {
-  // Находим текущий блок
-  const currentBlock = dialogChains.blocks.find(b => b.id === currentBlockId);
-  if (!currentBlock) return null;
-
-  // Находим кнопку по тексту
-  const button = currentBlock.buttons.find(btn => btn.text === buttonText);
-  if (!button) return null;
-
-  // Ищем связь для этой кнопки
-  const connection = dialogChains.connections.find(
-    conn => conn.from.blockId === currentBlockId && conn.from.buttonId === button.id
-  );
-
-  // Возвращаем ID следующего блока
-  return connection ? connection.to : null;
-};
-
-app.post('/api/setup-bot', async (req, res) => {
-  const { botToken, welcomeMessage } = req.body;
-
-  // Проверяем наличие обязательных параметров
-  if (!botToken) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Bot token is required' 
-    });
-  }
-
-  if (!welcomeMessage || welcomeMessage.trim() === '') {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Welcome message is required' 
-    });
-  }
-
+// Вспомогательная функция для сохранения состояния
+async function writeState(state) {
   try {
-    if (bot) {
-      bot.stopPolling();
-    }
+    await fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2));
+  } catch (error) {
+    console.error('Error writing state:', error);
+    throw new Error('Failed to save state');
+  }
+}
 
-    bot = new TelegramBot(botToken, { polling: true });
+// Функция для остановки конкретного бота
+async function stopBot(botId) {
+  if (activeProcesses.has(botId)) {
+    const process = activeProcesses.get(botId);
+    console.log(`Stopping bot ${botId}...`);
+    
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        console.log(`Force killing bot ${botId}...`);
+        process.kill('SIGKILL');
+        activeProcesses.delete(botId);
+        resolve();
+      }, 5000);
 
-    // Обработчик команды /start
-    bot.onText(/\/start/, async (msg) => {
-      const chatId = msg.chat.id;
-      try {
-        await bot.sendMessage(chatId, welcomeMessage);
-        
-        // Если есть стартовый блок, начинаем с него
-        if (dialogChains.startBlockId) {
-          await sendBlockMessage(chatId, dialogChains.startBlockId);
-        }
-      } catch (error) {
-        console.error('Error in /start handler:', error);
-      }
-    });
-
-    // Обработчик текстовых сообщений (для кнопок меню)
-    bot.on('message', async (msg) => {
-      if (msg.text === '/start') return;
-
-      const chatId = msg.chat.id;
-      const buttonText = msg.text;
-
-      try {
-        // Обработка возврата в главное меню
-        if (buttonText === '🏠 Главное меню') {
-          if (dialogChains.startBlockId) {
-            await sendBlockMessage(chatId, dialogChains.startBlockId);
-          }
-          return;
-        }
-
-        // Находим блок, которому принадлежит нажатая кнопка
-        let currentBlockId = null;
-        for (const block of dialogChains.blocks) {
-          if (block.buttons.some(btn => btn.text === buttonText)) {
-            currentBlockId = block.id;
-            break;
-          }
-        }
-
-        if (currentBlockId) {
-          const nextBlockId = findNextBlock(currentBlockId, buttonText);
-          if (nextBlockId) {
-            await sendBlockMessage(chatId, nextBlockId);
-          }
-        }
-      } catch (error) {
-        console.error('Error in message handler:', error);
-      }
-    });
-
-    // Проверяем подключение к боту
-    try {
-      const me = await bot.getMe();
-      console.log('Bot connected successfully:', me.username);
-    } catch (error) {
-      console.error('Failed to connect to bot:', error);
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Failed to connect to bot. Please check your token.' 
+      process.once('exit', () => {
+        clearTimeout(timeout);
+        activeProcesses.delete(botId);
+        console.log(`Bot ${botId} stopped`);
+        resolve();
       });
+
+      process.kill('SIGTERM');
+    });
+  }
+  return Promise.resolve();
+}
+
+// Функция для запуска бота
+async function startBot(bot) {
+  console.log(`Starting bot ${bot.id}...`);
+  
+  const botProcess = spawn('node', [
+    path.join(__dirname, 'botProcess.js'),
+    bot.token,
+    JSON.stringify(bot.editorState)
+  ]);
+
+  return new Promise((resolve, reject) => {
+    let isResolved = false;
+    let startTimeout;
+
+    const cleanup = () => {
+      clearTimeout(startTimeout);
+      botProcess.stdout.removeAllListeners();
+      botProcess.stderr.removeAllListeners();
+      botProcess.removeAllListeners('exit');
+    };
+
+    botProcess.stdout.on('data', (data) => {
+      const output = data.toString();
+      console.log(`Bot ${bot.id} output:`, output);
+      
+      if (output.includes('Bot started successfully')) {
+        isResolved = true;
+        cleanup();
+        resolve(botProcess);
+      }
+    });
+
+    botProcess.stderr.on('data', (data) => {
+      const error = data.toString();
+      console.error(`Bot ${bot.id} error:`, error);
+    });
+
+    botProcess.on('exit', (code) => {
+      if (!isResolved) {
+        cleanup();
+        reject(new Error(`Bot process exited with code ${code}`));
+      }
+    });
+
+    startTimeout = setTimeout(() => {
+      if (!isResolved) {
+        cleanup();
+        console.log(`Bot ${bot.id} launch timeout, assuming it's running`);
+        resolve(botProcess);
+      }
+    }, 20000); // Увеличиваем таймаут до 20 секунд
+  });
+}
+
+// Обновление состояния конкретного бота
+app.put('/api/bots/:id', async (req, res) => {
+  try {
+    const { name, token, editorState } = req.body;
+    console.log('PUT /api/bots/:id - Request body:', { name, token: token ? '***' : 'undefined', editorState });
+    
+    const state = await readState();
+    const botIndex = state.bots.findIndex(b => b.id === req.params.id);
+    
+    if (botIndex === -1) {
+      console.log('Bot not found:', req.params.id);
+      res.status(404).json({ error: 'Bot not found' });
+      return;
     }
 
-    // Отправляем успешный ответ только после полной настройки бота
-    res.json({ 
-      success: true, 
-      message: 'Bot successfully configured',
-      activeConnections: dialogChains.connections.length,
-      totalBlocks: dialogChains.blocks.length
-    });
+    console.log('Found bot at index:', botIndex);
+
+    // Обновляем данные бота
+    const updatedBot = {
+      ...state.bots[botIndex],
+      name: name || state.bots[botIndex].name,
+      token: token || state.bots[botIndex].token,
+      editorState: editorState || state.bots[botIndex].editorState
+    };
+
+    console.log('Updated bot state:', updatedBot);
+    state.bots[botIndex] = updatedBot;
+
+    await writeState(state);
+    console.log('State saved successfully');
+    res.json({ success: true });
   } catch (error) {
-    console.error('Error setting up bot:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Internal server error'
-    });
+    console.error('Error updating bot:', error);
+    res.status(500).json({ error: 'Failed to update bot' });
   }
 });
 
-// Endpoint для обновления цепочек диалогов
-app.post('/api/update-dialog-chains', (req, res) => {
+// Активация бота
+app.post('/api/bots/:id/activate', async (req, res) => {
   try {
-    const { blocks, connections, startBlockId } = req.body;
+    console.log('POST /api/bots/:id/activate - Bot ID:', req.params.id);
     
-    // Проверяем корректность данных
-    if (!Array.isArray(blocks) || !Array.isArray(connections)) {
-      throw new Error('Invalid data format');
+    const state = await readState();
+    const bot = state.bots.find(b => b.id === req.params.id);
+    
+    if (!bot) {
+      console.log('Bot not found for activation:', req.params.id);
+      res.status(404).json({ error: 'Bot not found' });
+      return;
+    }
+
+    console.log('Found bot for activation:', { id: bot.id, name: bot.name, isActive: bot.isActive });
+
+    // Проверяем токен
+    if (!bot.token) {
+      console.log('Bot token is missing');
+      res.status(400).json({ error: 'Bot token is missing' });
+      return;
+    }
+
+    // Проверяем состояние редактора
+    if (!bot.editorState || !bot.editorState.blocks || !bot.editorState.connections) {
+      console.log('Invalid editor state');
+      res.status(400).json({ error: 'Invalid editor state' });
+      return;
     }
 
     // Проверяем наличие стартового блока
-    if (!blocks.find(b => b.id === startBlockId)) {
-      throw new Error('Start block not found');
+    const startBlock = bot.editorState.blocks.find(b => b.id === 'start');
+    if (!startBlock) {
+      console.log('Start block is missing');
+      res.status(400).json({ error: 'Missing start block in editor state' });
+      return;
     }
 
-    // Проверяем наличие сообщений в блоках
-    const emptyBlocks = blocks.filter(b => !b.message || b.message.trim() === '');
-    if (emptyBlocks.length > 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Some blocks have empty messages',
-        emptyBlocks: emptyBlocks.map(b => b.id)
-      });
+    console.log('All validations passed, starting bot activation...');
+
+    // Останавливаем текущий бот, если он запущен
+    if (activeProcesses.has(bot.id)) {
+      console.log(`Bot ${bot.id} is already running, stopping it first...`);
+      await stopBot(bot.id);
+      await wait(3000); // Увеличиваем время ожидания
     }
 
-    // Проверяем корректность связей
-    for (const conn of connections) {
-      const fromBlock = blocks.find(b => b.id === conn.from.blockId);
-      const toBlock = blocks.find(b => b.id === conn.to);
+    // Запускаем новый процесс бота
+    try {
+      console.log(`Starting new bot process for ${bot.id}...`);
+      const botProcess = await startBot(bot);
       
-      if (!fromBlock || !toBlock) {
-        throw new Error('Invalid connection: block not found');
-      }
+      // Сохраняем процесс и обновляем состояние
+      activeProcesses.set(bot.id, botProcess);
+      state.activeBot = bot.id;
+      state.bots = state.bots.map(b => ({
+        ...b,
+        isActive: b.id === bot.id
+      }));
       
-      if (!fromBlock.buttons.find(btn => btn.id === conn.from.buttonId)) {
-        throw new Error('Invalid connection: button not found');
-      }
+      await writeState(state);
+      console.log(`Bot ${bot.id} activated successfully`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error(`Error starting bot ${bot.id}:`, error);
+      res.status(500).json({ error: error.message });
     }
-
-    // Сохраняем данные
-    dialogChains = {
-      blocks: blocks || [],
-      connections: connections || [],
-      startBlockId
-    };
-
-    res.json({ 
-      success: true, 
-      message: 'Dialog chains updated successfully',
-      activeConnections: connections.length,
-      totalBlocks: blocks.length
-    });
   } catch (error) {
-    console.error('Error updating dialog chains:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Internal server error' 
-    });
+    console.error('Error in activate endpoint:', error);
+    res.status(500).json({ error: 'Failed to activate bot' });
   }
 });
 
-const PORT = process.env.PORT || 3001;
+// Получение списка ботов
+app.get('/api/bots', async (req, res) => {
+  try {
+    const state = await readState();
+    const botsList = state.bots.map(({ id, name, isActive }) => ({ id, name, isActive }));
+    res.json({ bots: botsList, activeBot: state.activeBot });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to load bots list' });
+  }
+});
+
+// Создание нового бота
+app.post('/api/bots', async (req, res) => {
+  try {
+    const { name, token } = req.body;
+    const state = await readState();
+    
+    const newBot = {
+      id: Date.now().toString(),
+      name,
+      token,
+      isActive: false,
+      editorState: {
+        blocks: [
+          {
+            id: 'start',
+            type: 'start',
+            position: { x: 2500, y: 2500 },
+            message: 'Начало диалога',
+            buttons: []
+          }
+        ],
+        connections: [],
+        pan: { x: 0, y: 0 },
+        scale: 1
+      }
+    };
+
+    state.bots.push(newBot);
+    await writeState(state);
+    
+    res.json({ id: newBot.id, name: newBot.name, isActive: newBot.isActive });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create bot' });
+  }
+});
+
+// Получение состояния конкретного бота
+app.get('/api/bots/:id', async (req, res) => {
+  try {
+    const state = await readState();
+    const bot = state.bots.find(b => b.id === req.params.id);
+    if (!bot) {
+      res.status(404).json({ error: 'Bot not found' });
+      return;
+    }
+    res.json(bot);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to load bot state' });
+  }
+});
+
+// Удаление бота
+app.delete('/api/bots/:id', async (req, res) => {
+  try {
+    const state = await readState();
+    const botIndex = state.bots.findIndex(b => b.id === req.params.id);
+    
+    if (botIndex === -1) {
+      res.status(404).json({ error: 'Bot not found' });
+      return;
+    }
+
+    // Останавливаем бота если он запущен
+    await stopBot(req.params.id);
+
+    // Удаляем бота из списка
+    state.bots.splice(botIndex, 1);
+    
+    // Если удаляем активного бота, сбрасываем activeBot
+    if (state.activeBot === req.params.id) {
+      state.activeBot = null;
+    }
+
+    await writeState(state);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete bot' });
+  }
+});
+
+// Обработка завершения сервера
+async function shutdownServer(signal) {
+  console.log(`Received ${signal}, shutting down...`);
+  
+  // Останавливаем все боты
+  for (const [botId] of activeProcesses.entries()) {
+    await stopBot(botId);
+  }
+  
+  process.exit(0);
+}
+
+process.on('SIGINT', () => shutdownServer('SIGINT'));
+process.on('SIGTERM', () => shutdownServer('SIGTERM'));
+
+// Запуск сервера
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 }); 

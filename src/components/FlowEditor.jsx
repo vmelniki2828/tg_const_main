@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 
-const FlowEditor = forwardRef((props, ref) => {
+const FlowEditor = forwardRef(({ botId }, ref) => {
+  // Состояния для редактора
   const [blocks, setBlocks] = useState([
     {
       id: 'start',
       type: 'start',
-      position: { x: 2500, y: 2500 }, // Центр рабочей области
+      position: { x: 2500, y: 2500 },
       message: 'Начало диалога',
       buttons: [],
     }
@@ -19,15 +20,86 @@ const FlowEditor = forwardRef((props, ref) => {
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   
   const editorRef = useRef(null);
+
+  // Загрузка состояния при монтировании или смене бота
+  useEffect(() => {
+    const loadBotState = async () => {
+      if (!botId) return;
+
+      try {
+        setIsLoading(true);
+        setError(null);
+        console.log('Loading bot state for ID:', botId);
+        
+        const response = await fetch(`http://localhost:3001/api/bots/${botId}`);
+        if (!response.ok) {
+          throw new Error('Не удалось загрузить состояние бота');
+        }
+        const data = await response.json();
+        console.log('Loaded bot data:', data);
+        
+        if (data.editorState) {
+          if (data.editorState.blocks) {
+            console.log('Setting blocks:', data.editorState.blocks);
+            setBlocks(data.editorState.blocks);
+          }
+          if (data.editorState.connections) {
+            console.log('Setting connections:', data.editorState.connections);
+            setConnections(data.editorState.connections);
+          }
+          if (data.editorState.pan) {
+            console.log('Setting pan:', data.editorState.pan);
+            setPan(data.editorState.pan);
+          }
+          if (data.editorState.scale) {
+            console.log('Setting scale:', data.editorState.scale);
+            setScale(data.editorState.scale);
+          }
+        }
+      } catch (err) {
+        console.error('Error loading bot state:', err);
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadBotState();
+  }, [botId]);
 
   // Экспортируем методы через ref
   useImperativeHandle(ref, () => ({
     getFlowData: () => ({
       blocks,
       connections
-    })
+    }),
+    getState: () => {
+      const state = {
+        blocks,
+        connections,
+        pan,
+        scale
+      };
+      console.log('getState() called, returning:', state);
+      return state;
+    },
+    createBlock: () => {
+      const newBlock = {
+        id: Date.now(),
+        type: 'message',
+        position: {
+          x: 2500 + (-pan.x / scale),
+          y: 2500 + (-pan.y / scale)
+        },
+        message: '',
+        buttons: [],
+      };
+      setBlocks([...blocks, newBlock]);
+    }
   }));
 
   // Обработка колесика мыши для масштабирования
@@ -41,7 +113,7 @@ const FlowEditor = forwardRef((props, ref) => {
 
   // Начало перетаскивания холста
   const handleCanvasMouseDown = (e) => {
-    if (e.button === 1 || (e.button === 0 && e.altKey)) { // Средняя кнопка мыши или Alt + левая кнопка
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
       e.preventDefault();
       setIsDraggingCanvas(true);
       setLastMousePos({ x: e.clientX, y: e.clientY });
@@ -109,9 +181,13 @@ const FlowEditor = forwardRef((props, ref) => {
   const addButton = (blockId) => {
     setBlocks(blocks.map(block => {
       if (block.id === blockId) {
+        const buttonNumber = block.buttons.length + 1;
         return {
           ...block,
-          buttons: [...block.buttons, { id: Date.now(), text: 'Новая кнопка' }]
+          buttons: [...block.buttons, { 
+            id: Date.now(), 
+            text: `Кнопка ${buttonNumber}` 
+          }]
         };
       }
       return block;
@@ -154,6 +230,13 @@ const FlowEditor = forwardRef((props, ref) => {
   const finishConnection = (toBlockId) => {
     if (!isConnecting) return;
     
+    // Запрещаем соединения к стартовому блоку
+    if (toBlockId === 'start') {
+      setConnectingFrom(null);
+      setIsConnecting(false);
+      return;
+    }
+
     if (connectingFrom && connectingFrom.blockId !== toBlockId) {
       // Удаляем старое соединение для этой кнопки, если оно существует
       const filteredConnections = connections.filter(
@@ -180,7 +263,7 @@ const FlowEditor = forwardRef((props, ref) => {
 
   // Удаление блока и всех его связей
   const removeBlock = (blockId) => {
-    if (blockId === 'start') return; // Запрещаем удаление стартового блока
+    if (blockId === 'start') return;
     setBlocks(blocks.filter(block => block.id !== blockId));
     setConnections(connections.filter(conn => 
       conn.from.blockId !== blockId && conn.to !== blockId
@@ -205,57 +288,30 @@ const FlowEditor = forwardRef((props, ref) => {
 
   // Обработка перетаскивания
   const handleDragStart = (e, blockId) => {
-    const block = blocks.find(b => b.id === blockId);
-    if (!block) return;
-    
     setDraggedBlock(blockId);
+    const block = blocks.find(b => b.id === blockId);
     const rect = e.target.getBoundingClientRect();
-    
-    // Сохраняем начальные координаты
-    e.dataTransfer.setData('text/plain', JSON.stringify({
-      initialX: block.position.x,
-      initialY: block.position.y,
-      startX: e.clientX,
-      startY: e.clientY,
-      startPanX: pan.x,
-      startPanY: pan.y
-    }));
+    const offsetX = (e.clientX - rect.left) / scale;
+    const offsetY = (e.clientY - rect.top) / scale;
+    e.dataTransfer.setData('text/plain', JSON.stringify({ offsetX, offsetY }));
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    if (!draggedBlock) return;
-
-    try {
-      const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-      
-      // Вычисляем смещение с учетом изменения pan и scale
-      const dx = (e.clientX - data.startX) / scale;
-      const dy = (e.clientY - data.startY) / scale;
-      const panDx = (pan.x - data.startPanX) / scale;
-      const panDy = (pan.y - data.startPanY) / scale;
+    if (draggedBlock) {
+      const { offsetX, offsetY } = JSON.parse(e.dataTransfer.getData('text/plain'));
+      const editorRect = editorRef.current.getBoundingClientRect();
+      const x = (e.clientX - editorRect.left - pan.x) / scale - offsetX;
+      const y = (e.clientY - editorRect.top - pan.y) / scale - offsetY;
 
       setBlocks(blocks.map(block => {
         if (block.id === draggedBlock) {
-          return {
-            ...block,
-            position: {
-              x: data.initialX + dx - panDx,
-              y: data.initialY + dy - panDy
-            }
-          };
+          return { ...block, position: { x, y } };
         }
         return block;
       }));
-    } catch (err) {
-      console.error('Error during drop:', err);
+      setDraggedBlock(null);
     }
-    
-    setDraggedBlock(null);
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
   };
 
   return (

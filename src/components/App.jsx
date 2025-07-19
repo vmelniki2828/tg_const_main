@@ -1,110 +1,157 @@
 import React, { useState, useRef } from 'react';
 import FlowEditor from './FlowEditor';
+import BotsList from './BotsList';
 
 function App() {
-  const [botToken, setBotToken] = useState('');
+  const [selectedBotId, setSelectedBotId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const flowEditorRef = useRef();
 
-  const handleTokenSubmit = async () => {
-    if (!botToken.trim()) {
-      setError('Пожалуйста, введите токен бота');
-      return;
-    }
+  // Обработчик выбора бота для редактирования
+  const handleSelectBot = (botId) => {
+    setSelectedBotId(botId);
+  };
 
-    setIsLoading(true);
-    setError(null);
+  // Обработчик сохранения состояния бота
+  const handleSaveBot = async () => {
+    if (!selectedBotId) return;
 
     try {
-      // Получаем текущую схему из FlowEditor
-      const { blocks, connections } = flowEditorRef.current.getFlowData();
+      setIsLoading(true);
+      setError(null);
 
-      // Проверяем наличие блоков
-      if (!blocks || blocks.length === 0) {
-        throw new Error('Добавьте хотя бы один блок в схему диалога');
-      }
-
-      // Проверяем наличие сообщений в блоках
-      const emptyBlocks = blocks.filter(b => !b.message || b.message.trim() === '');
-      if (emptyBlocks.length > 0) {
-        throw new Error(`Следующие блоки не содержат сообщений: ${emptyBlocks.map(b => b.id).join(', ')}`);
-      }
-
-      // Сначала сохраняем схему
-      const saveResponse = await fetch('http://localhost:3001/api/update-dialog-chains', {
-        method: 'POST',
+      // Сохраняем текущее состояние
+      const editorState = flowEditorRef.current?.getState();
+      console.log('Saving editor state:', editorState);
+      
+      const response = await fetch(`http://localhost:3001/api/bots/${selectedBotId}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          blocks,
-          connections,
-          startBlockId: 'start'
+          editorState,
         }),
       });
 
-      const saveData = await saveResponse.json();
-      if (!saveResponse.ok) {
-        throw new Error(saveData.error || 'Не удалось сохранить схему диалога');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Не удалось сохранить состояние бота: ${errorData.error || response.statusText}`);
       }
 
-      // Затем настраиваем бота
-      const botResponse = await fetch('http://localhost:3001/api/setup-bot', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          botToken,
-          welcomeMessage: 'Добро пожаловать!' 
-        }),
-      });
-      
-      const botData = await botResponse.json();
-      if (!botResponse.ok) {
-        throw new Error(botData.error || 'Не удалось настроить бота');
-      }
-      
-      alert('Бот успешно настроен и схема сохранена!');
-    } catch (error) {
-      console.error('Error:', error);
-      setError(error.message || 'Произошла неизвестная ошибка');
+      const result = await response.json();
+      console.log('Save response:', result);
+      alert('Изменения сохранены!');
+    } catch (err) {
+      console.error('Error saving bot:', err);
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  return (
-    <div className="app-container">
-      <div className="top-bar">
-        <div className="token-input">
-          <input
-            type="text"
-            value={botToken}
-            onChange={(e) => {
-              setBotToken(e.target.value);
-              setError(null);
-            }}
-            placeholder="Введите токен бота"
-            disabled={isLoading}
-          />
+  // Обработчик подключения бота
+  const handleConnectBot = async () => {
+    if (!selectedBotId) return;
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Сначала сохраняем текущее состояние
+      const editorState = flowEditorRef.current?.getState();
+      console.log('Saving editor state before activation:', editorState);
+      
+      const saveResponse = await fetch(`http://localhost:3001/api/bots/${selectedBotId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          editorState,
+        }),
+      });
+
+      if (!saveResponse.ok) {
+        const errorData = await saveResponse.json();
+        throw new Error(`Не удалось сохранить состояние бота: ${errorData.error || saveResponse.statusText}`);
+      }
+
+      const saveResult = await saveResponse.json();
+      console.log('Save response:', saveResult);
+
+      // Затем активируем бота
+      console.log('Activating bot...');
+      const activateResponse = await fetch(`http://localhost:3001/api/bots/${selectedBotId}/activate`, {
+        method: 'POST',
+      });
+
+      if (!activateResponse.ok) {
+        const errorData = await activateResponse.json();
+        throw new Error(`Не удалось подключить бота: ${errorData.error || activateResponse.statusText}`);
+      }
+
+      const activateResult = await activateResponse.json();
+      console.log('Activate response:', activateResult);
+      alert('Бот успешно сохранен и подключен!');
+    } catch (err) {
+      console.error('Error connecting bot:', err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Обработчик возврата к списку
+  const handleBackToList = () => {
+    if (isLoading) return;
+    setSelectedBotId(null);
+  };
+
+  // Если выбран бот, показываем редактор
+  if (selectedBotId) {
+    return (
+      <div className="app-container">
+        <div className="editor-controls">
+          <button onClick={handleBackToList} className="editor-button">
+            ← Вернуться к списку
+          </button>
           <button 
-            onClick={handleTokenSubmit}
-            disabled={isLoading}
+            onClick={() => flowEditorRef.current?.createBlock()}
+            className="editor-button"
           >
-            {isLoading ? 'Применение...' : 'Применить'}
+            ➕ Создать блок
+          </button>
+          <button 
+            onClick={handleSaveBot}
+            disabled={isLoading}
+            className="editor-button"
+          >
+            {isLoading ? '⏳ Сохранение...' : '💾 Сохранить'}
+          </button>
+          <button 
+            onClick={handleConnectBot}
+            disabled={isLoading}
+            className="editor-button"
+          >
+            {isLoading ? '⏳ Подключение...' : '🚀 Сохранить и подключить'}
           </button>
         </div>
+
         {error && (
           <div className="error-message">
             ❌ {error}
           </div>
         )}
+
+        <FlowEditor ref={flowEditorRef} botId={selectedBotId} />
       </div>
-      <FlowEditor ref={flowEditorRef} />
-    </div>
-  );
+    );
+  }
+
+  // Иначе показываем список ботов
+  return <BotsList onSelectBot={handleSelectBot} />;
 }
 
 export default App;

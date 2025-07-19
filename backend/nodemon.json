@@ -1,0 +1,4 @@
+{
+  "ignore": ["editorState.json"],
+  "watch": ["*.js"]
+} 
