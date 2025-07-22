@@ -1,14 +1,82 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 const { spawn } = require('child_process');
+const multer = require('multer');
 
 const app = express();
 const PORT = 3001;
 
 app.use(cors());
 app.use(express.json());
+
+// Настройка multer для загрузки файлов
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, 'uploads');
+    // Создаем папку если её нет
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    // Генерируем уникальное имя файла
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB лимит
+  },
+  fileFilter: function (req, file, cb) {
+    // Разрешаем только изображения, видео, аудио и документы
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'video/mp4', 'video/avi', 'video/mov', 'video/wmv',
+      'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp3',
+      'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ];
+    
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Неподдерживаемый тип файла'), false);
+    }
+  }
+});
+
+// Статические файлы для загрузок
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Эндпоинт для загрузки медиафайлов
+app.post('/api/upload-media', upload.single('media'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Файл не был загружен' });
+    }
+
+    const fileInfo = {
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: `/uploads/${req.file.filename}`
+    };
+
+    console.log('File uploaded:', fileInfo);
+    res.json({ success: true, file: fileInfo });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Храним активные процессы ботов
 const activeProcesses = new Map();
@@ -21,7 +89,7 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // Вспомогательная функция для чтения состояния
 async function readState() {
   try {
-    const data = await fs.readFile(STATE_FILE, 'utf8');
+    const data = await fsPromises.readFile(STATE_FILE, 'utf8');
     return JSON.parse(data);
   } catch (error) {
     console.error('Error reading state:', error);
@@ -35,7 +103,7 @@ async function readState() {
 // Вспомогательная функция для сохранения состояния
 async function writeState(state) {
   try {
-    await fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2));
+    await fsPromises.writeFile(STATE_FILE, JSON.stringify(state, null, 2));
   } catch (error) {
     console.error('Error writing state:', error);
     throw new Error('Failed to save state');
@@ -262,7 +330,8 @@ app.post('/api/bots', async (req, res) => {
             type: 'start',
             position: { x: 2500, y: 2500 },
             message: 'Начало диалога',
-            buttons: []
+            buttons: [],
+            mediaFiles: null
           }
         ],
         connections: [],

@@ -21,6 +21,119 @@ try {
   process.exit(1);
 }
 
+// Функция для отправки медиафайлов
+async function sendMediaMessage(ctx, message, mediaFiles, keyboard) {
+  const fs = require('fs');
+  const path = require('path');
+  
+  try {
+    if (!mediaFiles || mediaFiles.length === 0) {
+      // Если нет медиафайлов, отправляем только текст
+      await ctx.reply(message, {
+        reply_markup: {
+          keyboard,
+          resize_keyboard: true
+        }
+      });
+      return;
+    }
+
+    // Если есть только один медиафайл
+    if (mediaFiles.length === 1) {
+      const media = mediaFiles[0];
+      const filePath = path.join(__dirname, 'uploads', media.filename);
+      
+      // Проверяем существование файла
+      if (!fs.existsSync(filePath)) {
+        console.error('Media file not found:', filePath);
+        await ctx.reply(message, {
+          reply_markup: {
+            keyboard,
+            resize_keyboard: true
+          }
+        });
+        return;
+      }
+
+      const options = {
+        caption: message,
+        reply_markup: {
+          keyboard,
+          resize_keyboard: true
+        }
+      };
+
+      // Определяем тип медиа и отправляем соответствующим методом
+      if (media.mimetype.startsWith('image/')) {
+        await ctx.replyWithPhoto({ source: filePath }, options);
+      } else if (media.mimetype.startsWith('video/')) {
+        await ctx.replyWithVideo({ source: filePath }, options);
+      } else if (media.mimetype.startsWith('audio/')) {
+        await ctx.replyWithAudio({ source: filePath }, options);
+      } else if (media.mimetype === 'application/pdf' || media.mimetype.startsWith('application/')) {
+        await ctx.replyWithDocument({ source: filePath }, options);
+      } else {
+        // Для остальных типов файлов отправляем как документ
+        await ctx.replyWithDocument({ source: filePath }, options);
+      }
+    } else {
+      // Если несколько медиафайлов, отправляем их группой
+      const mediaGroup = [];
+      
+      for (const media of mediaFiles) {
+        const filePath = path.join(__dirname, 'uploads', media.filename);
+        
+        if (!fs.existsSync(filePath)) {
+          console.error('Media file not found:', filePath);
+          continue;
+        }
+
+        if (media.mimetype.startsWith('image/')) {
+          mediaGroup.push({ type: 'photo', media: { source: filePath } });
+        } else if (media.mimetype.startsWith('video/')) {
+          mediaGroup.push({ type: 'video', media: { source: filePath } });
+        } else if (media.mimetype.startsWith('audio/')) {
+          mediaGroup.push({ type: 'audio', media: { source: filePath } });
+        } else {
+          mediaGroup.push({ type: 'document', media: { source: filePath } });
+        }
+      }
+
+      if (mediaGroup.length > 0) {
+        // Добавляем подпись к первому элементу
+        if (mediaGroup[0].media) {
+          mediaGroup[0].media.caption = message;
+          mediaGroup[0].media.reply_markup = {
+            keyboard,
+            resize_keyboard: true
+          };
+        }
+
+        await ctx.telegram.sendMediaGroup(ctx.chat.id, mediaGroup);
+      } else {
+        // Если все файлы не найдены, отправляем только текст
+        await ctx.reply(message, {
+          reply_markup: {
+            keyboard,
+            resize_keyboard: true
+          }
+        });
+      }
+    }
+    
+    console.log('Media message sent successfully');
+  } catch (error) {
+    console.error('Error sending media message:', error);
+    // Fallback к текстовому сообщению
+    await ctx.reply(message, {
+      reply_markup: {
+        keyboard,
+        resize_keyboard: true
+      }
+    });
+  }
+}
+
 // Функция для настройки обработчиков бота
 function setupBotHandlers(bot, blocks, connections) {
   console.log('Setting up handlers with blocks:', blocks.length, 'connections:', connections.length);
@@ -30,9 +143,10 @@ function setupBotHandlers(bot, blocks, connections) {
   blocks.forEach(block => {
     dialogMap.set(block.id, {
       message: block.message,
-      buttons: block.buttons || []
+      buttons: block.buttons || [],
+      mediaFiles: block.mediaFiles || []
     });
-    console.log(`Block ${block.id}: "${block.message}" with ${block.buttons.length} buttons`);
+    console.log(`Block ${block.id}: "${block.message}" with ${block.buttons.length} buttons and ${block.mediaFiles.length} media files`);
   });
 
   // Создаем карту соединений для быстрого доступа
@@ -53,12 +167,18 @@ function setupBotHandlers(bot, blocks, connections) {
         [];
       
       console.log('Sending start message:', startBlock.message, 'with keyboard:', keyboard);
-      await ctx.reply(startBlock.message, {
-        reply_markup: {
-          keyboard,
-          resize_keyboard: true
-        }
-      });
+      
+      // Проверяем есть ли медиафайлы
+      if (startBlock.mediaFiles && startBlock.mediaFiles.length > 0) {
+        await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard);
+      } else {
+        await ctx.reply(startBlock.message, {
+          reply_markup: {
+            keyboard,
+            resize_keyboard: true
+          }
+        });
+      }
     } else {
       console.log('Start block not found');
       await ctx.reply('Бот не настроен');
@@ -84,12 +204,18 @@ function setupBotHandlers(bot, blocks, connections) {
             [];
           
           console.log('Sending response:', nextBlock.message, 'with keyboard:', keyboard);
-          await ctx.reply(nextBlock.message, {
-            reply_markup: {
-              keyboard,
-              resize_keyboard: true
-            }
-          });
+          
+          // Проверяем есть ли медиафайлы
+          if (nextBlock.mediaFiles && nextBlock.mediaFiles.length > 0) {
+            await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard);
+          } else {
+            await ctx.reply(nextBlock.message, {
+              reply_markup: {
+                keyboard,
+                resize_keyboard: true
+              }
+            });
+          }
           found = true;
           break;
         } else {

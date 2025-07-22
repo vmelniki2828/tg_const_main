@@ -97,6 +97,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
         },
         message: '',
         buttons: [],
+        mediaFiles: null
       };
       setBlocks([...blocks, newBlock]);
     }
@@ -173,6 +174,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
       },
       message: '',
       buttons: [],
+      mediaFiles: null
     };
     setBlocks([...blocks, newBlock]);
   };
@@ -284,6 +286,80 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
     setConnections(connections.filter(conn => 
       !(conn.from.blockId === blockId && conn.from.buttonId === buttonId)
     ));
+  };
+
+  // Загрузка медиафайла
+  const handleMediaUpload = async (blockId, event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('media', file);
+
+      const response = await fetch('http://localhost:3001/api/upload-media', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Ошибка загрузки файла');
+      }
+
+      const result = await response.json();
+      
+      setBlocks(blocks.map(block => {
+        if (block.id === blockId) {
+          const currentMediaFiles = block.mediaFiles || [];
+          return {
+            ...block,
+            mediaFiles: [...currentMediaFiles, result.file]
+          };
+        }
+        return block;
+      }));
+
+      // Очищаем input
+      event.target.value = '';
+    } catch (error) {
+      console.error('Error uploading media:', error);
+      alert('Ошибка загрузки файла: ' + error.message);
+    }
+  };
+
+  // Удаление медиафайла
+  const removeMediaFile = (blockId, index) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        const updatedMediaFiles = [...(block.mediaFiles || [])];
+        updatedMediaFiles.splice(index, 1);
+        return {
+          ...block,
+          mediaFiles: updatedMediaFiles.length > 0 ? updatedMediaFiles : null
+        };
+      }
+      return block;
+    }));
+  };
+
+  // Перемещение медиафайла
+  const moveMediaFile = (blockId, index, direction) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        const updatedMediaFiles = [...(block.mediaFiles || [])];
+        const newIndex = direction === 'up' ? index - 1 : index + 1;
+        
+        // Меняем местами элементы
+        [updatedMediaFiles[index], updatedMediaFiles[newIndex]] = 
+        [updatedMediaFiles[newIndex], updatedMediaFiles[index]];
+        
+        return {
+          ...block,
+          mediaFiles: updatedMediaFiles
+        };
+      }
+      return block;
+    }));
   };
 
   // Обработка перетаскивания
@@ -440,6 +516,90 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                 style={{ width: '100%', minHeight: '80px', marginBottom: '1rem' }}
                 onClick={(e) => e.stopPropagation()}
               />
+
+              {/* Секция медиафайлов */}
+              <div className="media-section" style={{ marginBottom: '1rem' }}>
+                <div className="media-header">
+                  <span>📎 Медиафайлы ({block.mediaFiles ? block.mediaFiles.length : 0}):</span>
+                  <input
+                    type="file"
+                    id={`media-${block.id}`}
+                    accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
+                    onChange={(e) => handleMediaUpload(block.id, e)}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    className="block-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      document.getElementById(`media-${block.id}`).click();
+                    }}
+                    title="Добавить медиафайл"
+                  >
+                    📎
+                  </button>
+                </div>
+                {block.mediaFiles && block.mediaFiles.length > 0 && (
+                  <div className="media-files-list">
+                    {block.mediaFiles.map((media, index) => (
+                      <div key={media.filename} className="media-item">
+                        <div className="media-preview">
+                          {media.mimetype.startsWith('image/') ? (
+                            <img 
+                              src={`http://localhost:3001${media.path}`} 
+                              alt="Preview" 
+                              style={{ maxWidth: '100%', maxHeight: '80px', objectFit: 'contain' }}
+                            />
+                          ) : (
+                            <div className="file-info">
+                              <span>📄 {media.originalname}</span>
+                              <span style={{ fontSize: '0.8em', color: '#666' }}>
+                                ({(media.size / 1024).toFixed(1)} KB)
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="media-controls">
+                          <button
+                            className="block-button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeMediaFile(block.id, index);
+                            }}
+                            title="Удалить медиафайл"
+                          >
+                            ❌
+                          </button>
+                          {index > 0 && (
+                            <button
+                              className="block-button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                moveMediaFile(block.id, index, 'up');
+                              }}
+                              title="Переместить вверх"
+                            >
+                              ⬆️
+                            </button>
+                          )}
+                          {index < block.mediaFiles.length - 1 && (
+                            <button
+                              className="block-button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                moveMediaFile(block.id, index, 'down');
+                              }}
+                              title="Переместить вниз"
+                            >
+                              ⬇️
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="block-buttons">
                 {block.buttons.map(button => (

@@ -1,9 +1,9 @@
 {
   "bots": [
     {
-      "id": "1752886117260",
-      "name": "Test",
-      "token": "8059264224:AAFbmpBiKt2cvYK_L6xgcdAoOziU92LrVTw",
+      "id": "1753198130883",
+      "name": "ЕЫВФЫ",
+      "token": "7402870170:AAHxzaulGzd7lcvuU-P6rlgba_TBqS7PKFw",
       "isActive": true,
       "editorState": {
         "blocks": [
@@ -11,82 +11,54 @@
             "id": "start",
             "type": "start",
             "position": {
-              "x": 1755.0001220703125,
-              "y": 2249.0001831054688
+              "x": 2054.0001831054688,
+              "y": 2186.0001831054688
             },
-            "message": "Начало диалога",
+            "message": "Начало диалогаdsadsaasd",
             "buttons": [
               {
-                "id": 1752886122782,
-                "text": "Кнопка 1"
+                "id": 1753198138178,
+                "text": "Кнопка 1dsdsad"
+              }
+            ],
+            "mediaFiles": [
+              {
+                "filename": "media-1753198137055-779393931.jfif",
+                "originalname": "1200px-Solomin_field.jfif",
+                "mimetype": "image/jpeg",
+                "size": 220801,
+                "path": "/uploads/media-1753198137055-779393931.jfif"
               }
             ]
           },
           {
-            "id": 1752886120716,
+            "id": 1753198139666,
             "type": "message",
             "position": {
-              "x": 2261.96533203125,
-              "y": 2276.993194580078
+              "x": 2543.0001831054688,
+              "y": 2237.0001831054688
             },
-            "message": "123",
-            "buttons": [
+            "message": "ddd",
+            "buttons": [],
+            "mediaFiles": [
               {
-                "id": 1752886125306,
-                "text": "Кнопка 321222222"
+                "filename": "media-1753198144485-265782091.jfif",
+                "originalname": "1200px-Solomin_field (4).jfif",
+                "mimetype": "image/jpeg",
+                "size": 220801,
+                "path": "/uploads/media-1753198144485-265782091.jfif"
               }
             ]
-          },
-          {
-            "id": 1752886139118,
-            "type": "message",
-            "position": {
-              "x": 2656.0001220703125,
-              "y": 2289.0001831054688
-            },
-            "message": "321",
-            "buttons": [
-              {
-                "id": 1752886225638,
-                "text": "3333333333"
-              }
-            ]
-          },
-          {
-            "id": 1752886230375,
-            "type": "message",
-            "position": {
-              "x": 3022.0001220703125,
-              "y": 2250.0001831054688
-            },
-            "message": "asddsa",
-            "buttons": []
           }
         ],
         "connections": [
           {
-            "id": 1752886123944,
+            "id": 1753198147442,
             "from": {
               "blockId": "start",
-              "buttonId": 1752886122782
+              "buttonId": 1753198138178
             },
-            "to": 1752886120716
-          },
-          {
-            "id": 1752886141961,
-            "from": {
-              "blockId": 1752886120716,
-              "buttonId": 1752886125306
-            },
-            "to": 1752886139118
-          },
-          {
-            "id": 1752886234493,
-            "from": {
-              "blockId": 1752886139118,
-              "buttonId": 1752886225638
-            },
-            "to": 1752886230375
+            "to": 1753198139666
           }
         ],
         "pan": {
@@ -97,5 +69,5 @@
       }
     }
   ],
-  "activeBot": "1752886117260"
+  "activeBot": "1753198130883"
 }

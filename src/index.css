@@ -884,6 +884,131 @@ body {
   display: none;
 }
 
+/* Стили для медиафайлов */
+.media-section {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+  background: var(--background-color);
+}
+
+.media-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.media-header span {
+  font-size: 0.875rem;
+  color: var(--text-light);
+  flex: 1;
+}
+
+.media-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.media-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem;
+  transition: var(--transition);
+}
+
+.media-item:hover {
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.media-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  min-width: 80px;
+  background: var(--background-color);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  flex: 1;
+}
+
+.media-preview img {
+  max-width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
+.media-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.media-controls .block-button {
+  padding: 0.25rem;
+  font-size: 0.875rem;
+  opacity: 0.7;
+  border-radius: var(--radius-sm);
+}
+
+.media-controls .block-button:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.file-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  text-align: center;
+}
+
+.file-info span:first-child {
+  font-weight: 500;
+  color: var(--text-color);
+  font-size: 0.875rem;
+}
+
+.dialog-block.start .media-section {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.dialog-block.start .media-header span {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.dialog-block.start .media-item {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.dialog-block.start .media-preview {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.dialog-block.start .file-info span:first-child {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dialog-block.start .media-controls .block-button:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
 @media (max-width: 768px) {
   .token-input {
     flex-direction: column;
