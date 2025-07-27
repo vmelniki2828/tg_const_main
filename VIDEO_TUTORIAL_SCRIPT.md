@@ -50,7 +50,7 @@ mkdir -p /opt/telegram-bot
 cd /opt/telegram-bot
 
 Клонируем проект:
-git clone https://github.com/your-username/telegram-quiz-bot.git .
+git clone https://github.com/vmelniki2828/tg_const_main.git .
 
 Настраиваем права:
 chmod +x deploy.sh
@@ -191,6 +191,9 @@ sudo certbot --nginx -d your-domain.com"
 ```
 # Подключение к серверу
 ssh root@your-server-ip
+
+# Клонирование проекта
+git clone https://github.com/vmelniki2828/tg_const_main.git
 
 # Установка Docker
 curl -fsSL https://get.docker.com -o get-docker.sh

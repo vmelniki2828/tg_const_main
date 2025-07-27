@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Quiz Bot - Простой интерфейс</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .bot-item {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        .bot-name {
+            font-weight: bold;
+            color: #333;
+        }
+        .bot-status {
+            color: #666;
+            font-size: 14px;
+        }
+        .status-active {
+            color: #28a745;
+        }
+        .status-inactive {
+            color: #dc3545;
+        }
+        .api-link {
+            display: inline-block;
+            margin: 10px 0;
+            padding: 10px 15px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        .api-link:hover {
+            background: #0056b3;
+        }
+        .json-output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Telegram Quiz Bot</h1>
+        <p>Простой интерфейс для управления ботами</p>
+        
+        <h2>📊 API Endpoints</h2>
+        <a href="/api/bots" class="api-link" target="_blank">📋 Список ботов</a>
+        <a href="/api/quiz-stats" class="api-link" target="_blank">📈 Статистика квизов</a>
+        
+        <h2>🔍 Проверка API</h2>
+        <button onclick="loadBots()" style="padding: 10px 15px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
+            Загрузить ботов
+        </button>
+        
+        <div id="bots-output" class="json-output" style="margin-top: 15px; display: none;"></div>
+        
+        <h2>ℹ️ Информация</h2>
+        <p>Этот простой интерфейс показывает, что сервер работает. Для полного доступа к функциям нужно обновить код на сервере.</p>
+        
+        <h3>📝 Что нужно сделать:</h3>
+        <ol>
+            <li>Подключиться к серверу: <code>ssh root@95.164.119.96</code></li>
+            <li>Перейти в директорию: <code>cd /opt/telegram-bot</code></li>
+            <li>Остановить контейнеры: <code>docker-compose down</code></li>
+            <li>Обновить код: <code>git pull origin main</code></li>
+            <li>Установить зависимости: <code>npm install</code></li>
+            <li>Собрать приложение: <code>npm run build</code></li>
+            <li>Запустить контейнеры: <code>docker-compose up -d</code></li>
+        </ol>
+    </div>
+
+    <script>
+        async function loadBots() {
+            try {
+                const response = await fetch('/api/bots');
+                const data = await response.json();
+                
+                const output = document.getElementById('bots-output');
+                output.style.display = 'block';
+                output.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                console.error('Error loading bots:', error);
+                alert('Ошибка загрузки данных');
+            }
+        }
+    </script>
+</body>
+</html> 

@@ -90,7 +90,7 @@ mkdir -p /opt/telegram-bot
 cd /opt/telegram-bot
 
 # Клонирование проекта
-git clone https://github.com/your-username/telegram-quiz-bot.git .
+git clone https://github.com/vmelniki2828/tg_const_main.git .
 ```
 
 ### **2. Настройка прав доступа**

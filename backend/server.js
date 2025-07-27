@@ -86,6 +86,24 @@ const upload = multer({
 // Статические файлы для загрузок
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Статические файлы React приложения
+app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, '../dist')));
+
+// Маршрут для всех остальных запросов - возвращаем index.html или simple-interface.html
+app.get('*', (req, res) => {
+  const indexPath = path.join(__dirname, '../public/index.html');
+  const simplePath = path.join(__dirname, '../public/simple-interface.html');
+  
+  // Проверяем, существует ли index.html
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    // Если index.html не существует, используем простой интерфейс
+    res.sendFile(simplePath);
+  }
+});
+
 // Эндпоинт для загрузки медиафайлов
 app.post('/api/upload-media', upload.single('media'), async (req, res) => {
   try {

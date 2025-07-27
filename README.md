@@ -32,8 +32,8 @@
 
 ### 1. Клонирование репозитория
 ```bash
-git clone https://github.com/your-username/telegram-quiz-bot.git
-cd telegram-quiz-bot
+git clone https://github.com/vmelniki2828/tg_const_main.git
+cd tg_const_main
 ```
 
 ### 2. Настройка прав доступа
@@ -75,8 +75,8 @@ sudo usermod -aG docker $USER
 #### 2. Развертывание приложения
 ```bash
 # Клонирование проекта
-git clone https://github.com/your-username/telegram-quiz-bot.git
-cd telegram-quiz-bot
+git clone https://github.com/vmelniki2828/tg_const_main.git
+cd tg_const_main
 
 # Запуск
 ./deploy.sh

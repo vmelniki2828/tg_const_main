@@ -1,6 +1,6 @@
-# ⚡ Быстрое развертывание Telegram Quiz Bot
+# 🚀 Быстрое развертывание Telegram Quiz Bot
 
-## 🚀 Экспресс-деплой (5 минут)
+## 📋 Краткая инструкция (5 минут)
 
 ### **1. Подготовка сервера**
 ```bash
@@ -55,40 +55,6 @@ docker-compose ps
 # http://your-server-ip:3001
 ```
 
----
-
-## 🌐 Настройка домена (опционально)
-
-### **1. Установка Nginx**
-```bash
-sudo apt install nginx -y
-sudo systemctl start nginx
-sudo systemctl enable nginx
-```
-
-### **2. Настройка конфигурации**
-```bash
-# Копирование конфигурации
-sudo cp nginx.conf /etc/nginx/sites-available/telegram-bot
-
-# Редактирование (замените your-domain.com)
-sudo nano /etc/nginx/sites-available/telegram-bot
-
-# Активация
-sudo ln -s /etc/nginx/sites-available/telegram-bot /etc/nginx/sites-enabled/
-sudo rm /etc/nginx/sites-enabled/default
-sudo nginx -t
-sudo systemctl restart nginx
-```
-
-### **3. SSL сертификат**
-```bash
-sudo apt install certbot python3-certbot-nginx -y
-sudo certbot --nginx -d your-domain.com
-```
-
----
-
 ## 🤖 Создание Telegram Bot
 
 ### **1. В Telegram:**
@@ -102,8 +68,6 @@ sudo certbot --nginx -d your-domain.com
 2. Нажмите "Создать бота"
 3. Введите имя и токен
 4. Нажмите "Запустить бота"
-
----
 
 ## 📊 Управление
 
@@ -125,20 +89,6 @@ docker-compose restart
 git pull origin main
 ./deploy.sh
 ```
-
-### **Мониторинг:**
-```bash
-# Использование ресурсов
-docker stats
-
-# Использование диска
-df -h
-
-# Использование памяти
-free -h
-```
-
----
 
 ## 🔧 Устранение неполадок
 
@@ -167,8 +117,6 @@ sudo chown -R $USER:$USER /opt/telegram-bot
 chmod 755 backend/uploads backend/promocodes
 ```
 
----
-
 ## 📞 Быстрая помощь
 
 ### **Проверка здоровья:**
@@ -191,8 +139,6 @@ sudo systemctl restart docker
 ./deploy.sh
 ```
 
----
-
 ## 🎯 Чек-лист развертывания
 
 - [ ] Сервер подготовлен (Ubuntu 20.04+)
@@ -204,9 +150,9 @@ sudo systemctl restart docker
 - [ ] Веб-интерфейс доступен
 - [ ] Telegram бот создан
 - [ ] Бот добавлен в приложение
-- [ ] SSL настроен (если есть домен)
-- [ ] Бэкапы настроены
 
 ---
 
-**🎉 Готово! Ваш бот работает!** 
+**🎉 Готово! Ваш бот работает!**
+
+**Репозиторий:** https://github.com/vmelniki2828/tg_const_main 
