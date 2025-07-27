@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  telegram-quiz-bot:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./backend/uploads:/app/backend/uploads
+      - ./backend/promocodes:/app/backend/promocodes
+      - ./backend/state.json:/app/backend/state.json
+      - ./backend/quizStats.json:/app/backend/quizStats.json
+    restart: unless-stopped
+    container_name: telegram-quiz-bot 

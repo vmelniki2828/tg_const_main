@@ -29,6 +29,37 @@ const storage = multer.diskStorage({
   }
 });
 
+// Настройка multer для загрузки файлов с промокодами
+const promoCodeStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const promoCodeDir = path.join(__dirname, 'promocodes');
+    // Создаем папку если её нет
+    if (!fs.existsSync(promoCodeDir)) {
+      fs.mkdirSync(promoCodeDir, { recursive: true });
+    }
+    cb(null, promoCodeDir);
+  },
+  filename: function (req, file, cb) {
+    // Сохраняем оригинальное имя файла
+    cb(null, file.originalname);
+  }
+});
+
+const promoCodeUpload = multer({ 
+  storage: promoCodeStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB лимит для CSV файлов
+  },
+  fileFilter: function (req, file, cb) {
+    // Разрешаем только CSV файлы
+    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Разрешены только CSV файлы'), false);
+    }
+  }
+});
+
 const upload = multer({ 
   storage: storage,
   limits: {
@@ -78,8 +109,193 @@ app.post('/api/upload-media', upload.single('media'), async (req, res) => {
   }
 });
 
+// Эндпоинт для удаления медиафайлов
+app.delete('/api/delete-media', async (req, res) => {
+  try {
+    const { filename } = req.body;
+    
+    if (!filename) {
+      return res.status(400).json({ error: 'Имя файла не указано' });
+    }
+
+    const filePath = path.join(__dirname, 'uploads', filename);
+    
+    // Проверяем существование файла
+    if (!fs.existsSync(filePath)) {
+      console.log(`File not found for deletion: ${filePath}`);
+      return res.json({ success: true, message: 'Файл уже удален или не существует' });
+    }
+
+    // Удаляем файл
+    await fsPromises.unlink(filePath);
+    console.log(`File deleted successfully: ${filename}`);
+    
+    res.json({ success: true, message: 'Файл успешно удален' });
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    res.status(500).json({ error: 'Ошибка при удалении файла' });
+  }
+});
+
+// Эндпоинт для очистки неиспользуемых медиафайлов
+app.post('/api/cleanup-unused-media', async (req, res) => {
+  try {
+    const { usedFilenames } = req.body;
+    
+    if (!usedFilenames || !Array.isArray(usedFilenames)) {
+      return res.status(400).json({ error: 'Список используемых файлов не указан' });
+    }
+
+    const uploadsDir = path.join(__dirname, 'uploads');
+    
+    // Проверяем существование папки uploads
+    if (!fs.existsSync(uploadsDir)) {
+      return res.json({ success: true, message: 'Папка uploads не существует', deletedCount: 0 });
+    }
+
+    // Получаем список всех файлов в папке uploads
+    const files = await fsPromises.readdir(uploadsDir);
+    const usedFilenamesSet = new Set(usedFilenames);
+    
+    let deletedCount = 0;
+    const errors = [];
+
+    // Удаляем файлы, которые не используются
+    for (const file of files) {
+      if (!usedFilenamesSet.has(file)) {
+        try {
+          const filePath = path.join(uploadsDir, file);
+          await fsPromises.unlink(filePath);
+          console.log(`Unused file deleted: ${file}`);
+          deletedCount++;
+        } catch (error) {
+          console.error(`Error deleting unused file ${file}:`, error);
+          errors.push({ file, error: error.message });
+        }
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Очистка завершена. Удалено файлов: ${deletedCount}`,
+      deletedCount,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (error) {
+    console.error('Error cleaning up unused media:', error);
+    res.status(500).json({ error: 'Ошибка при очистке неиспользуемых файлов' });
+  }
+});
+
+// Эндпоинт для получения статистики квизов
+app.get('/api/quiz-stats', async (req, res) => {
+  try {
+    const stats = await readQuizStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Error getting quiz stats:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Эндпоинт для получения статистики промокодов конкретного квиза
+app.get('/api/quiz-promocodes/:quizId', async (req, res) => {
+  try {
+    const { quizId } = req.params;
+    
+    // Путь к файлу промокодов квиза
+    const promoCodesPath = path.join(__dirname, 'promocodes', `quiz_${quizId}.csv`);
+    
+    if (!fs.existsSync(promoCodesPath)) {
+      return res.json({
+        quizId: quizId,
+        hasPromoCodes: false,
+        totalPromoCodes: 0,
+        availablePromoCodes: 0,
+        usedPromoCodes: 0,
+        promoCodesList: []
+      });
+    }
+    
+    // Читаем файл промокодов
+    const fileContent = fs.readFileSync(promoCodesPath, 'utf8');
+    const lines = fileContent.split('\n').filter(line => line.trim());
+    const dataLines = lines.slice(1); // Пропускаем заголовок
+    
+    const promoCodesList = dataLines.map(line => {
+      const [code, user, activated] = line.split(',').map(field => field.trim());
+      return {
+        code: code,
+        user: user || '',
+        activated: activated === '1' || activated === 'true',
+        activatedBy: activated === '1' || activated === 'true' ? user : null
+      };
+    }).filter(item => item.code); // Фильтруем пустые строки
+    
+    const totalPromoCodes = promoCodesList.length;
+    const usedPromoCodes = promoCodesList.filter(pc => pc.activated).length;
+    const availablePromoCodes = totalPromoCodes - usedPromoCodes;
+    
+    res.json({
+      quizId: quizId,
+      hasPromoCodes: true,
+      totalPromoCodes: totalPromoCodes,
+      availablePromoCodes: availablePromoCodes,
+      usedPromoCodes: usedPromoCodes,
+      promoCodesList: promoCodesList
+    });
+    
+  } catch (error) {
+    console.error('Error reading promo codes stats:', error);
+    res.status(500).json({ error: 'Ошибка чтения статистики промокодов' });
+  }
+});
+
+// Эндпоинт для загрузки файла с промокодами
+app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Файл не был загружен' });
+    }
+
+    const { quizId } = req.body; // Получаем ID квиза из тела запроса
+    if (!quizId) {
+      return res.status(400).json({ error: 'ID квиза не указан' });
+    }
+
+    const filePath = req.file.path;
+    console.log(`Promo codes file uploaded for quiz ${quizId}:`, filePath);
+
+    // Импортируем функции для работы с промокодами
+    const { loadPromoCodesFromFile } = require('./promoCodeManager');
+    
+    // Загружаем промокоды из файла для конкретного квиза
+    const success = loadPromoCodesFromFile(filePath, quizId);
+    
+    if (success) {
+      res.json({ 
+        success: true, 
+        message: `Файл с промокодами успешно загружен для квиза ${quizId}`,
+        filename: req.file.originalname,
+        path: filePath,
+        quizId: quizId
+      });
+    } else {
+      res.status(400).json({ 
+        error: 'Ошибка при загрузке промокодов из файла' 
+      });
+    }
+  } catch (error) {
+    console.error('Promo codes upload error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Храним активные процессы ботов
 const activeProcesses = new Map();
+
+// Файл для хранения статистики квизов
+const QUIZ_STATS_FILE = path.join(__dirname, 'quizStats.json');
 
 const STATE_FILE = path.join(__dirname, 'editorState.json');
 
@@ -97,6 +313,25 @@ async function readState() {
       bots: [],
       activeBot: null
     };
+  }
+}
+
+// Функции для работы со статистикой квизов
+async function readQuizStats() {
+  try {
+    const data = await fsPromises.readFile(QUIZ_STATS_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error reading quiz stats:', error);
+    return {};
+  }
+}
+
+async function writeQuizStats(stats) {
+  try {
+    await fsPromises.writeFile(QUIZ_STATS_FILE, JSON.stringify(stats, null, 2));
+  } catch (error) {
+    console.error('Error writing quiz stats:', error);
   }
 }
 
@@ -301,6 +536,45 @@ app.post('/api/bots/:id/activate', async (req, res) => {
   }
 });
 
+// Деактивация бота
+app.post('/api/bots/:id/deactivate', async (req, res) => {
+  try {
+    console.log('POST /api/bots/:id/deactivate - Bot ID:', req.params.id);
+    
+    const state = await readState();
+    const bot = state.bots.find(b => b.id === req.params.id);
+    
+    if (!bot) {
+      console.log('Bot not found for deactivation:', req.params.id);
+      res.status(404).json({ error: 'Bot not found' });
+      return;
+    }
+
+    console.log('Found bot for deactivation:', { id: bot.id, name: bot.name, isActive: bot.isActive });
+
+    // Останавливаем бота
+    await stopBot(bot.id);
+    await wait(1000); // Даем время на остановку
+
+    // Обновляем состояние
+    state.bots = state.bots.map(b => ({
+      ...b,
+      isActive: b.id === bot.id ? false : b.isActive
+    }));
+
+    if (state.activeBot === bot.id) {
+      state.activeBot = null;
+    }
+
+    await writeState(state);
+    console.log(`Bot ${bot.id} deactivated successfully`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error in deactivate endpoint:', error);
+    res.status(500).json({ error: 'Failed to deactivate bot' });
+  }
+});
+
 // Получение списка ботов
 app.get('/api/bots', async (req, res) => {
   try {
@@ -390,6 +664,143 @@ app.delete('/api/bots/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete bot' });
+  }
+});
+
+// Экспорт статистики квизов в CSV файл
+app.post('/api/export-quiz-stats', async (req, res) => {
+  try {
+    const { stats, promoCodesStats, blocks } = req.body;
+    
+    // Функция для экранирования CSV значений
+    const escapeCsvValue = (value) => {
+      if (value === null || value === undefined) return '';
+      const stringValue = String(value);
+      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+    
+    // Создаем CSV строки
+    const csvLines = [];
+    
+    // Таблица 1: Общая статистика
+    csvLines.push('ОБЩАЯ СТАТИСТИКА');
+    csvLines.push('Дата экспорта,Количество квизов,Всего попыток,Успешных попыток,Неудачных попыток,Общая успешность (%)');
+    
+    const totalAttempts = Object.values(stats).reduce((sum, quiz) => sum + quiz.totalAttempts, 0);
+    const totalSuccessful = Object.values(stats).reduce((sum, quiz) => sum + quiz.successfulCompletions, 0);
+    const totalFailed = Object.values(stats).reduce((sum, quiz) => sum + quiz.failedAttempts, 0);
+    const overallSuccessRate = totalAttempts > 0 ? ((totalSuccessful / totalAttempts) * 100).toFixed(1) : 0;
+    
+    csvLines.push([
+      new Date().toLocaleString('ru-RU'),
+      blocks.length,
+      totalAttempts,
+      totalSuccessful,
+      totalFailed,
+      overallSuccessRate
+    ].map(escapeCsvValue).join(','));
+    
+    csvLines.push(''); // Пустая строка для разделения таблиц
+    
+    // Таблица 2: Статистика по квизам
+    csvLines.push('СТАТИСТИКА ПО КВИЗАМ');
+    csvLines.push('ID квиза,Название квиза,Количество вопросов,Всего попыток,Успешных попыток,Неудачных попыток,Успешность (%),Всего промокодов,Доступных промокодов,Выданных промокодов');
+    
+    blocks.forEach(quiz => {
+      const quizStats = stats[quiz.id] || {
+        totalAttempts: 0,
+        successfulCompletions: 0,
+        failedAttempts: 0,
+        userAttempts: []
+      };
+      
+      const promoStats = promoCodesStats[quiz.id] || {
+        hasPromoCodes: false,
+        totalPromoCodes: 0,
+        availablePromoCodes: 0,
+        usedPromoCodes: 0,
+        promoCodesList: []
+      };
+      
+      const successRate = quizStats.totalAttempts > 0 
+        ? ((quizStats.successfulCompletions / quizStats.totalAttempts) * 100).toFixed(1) 
+        : 0;
+      
+      csvLines.push([
+        quiz.id,
+        quiz.message || `Квиз ${quiz.id}`,
+        quiz.questions?.length || 0,
+        quizStats.totalAttempts,
+        quizStats.successfulCompletions,
+        quizStats.failedAttempts,
+        successRate,
+        promoStats.totalPromoCodes,
+        promoStats.availablePromoCodes,
+        promoStats.usedPromoCodes
+      ].map(escapeCsvValue).join(','));
+    });
+    
+    csvLines.push(''); // Пустая строка для разделения таблиц
+    
+    // Таблица 3: Попытки пользователей
+    csvLines.push('ПОПЫТКИ ПОЛЬЗОВАТЕЛЕЙ');
+    csvLines.push('ID квиза,Название квиза,ID пользователя,Имя пользователя,Дата попытки,Результат,Баллы,Время прохождения (сек),Полученный промокод');
+    
+    blocks.forEach(quiz => {
+      const quizStats = stats[quiz.id] || { userAttempts: [] };
+      
+      quizStats.userAttempts.forEach(attempt => {
+        csvLines.push([
+          quiz.id,
+          quiz.message || `Квиз ${quiz.id}`,
+          attempt.userId,
+          attempt.userName || `Пользователь ${attempt.userId}`,
+          new Date(attempt.timestamp).toLocaleString('ru-RU'),
+          attempt.success ? 'Успешно' : 'Неудачно',
+          attempt.score !== undefined ? `${attempt.score}/${quiz.questions?.length || 0}` : '',
+          attempt.duration ? Math.round(attempt.duration / 1000) : '',
+          attempt.promoCode || ''
+        ].map(escapeCsvValue).join(','));
+      });
+    });
+    
+    csvLines.push(''); // Пустая строка для разделения таблиц
+    
+    // Таблица 4: Промокоды
+    csvLines.push('ПРОМОКОДЫ');
+    csvLines.push('ID квиза,Название квиза,Промокод,Статус,Выдан пользователю,Дата выдачи');
+    
+    blocks.forEach(quiz => {
+      const promoStats = promoCodesStats[quiz.id] || { promoCodesList: [] };
+      
+      promoStats.promoCodesList.forEach(promo => {
+        csvLines.push([
+          quiz.id,
+          quiz.message || `Квиз ${quiz.id}`,
+          promo.code,
+          promo.activated ? 'Использован' : 'Доступен',
+          promo.activatedBy || '',
+          promo.activatedAt ? new Date(promo.activatedAt).toLocaleString('ru-RU') : ''
+        ].map(escapeCsvValue).join(','));
+      });
+    });
+    
+    // Объединяем все строки в CSV
+    const csvContent = csvLines.join('\n');
+    
+    // Устанавливаем заголовки для скачивания CSV файла
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="quiz-stats-${new Date().toISOString().split('T')[0]}.csv"`);
+    
+    // Отправляем CSV данные
+    res.send(csvContent);
+    
+  } catch (error) {
+    console.error('Error exporting quiz stats:', error);
+    res.status(500).json({ error: 'Ошибка при экспорте статистики' });
   }
 });
 

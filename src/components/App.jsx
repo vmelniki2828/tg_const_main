@@ -1,54 +1,46 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import FlowEditor from './FlowEditor';
 import BotsList from './BotsList';
+import QuizStats from './QuizStats';
 
 function App() {
   const [selectedBotId, setSelectedBotId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [botStatus, setBotStatus] = useState(null);
+  const [showStats, setShowStats] = useState(false);
   const flowEditorRef = useRef();
+
+  // Функция для получения статуса бота
+  const fetchBotStatus = async () => {
+    if (!selectedBotId) return;
+
+    try {
+      const response = await fetch(`http://localhost:3001/api/bots/${selectedBotId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch bot status');
+      }
+      const data = await response.json();
+      setBotStatus(data.isActive);
+    } catch (err) {
+      console.error('Error fetching bot status:', err);
+    }
+  };
+
+  // Получаем статус бота при выборе бота и каждые 5 секунд
+  useEffect(() => {
+    if (selectedBotId) {
+      fetchBotStatus();
+      const interval = setInterval(fetchBotStatus, 5000);
+      return () => clearInterval(interval);
+    } else {
+      setBotStatus(null); // Сбрасываем статус при отмене выбора бота
+    }
+  }, [selectedBotId]);
 
   // Обработчик выбора бота для редактирования
   const handleSelectBot = (botId) => {
     setSelectedBotId(botId);
-  };
-
-  // Обработчик сохранения состояния бота
-  const handleSaveBot = async () => {
-    if (!selectedBotId) return;
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      // Сохраняем текущее состояние
-      const editorState = flowEditorRef.current?.getState();
-      console.log('Saving editor state:', editorState);
-      
-      const response = await fetch(`http://localhost:3001/api/bots/${selectedBotId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          editorState,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Не удалось сохранить состояние бота: ${errorData.error || response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('Save response:', result);
-      alert('Изменения сохранены!');
-    } catch (err) {
-      console.error('Error saving bot:', err);
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   // Обработчик подключения бота
@@ -78,9 +70,6 @@ function App() {
         throw new Error(`Не удалось сохранить состояние бота: ${errorData.error || saveResponse.statusText}`);
       }
 
-      const saveResult = await saveResponse.json();
-      console.log('Save response:', saveResult);
-
       // Затем активируем бота
       console.log('Activating bot...');
       const activateResponse = await fetch(`http://localhost:3001/api/bots/${selectedBotId}/activate`, {
@@ -92,12 +81,44 @@ function App() {
         throw new Error(`Не удалось подключить бота: ${errorData.error || activateResponse.statusText}`);
       }
 
-      const activateResult = await activateResponse.json();
-      console.log('Activate response:', activateResult);
-      alert('Бот успешно сохранен и подключен!');
+      // Немедленно обновляем статус на "Запущен"
+      setBotStatus(true);
+      alert('Бот успешно запущен!');
     } catch (err) {
       console.error('Error connecting bot:', err);
       setError(err.message);
+      // В случае ошибки обновляем статус с сервера
+      fetchBotStatus();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Обработчик остановки бота
+  const handleStopBot = async () => {
+    if (!selectedBotId) return;
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const response = await fetch(`http://localhost:3001/api/bots/${selectedBotId}/deactivate`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Не удалось остановить бота: ${errorData.error || response.statusText}`);
+      }
+
+      // Немедленно обновляем статус на "Остановлен"
+      setBotStatus(false);
+      alert('Бот успешно остановлен!');
+    } catch (err) {
+      console.error('Error stopping bot:', err);
+      setError(err.message);
+      // В случае ошибки обновляем статус с сервера
+      fetchBotStatus();
     } finally {
       setIsLoading(false);
     }
@@ -124,19 +145,37 @@ function App() {
             ➕ Создать блок
           </button>
           <button 
-            onClick={handleSaveBot}
-            disabled={isLoading}
-            className="editor-button"
+            onClick={() => flowEditorRef.current?.createQuizBlock()}
+            className="editor-button quiz-button"
           >
-            {isLoading ? '⏳ Сохранение...' : '💾 Сохранить'}
+            🎯 Создать квиз
           </button>
           <button 
-            onClick={handleConnectBot}
-            disabled={isLoading}
-            className="editor-button"
+            onClick={() => setShowStats(true)}
+            className="editor-button stats-button"
           >
-            {isLoading ? '⏳ Подключение...' : '🚀 Сохранить и подключить'}
+            📊 Статистика квизов
           </button>
+          <div className="bot-status">
+            Статус бота: {botStatus ? '🟢 Запущен' : '🔴 Остановлен'}
+          </div>
+          {!botStatus ? (
+            <button 
+              onClick={handleConnectBot}
+              disabled={isLoading}
+              className="editor-button start-button"
+            >
+              {isLoading ? '⏳ Подключение...' : '🚀 Запустить'}
+            </button>
+          ) : (
+            <button 
+              onClick={handleStopBot}
+              disabled={isLoading}
+              className="editor-button stop-button"
+            >
+              {isLoading ? '⏳ Остановка...' : '🛑 Остановить'}
+            </button>
+          )}
         </div>
 
         {error && (
@@ -146,6 +185,13 @@ function App() {
         )}
 
         <FlowEditor ref={flowEditorRef} botId={selectedBotId} />
+        
+        {showStats && (
+          <QuizStats 
+            blocks={flowEditorRef.current?.getState()?.blocks || []}
+            onClose={() => setShowStats(false)}
+          />
+        )}
       </div>
     );
   }
