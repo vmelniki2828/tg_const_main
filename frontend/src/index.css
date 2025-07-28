@@ -328,9 +328,8 @@ body {
 }
 
 .button-item {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.75rem;
+  display: flex;
+  gap: 1rem;
   background: white;
   padding: 0.75rem;
   border-radius: 8px;
@@ -339,14 +338,16 @@ body {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   width: 100%;
   box-sizing: border-box;
-  align-items: start;
+  align-items: flex-start;
 }
 
 .button-item-inputs {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  flex: 1;
   min-width: 0;
+  margin-right: 0.5rem;
 }
 
 .button-item:hover {
@@ -365,6 +366,11 @@ body {
   box-sizing: border-box;
   min-width: 0;
   color: var(--text-color);
+  margin: 0;
+}
+
+.button-item input:first-child {
+  margin-bottom: 0.5rem;
 }
 
 .button-item input::placeholder {
@@ -397,8 +403,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding-left: 0.5rem;
+  padding-left: 0.75rem;
   border-left: 1px solid var(--border-color);
+  justify-content: center;
+  margin-top: 0.25rem;
 }
 
 .button-item .block-button {
@@ -409,12 +417,13 @@ body {
   background: var(--background-color);
   cursor: pointer;
   transition: all 0.2s ease;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-color);
+  flex-shrink: 0;
 }
 
 .button-item .block-button:hover {
