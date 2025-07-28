@@ -387,6 +387,7 @@ function setupBotHandlers(bot, blocks, connections) {
               console.log(`   - Всего вопросов: ${currentBlock.questions.length}`);
               console.log(`   - Текущий индекс: ${userQuizState.currentQuestionIndex}`);
               console.log(`   - Условие завершения: ${userQuizState.currentQuestionIndex >= currentBlock.questions.length}`);
+              console.log(`🏁 Начинаем обработку результатов квиза...`);
               
               const correctAnswers = userQuizState.answers.filter(answer => answer.isCorrect).length;
               const totalQuestions = currentBlock.questions.length;
@@ -443,6 +444,13 @@ function setupBotHandlers(bot, blocks, connections) {
                               // Записываем статистику
                 console.log(`🎯 Начинаем сохранение статистики для квиза ${currentBlock.id}`);
                 console.log(`📊 Данные для сохранения: userId=${userId}, success=${isSuccessful}, score=${correctAnswers}`);
+                console.log(`🎯 Детали попытки:`);
+                console.log(`   - ID квиза: ${currentBlock.id}`);
+                console.log(`   - ID пользователя: ${userId}`);
+                console.log(`   - Имя пользователя: ${ctx.from.first_name || ctx.from.username || `User ${userId}`}`);
+                console.log(`   - Успешность: ${isSuccessful}`);
+                console.log(`   - Баллы: ${correctAnswers}/${currentBlock.questions.length}`);
+                console.log(`   - Время: ${Date.now() - userQuizState.startTime}ms`);
                 
                 try {
                   const fs = require('fs');
