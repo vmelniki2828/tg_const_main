@@ -452,21 +452,21 @@ function setupBotHandlers(bot, blocks, connections) {
                   console.log(`📁 Путь к файлу статистики: ${statsPath}`);
                   console.log(`📁 Текущая директория: ${__dirname}`);
                   console.log(`📁 Существует ли файл: ${fs.existsSync(statsPath)}`);
-                
-                // Проверяем права доступа к директории
-                const dirPath = path.dirname(statsPath);
-                console.log(`📁 Директория: ${dirPath}`);
-                console.log(`🔐 Права на директорию: ${fs.statSync(dirPath).mode.toString(8)}`);
-                
-                // Проверяем, можем ли мы писать в директорию
-                try {
-                  const testFile = path.join(dirPath, 'test-write.tmp');
-                  fs.writeFileSync(testFile, 'test');
-                  fs.unlinkSync(testFile);
-                  console.log(`✅ Права на запись в директорию есть`);
-                } catch (writeError) {
-                  console.log(`❌ Нет прав на запись в директорию: ${writeError.message}`);
-                }
+                  
+                                    // Проверяем права доступа к директории
+                  const dirPath = path.dirname(statsPath);
+                  console.log(`📁 Директория: ${dirPath}`);
+                  console.log(`🔐 Права на директорию: ${fs.statSync(dirPath).mode.toString(8)}`);
+                  
+                  // Проверяем, можем ли мы писать в директорию
+                  try {
+                    const testFile = path.join(dirPath, 'test-write.tmp');
+                    fs.writeFileSync(testFile, 'test');
+                    fs.unlinkSync(testFile);
+                    console.log(`✅ Права на запись в директорию есть`);
+                  } catch (writeError) {
+                    console.log(`❌ Нет прав на запись в директорию: ${writeError.message}`);
+                  }
                 
                 console.log(`📊 Сохраняем статистику для квиза ${currentBlock.id}`);
                 console.log(`📁 Путь к файлу: ${statsPath}`);

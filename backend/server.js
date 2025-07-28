@@ -202,8 +202,12 @@ app.post('/api/cleanup-unused-media', async (req, res) => {
 app.get('/api/quiz-stats', async (req, res) => {
   try {
     console.log('📊 Запрос статистики квизов...');
+    console.log('📁 Путь к файлу:', QUIZ_STATS_FILE);
+    console.log('📁 Файл существует:', fs.existsSync(QUIZ_STATS_FILE));
+    
     const stats = await readQuizStats();
     console.log('📊 Статистика загружена:', Object.keys(stats).length, 'квизов');
+    console.log('📊 Ключи квизов:', Object.keys(stats));
     
     // Подробная информация о каждом квизе
     Object.keys(stats).forEach(quizId => {
@@ -215,6 +219,7 @@ app.get('/api/quiz-stats', async (req, res) => {
       console.log(`   - Попыток пользователей: ${quizStats.userAttempts.length}`);
     });
     
+    console.log('📤 Отправляем ответ:', JSON.stringify(stats));
     res.json(stats);
   } catch (error) {
     console.error('❌ Error getting quiz stats:', error);
@@ -389,9 +394,25 @@ async function readState() {
 async function readQuizStats() {
   try {
     console.log('📊 Читаем файл статистики:', QUIZ_STATS_FILE);
+    
+    // Проверяем существование файла
+    if (!fs.existsSync(QUIZ_STATS_FILE)) {
+      console.log('❌ Файл статистики не существует, создаем пустой');
+      await fsPromises.writeFile(QUIZ_STATS_FILE, '{}');
+      return {};
+    }
+    
     const data = await fsPromises.readFile(QUIZ_STATS_FILE, 'utf8');
+    console.log('📄 Содержимое файла:', data);
+    
+    if (!data || data.trim() === '') {
+      console.log('❌ Файл статистики пустой, возвращаем пустой объект');
+      return {};
+    }
+    
     const stats = JSON.parse(data);
     console.log('📊 Статистика прочитана успешно, квизов:', Object.keys(stats).length);
+    console.log('📊 Ключи квизов:', Object.keys(stats));
     return stats;
   } catch (error) {
     console.error('❌ Error reading quiz stats:', error);
@@ -402,9 +423,21 @@ async function readQuizStats() {
 
 async function writeQuizStats(stats) {
   try {
+    console.log('📝 Записываем статистику в файл:', QUIZ_STATS_FILE);
+    console.log('📊 Данные для записи:', JSON.stringify(stats, null, 2));
+    
     await fsPromises.writeFile(QUIZ_STATS_FILE, JSON.stringify(stats, null, 2));
+    
+    // Проверяем, что файл записался
+    if (fs.existsSync(QUIZ_STATS_FILE)) {
+      const savedData = await fsPromises.readFile(QUIZ_STATS_FILE, 'utf8');
+      console.log('✅ Файл записан успешно, размер:', savedData.length, 'символов');
+    } else {
+      console.log('❌ Файл не был создан!');
+    }
   } catch (error) {
-    console.error('Error writing quiz stats:', error);
+    console.error('❌ Error writing quiz stats:', error);
+    console.error('❌ Stack trace:', error.stack);
   }
 }
 
