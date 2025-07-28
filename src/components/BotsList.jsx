@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import config from '../config';
 
 function BotsList({ onSelectBot }) {
   const [bots, setBots] = useState([]);
@@ -15,7 +16,7 @@ function BotsList({ onSelectBot }) {
   const loadBots = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('http://localhost:3001/api/bots');
+      const response = await fetch(`${config.API_BASE_URL}/api/bots`);
       if (!response.ok) {
         throw new Error('Не удалось загрузить список ботов');
       }
@@ -38,7 +39,7 @@ function BotsList({ onSelectBot }) {
 
     try {
       setIsLoading(true);
-      const response = await fetch('http://localhost:3001/api/bots', {
+      const response = await fetch(`${config.API_BASE_URL}/api/bots`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -89,7 +90,7 @@ function BotsList({ onSelectBot }) {
 
     try {
       setIsLoading(true);
-      const response = await fetch(`http://localhost:3001/api/bots/${botId}`, {
+      const response = await fetch(`${config.API_BASE_URL}/api/bots/${botId}`, {
         method: 'DELETE',
       });
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './QuizStats.css';
+import config from '../config';
 
 const QuizStats = ({ blocks, onClose }) => {
   const [stats, setStats] = useState({});
@@ -19,7 +20,7 @@ const QuizStats = ({ blocks, onClose }) => {
   const fetchStats = async () => {
     try {
       setError(null); // Сбрасываем ошибку при новой попытке
-      const response = await fetch('http://localhost:3001/api/quiz-stats');
+      const response = await fetch(`${config.API_BASE_URL}/api/quiz-stats`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -34,7 +35,7 @@ const QuizStats = ({ blocks, onClose }) => {
       
       for (const quiz of quizBlocks) {
         try {
-          const promoResponse = await fetch(`http://localhost:3001/api/quiz-promocodes/${quiz.id}`);
+          const promoResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${quiz.id}`);
           if (promoResponse.ok) {
             const promoData = await promoResponse.json();
             promoCodesData[quiz.id] = promoData;
@@ -93,7 +94,7 @@ const QuizStats = ({ blocks, onClose }) => {
 
   const exportStatsToFile = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/export-quiz-stats', {
+      const response = await fetch(`${config.API_BASE_URL}/api/export-quiz-stats`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

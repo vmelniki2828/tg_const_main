@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import config from '../config';
 
 const QuizBlock = ({
   block,
@@ -35,7 +36,7 @@ const QuizBlock = ({
     formData.append('quizId', block.id); // Добавляем ID квиза
 
     try {
-      const response = await fetch('http://localhost:3001/api/upload-promocodes', {
+      const response = await fetch(`${config.API_BASE_URL}/api/upload-promocodes`, {
         method: 'POST',
         body: formData,
       });
@@ -240,7 +241,7 @@ const QuizBlock = ({
                 <div className="media-preview">
                   {media.mimetype.startsWith('image/') ? (
                     <img 
-                      src={`http://localhost:3001${media.path}`} 
+                      src={`${config.API_BASE_URL}${media.path}`} 
                       alt="Preview" 
                       style={{ maxWidth: '100%', maxHeight: '80px', objectFit: 'contain' }}
                     />

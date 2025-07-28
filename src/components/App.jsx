@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import FlowEditor from './FlowEditor';
 import BotsList from './BotsList';
 import QuizStats from './QuizStats';
+import config from '../config';
 
 function App() {
   const [selectedBotId, setSelectedBotId] = useState(null);
@@ -16,7 +17,7 @@ function App() {
     if (!selectedBotId) return;
 
     try {
-      const response = await fetch(`http://localhost:3001/api/bots/${selectedBotId}`);
+      const response = await fetch(`${config.API_BASE_URL}/api/bots/${selectedBotId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch bot status');
       }
@@ -55,7 +56,7 @@ function App() {
       const editorState = flowEditorRef.current?.getState();
       console.log('Saving editor state before activation:', editorState);
       
-      const saveResponse = await fetch(`http://localhost:3001/api/bots/${selectedBotId}`, {
+      const saveResponse = await fetch(`${config.API_BASE_URL}/api/bots/${selectedBotId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -72,7 +73,7 @@ function App() {
 
       // Затем активируем бота
       console.log('Activating bot...');
-      const activateResponse = await fetch(`http://localhost:3001/api/bots/${selectedBotId}/activate`, {
+      const activateResponse = await fetch(`${config.API_BASE_URL}/api/bots/${selectedBotId}/activate`, {
         method: 'POST',
       });
 
@@ -102,7 +103,7 @@ function App() {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:3001/api/bots/${selectedBotId}/deactivate`, {
+      const response = await fetch(`${config.API_BASE_URL}/api/bots/${selectedBotId}/deactivate`, {
         method: 'POST',
       });
 

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import QuizBlock from './QuizBlock';
+import config from '../config';
 
 const FlowEditor = forwardRef(({ botId }, ref) => {
   // Состояния для редактора
@@ -36,7 +37,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
         setError(null);
         console.log('Loading bot state for ID:', botId);
         
-        const response = await fetch(`http://localhost:3001/api/bots/${botId}`);
+        const response = await fetch(`${config.API_BASE_URL}/api/bots/${botId}`);
         if (!response.ok) {
           throw new Error('Не удалось загрузить состояние бота');
         }
@@ -443,7 +444,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
       const formData = new FormData();
       formData.append('media', file);
 
-      const response = await fetch('http://localhost:3001/api/upload-media', {
+      const response = await fetch(`${config.API_BASE_URL}/api/upload-media`, {
         method: 'POST',
         body: formData
       });
@@ -916,7 +917,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                           <div className="media-preview">
                             {media.mimetype.startsWith('image/') ? (
                               <img 
-                                src={`http://localhost:3001${media.path}`} 
+                                src={`${config.API_BASE_URL}${media.path}`} 
                                 alt="Preview" 
                                 style={{ maxWidth: '100%', maxHeight: '80px', objectFit: 'contain' }}
                               />

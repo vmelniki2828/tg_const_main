@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './PromoCodeUploader.css';
+import config from '../config';
 
 const PromoCodeUploader = ({ onClose }) => {
   const [file, setFile] = useState(null);
@@ -36,7 +37,7 @@ const PromoCodeUploader = ({ onClose }) => {
     formData.append('promocodes', file);
 
     try {
-      const response = await fetch('http://localhost:3001/api/upload-promocodes', {
+      const response = await fetch(`${config.API_BASE_URL}/api/upload-promocodes`, {
         method: 'POST',
         body: formData,
       });

@@ -6,10 +6,21 @@ const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
 
-const app = express();
-const PORT = 3001;
+// Загружаем переменные окружения
+require('dotenv').config();
 
-app.use(cors());
+const app = express();
+const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
+
+// Настройка CORS
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Настройка multer для загрузки файлов
@@ -820,6 +831,6 @@ process.on('SIGINT', () => shutdownServer('SIGINT'));
 process.on('SIGTERM', () => shutdownServer('SIGTERM'));
 
 // Запуск сервера
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   console.log(`Server is running on port ${PORT}`);
 }); 

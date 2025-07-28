@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import config from '../config';
 
 const DialogChainEditor = () => {
   const [chains, setChains] = useState([
@@ -72,7 +73,7 @@ const DialogChainEditor = () => {
 
   const handleSave = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/update-dialog-chains', {
+      const response = await fetch(`${config.API_BASE_URL}/api/update-dialog-chains`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
