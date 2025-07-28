@@ -333,9 +333,14 @@ function setupBotHandlers(bot, blocks, connections) {
     
     // Специальная обработка квизов
     const currentBlockId = userCurrentBlock.get(userId);
+    console.log(`🔍 Проверяем блок ${currentBlockId} для пользователя ${userId}`);
+    
     if (currentBlockId) {
       const currentBlock = blocks.find(b => b.id === currentBlockId);
+      console.log(`📋 Найден блок:`, currentBlock ? { id: currentBlock.id, type: currentBlock.type } : 'не найден');
+      
       if (currentBlock && currentBlock.type === 'quiz') {
+        console.log(`🎯 Обрабатываем квиз для пользователя ${userId}`);
         // Обработка ответов в квизе
         const userQuizState = userQuizStates.get(userId) || {
           currentQuestionIndex: 0,
@@ -344,8 +349,13 @@ function setupBotHandlers(bot, blocks, connections) {
         };
         
         const currentQuestion = currentBlock.questions[userQuizState.currentQuestionIndex];
+        console.log(`❓ Обрабатываем вопрос ${userQuizState.currentQuestionIndex + 1} из ${currentBlock.questions.length}`);
+        console.log(`📝 Ответ пользователя: "${messageText}"`);
+        
         if (currentQuestion) {
           const selectedButton = currentQuestion.buttons.find(btn => btn.text === messageText);
+          console.log(`🔘 Найденная кнопка:`, selectedButton ? { text: selectedButton.text, isCorrect: selectedButton.isCorrect } : 'не найдена');
+          
           if (selectedButton) {
             // Сохраняем ответ
             userQuizState.answers.push({
@@ -369,9 +379,13 @@ function setupBotHandlers(bot, blocks, connections) {
               return;
             } else {
               // Квиз завершен, показываем результаты
+              console.log(`🏁 Квиз завершен для пользователя ${userId}`);
+              
               const correctAnswers = userQuizState.answers.filter(answer => answer.isCorrect).length;
               const totalQuestions = currentBlock.questions.length;
               const successRate = (correctAnswers / totalQuestions) * 100;
+              
+              console.log(`📊 Результаты: ${correctAnswers}/${totalQuestions} правильных ответов (${successRate.toFixed(1)}%)`);
               
               let resultMessage = `📊 Результаты квиза:\n`;
               resultMessage += `✅ Правильных ответов: ${correctAnswers} из ${totalQuestions}\n`;
@@ -387,6 +401,7 @@ function setupBotHandlers(bot, blocks, connections) {
               
               // Проверяем успешность (100% для прохождения)
               const isSuccessful = successRate === 100;
+              console.log(`🎯 Определение успешности: ${successRate}% === 100% = ${isSuccessful}`);
               
               if (isSuccessful) {
                 resultMessage += `🎉 ${currentBlock.finalSuccessMessage || 'Поздравляем! Вы успешно прошли квиз!'}\n`;
@@ -409,6 +424,9 @@ function setupBotHandlers(bot, blocks, connections) {
               }
               
               // Записываем статистику
+              console.log(`🎯 Начинаем сохранение статистики для квиза ${currentBlock.id}`);
+              console.log(`📊 Данные для сохранения: userId=${userId}, success=${isSuccessful}, score=${correctAnswers}`);
+              
               try {
                 const fs = require('fs');
                 const path = require('path');
@@ -505,6 +523,8 @@ function setupBotHandlers(bot, blocks, connections) {
                     score: correctAnswers,
                     duration: Date.now() - userQuizState.startTime
                   });
+                  
+                  console.log(`📤 Отправляем данные через HTTP:`, postData);
                   
                   const options = {
                     hostname: 'localhost',
