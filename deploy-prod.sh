@@ -52,12 +52,35 @@ EOF
     echo "✅ .env файл для фронтенда создан!"
 fi
 
-# Копируем nginx.conf в frontend если его там нет
-if [ ! -f frontend/nginx.conf ]; then
-    echo "📝 Копируем nginx.conf в frontend..."
-    cp nginx.conf frontend/
-    echo "✅ nginx.conf скопирован в frontend!"
-fi
+# Создаем nginx.conf для фронтенда
+echo "📝 Создаем nginx.conf для фронтенда..."
+cat > frontend/nginx.conf << 'EOF'
+server {
+    listen 3000;
+    server_name localhost;
+
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+
+    # Обработка React Router
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Кэширование статических файлов
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Gzip сжатие
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json;
+}
+EOF
+echo "✅ nginx.conf для фронтенда создан!"
 
 # Останавливаем существующие контейнеры
 echo "🛑 Останавливаем существующие контейнеры..."
