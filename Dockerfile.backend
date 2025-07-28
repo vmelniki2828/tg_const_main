@@ -1,0 +1,27 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Копируем package.json и package-lock.json для backend
+COPY backend/package*.json ./backend/
+
+# Переходим в директорию backend
+WORKDIR /app/backend
+
+# Устанавливаем зависимости
+RUN npm install
+
+# Копируем код бэкенда
+COPY backend/ ./
+
+# Создаем необходимые директории
+RUN mkdir -p uploads promocodes logs
+
+# Устанавливаем права
+RUN chmod 755 uploads promocodes
+
+# Открываем порт
+EXPOSE 3001
+
+# Запускаем бэкенд
+CMD ["node", "server.js"] 
