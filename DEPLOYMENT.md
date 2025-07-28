@@ -1,11 +1,11 @@
-# 🚀 Развертывание Telegram Quiz Bot
+# 🚀 Развертывание на сервере
 
 ## 📋 Требования
 - Ubuntu/Debian сервер
 - Docker и Docker Compose
 - Открытые порты: 80, 3000, 3001
 
-## 🚀 Быстрое развертывание
+## 🚀 Развертывание
 
 ### 1. Подготовка сервера
 ```bash
@@ -31,43 +31,30 @@ sudo ufw enable
 git clone <your-repo-url>
 cd tg_const_main
 
-# Создание .env файлов
+# Создание .env файла
 cat > .env << EOF
 NODE_ENV=production
 PORT=3001
 HOST=0.0.0.0
-REACT_APP_API_URL=http://95.164.119.96:3001
-REACT_APP_FRONTEND_URL=http://95.164.119.96:3000
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 CORS_ORIGIN=http://95.164.119.96:3000
 EOF
 
-# Создание .env файла для фронтенда
-cat > frontend/.env << EOF
-REACT_APP_API_URL=http://95.164.119.96:3001
-REACT_APP_FRONTEND_URL=http://95.164.119.96:3000
-EOF
-
 # Делаем скрипт исполняемым
-chmod +x deploy-prod-clean.sh
+chmod +x deploy.sh
 ```
 
 ### 3. Развертывание
 ```bash
 # Запуск развертывания
-./deploy-prod-clean.sh
-
-# Если фронтенд все еще использует localhost, пересоберите его:
-docker-compose -f docker-compose.prod-clean.yml down
-docker rmi tg_const_main-frontend
-docker-compose -f docker-compose.prod-clean.yml up --build -d
+./deploy.sh
 ```
 
 ## ✅ Проверка
 
 ```bash
 # Проверка контейнеров
-docker-compose -f docker-compose.prod-clean.yml ps
+docker-compose -f docker-compose.yml ps
 
 # Проверка API
 curl http://95.164.119.96:3001/api/bots
@@ -80,14 +67,14 @@ curl http://95.164.119.96:3000
 
 ```bash
 # Остановка
-docker-compose -f docker-compose.prod-clean.yml down
+docker-compose -f docker-compose.yml down
 
 # Перезапуск
-docker-compose -f docker-compose.prod-clean.yml restart
+docker-compose -f docker-compose.yml restart
 
 # Обновление
 git pull
-./deploy-prod-clean.sh
+./deploy.sh
 ```
 
 ## ⚠️ Важно
@@ -96,30 +83,9 @@ git pull
 2. **Замените** `<your-repo-url>` на URL вашего репозитория
 3. **Замените** `95.164.119.96` на IP вашего сервера
 
-## 🔧 Исправление проблемы с localhost
-
-Если фронтенд все еще отправляет запросы на localhost:
-
-```bash
-# Быстрое исправление
-./fix-localhost.sh
-
-# ИЛИ ручное исправление
-docker-compose -f docker-compose.prod-clean.yml down
-docker rmi tg_const_main-frontend
-docker-compose -f docker-compose.prod-clean.yml up --build -d
-
-# Проверить логи
-docker logs $(docker ps -q --filter "name=frontend")
-```
-
 ## 🎯 Результат
 
 После успешного развертывания:
 - **Фронтенд**: http://95.164.119.96:3000
 - **API**: http://95.164.119.96:3001
-- **Nginx**: http://95.164.119.96
-
----
-
-**Проект готов к развертыванию! 🚀** 
+- **Nginx**: http://95.164.119.96 
