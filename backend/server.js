@@ -86,21 +86,15 @@ const upload = multer({
 // Статические файлы для загрузок
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Статические файлы React приложения
-app.use(express.static(path.join(__dirname, '../public')));
-app.use(express.static(path.join(__dirname, '../dist')));
-
-// Маршрут для всех остальных запросов - возвращаем index.html или simple-interface.html
-app.get('*', (req, res) => {
-  const indexPath = path.join(__dirname, '../public/index.html');
-  const simplePath = path.join(__dirname, '../public/simple-interface.html');
-  
-  // Проверяем, существует ли index.html
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
+// CORS настройки для фронтенда
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
   } else {
-    // Если index.html не существует, используем простой интерфейс
-    res.sendFile(simplePath);
+    next();
   }
 });
 

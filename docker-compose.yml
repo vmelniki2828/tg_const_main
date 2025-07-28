@@ -1,8 +1,10 @@
 version: '3.8'
 
 services:
-  telegram-quiz-bot:
-    build: .
+  backend:
+    build: 
+      context: .
+      dockerfile: Dockerfile.backend
     ports:
       - "3001:3001"
     environment:
@@ -13,4 +15,17 @@ services:
       - ./backend/state.json:/app/backend/state.json
       - ./backend/quizStats.json:/app/backend/quizStats.json
     restart: unless-stopped
-    container_name: telegram-quiz-bot 
+    container_name: telegram-quiz-bot-backend
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:3001
+    depends_on:
+      - backend
+    restart: unless-stopped
+    container_name: telegram-quiz-bot-frontend 

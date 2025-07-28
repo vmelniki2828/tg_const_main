@@ -67,7 +67,8 @@ if docker-compose ps | grep -q "Up"; then
     docker-compose ps
     
     echo ""
-    echo "🌐 Приложение доступно по адресу: http://localhost:3001"
+    echo "🌐 Фронтенд доступен по адресу: http://localhost:3000"
+    echo "🔧 API доступен по адресу: http://localhost:3001"
     echo "📝 Логи можно посмотреть командой: docker-compose logs -f"
     echo "🛑 Остановить приложение: docker-compose down"
     

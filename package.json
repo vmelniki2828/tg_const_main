@@ -9,6 +9,7 @@
     "build": "npm run build:frontend",
     "build:frontend": "npm run build:react",
     "build:react": "npx react-scripts build",
+    "start:frontend": "npx react-scripts start",
     "install:all": "npm install"
   },
   "dependencies": {

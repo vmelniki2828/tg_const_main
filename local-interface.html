@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Quiz Bot - Локальный интерфейс</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .bot-item {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        .bot-name {
+            font-weight: bold;
+            color: #333;
+            font-size: 18px;
+        }
+        .bot-status {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .status-active {
+            color: #28a745;
+        }
+        .status-inactive {
+            color: #dc3545;
+        }
+        .button {
+            display: inline-block;
+            margin: 5px;
+            padding: 10px 15px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        .button.success {
+            background: #28a745;
+        }
+        .button.danger {
+            background: #dc3545;
+        }
+        .json-output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .hidden {
+            display: none;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #155724;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Telegram Quiz Bot - Управление</h1>
+        <p>Локальный интерфейс для управления ботами на сервере 95.164.119.96:3001</p>
+        
+        <div id="status" class="success">
+            ✅ Подключение к серверу: 95.164.119.96:3001
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Список ботов</h2>
+        <button onclick="loadBots()" class="button">🔄 Обновить список</button>
+        <button onclick="showCreateBot()" class="button success">➕ Создать бота</button>
+        
+        <div id="bots-list"></div>
+        <div id="bots-output" class="json-output hidden"></div>
+    </div>
+
+    <div id="create-bot-form" class="container hidden">
+        <h2>➕ Создать нового бота</h2>
+        <form onsubmit="createBot(event)">
+            <div class="form-group">
+                <label for="bot-name">Имя бота:</label>
+                <input type="text" id="bot-name" required placeholder="Введите имя бота">
+            </div>
+            <div class="form-group">
+                <label for="bot-token">Токен бота:</label>
+                <input type="text" id="bot-token" required placeholder="Введите токен от @BotFather">
+            </div>
+            <button type="submit" class="button success">Создать бота</button>
+            <button type="button" onclick="hideCreateBot()" class="button">Отмена</button>
+        </form>
+    </div>
+
+    <div class="container">
+        <h2>📊 Статистика квизов</h2>
+        <button onclick="loadQuizStats()" class="button">📈 Загрузить статистику</button>
+        <div id="quiz-stats-output" class="json-output hidden"></div>
+    </div>
+
+    <div class="container">
+        <h2>🔧 Управление сервером</h2>
+        <p>Для полного доступа к функциям нужно обновить сервер:</p>
+        <ol>
+            <li>Подключиться к серверу: <code>ssh root@95.164.119.96</code></li>
+            <li>Перейти в директорию: <code>cd /opt/telegram-bot</code></li>
+            <li>Остановить контейнеры: <code>docker-compose down</code></li>
+            <li>Обновить код: <code>git pull origin main</code></li>
+            <li>Установить зависимости: <code>npm install</code></li>
+            <li>Собрать приложение: <code>npm run build</code></li>
+            <li>Запустить контейнеры: <code>docker-compose up -d</code></li>
+        </ol>
+    </div>
+
+    <script>
+        const SERVER_URL = 'http://95.164.119.96:3001';
+
+        // Загрузить ботов при загрузке страницы
+        window.onload = function() {
+            loadBots();
+        };
+
+        async function loadBots() {
+            try {
+                const response = await fetch(`${SERVER_URL}/api/bots`);
+                const data = await response.json();
+                
+                displayBots(data.bots || []);
+                showJsonOutput('bots-output', data);
+            } catch (error) {
+                console.error('Error loading bots:', error);
+                showError('Ошибка загрузки ботов: ' + error.message);
+            }
+        }
+
+        function displayBots(bots) {
+            const container = document.getElementById('bots-list');
+            
+            if (bots.length === 0) {
+                container.innerHTML = '<p>🤖 Ботов пока нет. Создайте первого бота!</p>';
+                return;
+            }
+
+            let html = '';
+            bots.forEach(bot => {
+                const statusClass = bot.isActive ? 'status-active' : 'status-inactive';
+                const statusText = bot.isActive ? '🟢 Активен' : '🔴 Неактивен';
+                
+                html += `
+                    <div class="bot-item">
+                        <div class="bot-name">${bot.name}</div>
+                        <div class="bot-status ${statusClass}">${statusText}</div>
+                        <div class="bot-status">ID: ${bot.id}</div>
+                        <button onclick="activateBot('${bot.id}')" class="button success">🚀 Активировать</button>
+                        <button onclick="deactivateBot('${bot.id}')" class="button danger">🛑 Деактивировать</button>
+                        <button onclick="editBot('${bot.id}')" class="button">✏️ Редактировать</button>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        async function createBot(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById('bot-name').value;
+            const token = document.getElementById('bot-token').value;
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/api/bots`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ name, token })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showSuccess('Бот успешно создан!');
+                    hideCreateBot();
+                    loadBots();
+                } else {
+                    showError('Ошибка создания бота: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                showError('Ошибка создания бота: ' + error.message);
+            }
+        }
+
+        async function activateBot(botId) {
+            try {
+                const response = await fetch(`${SERVER_URL}/api/bots/${botId}/activate`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    showSuccess('Бот активирован!');
+                    loadBots();
+                } else {
+                    const data = await response.json();
+                    showError('Ошибка активации: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                showError('Ошибка активации: ' + error.message);
+            }
+        }
+
+        async function deactivateBot(botId) {
+            try {
+                const response = await fetch(`${SERVER_URL}/api/bots/${botId}/deactivate`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    showSuccess('Бот деактивирован!');
+                    loadBots();
+                } else {
+                    const data = await response.json();
+                    showError('Ошибка деактивации: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                showError('Ошибка деактивации: ' + error.message);
+            }
+        }
+
+        async function loadQuizStats() {
+            try {
+                const response = await fetch(`${SERVER_URL}/api/quiz-stats`);
+                const data = await response.json();
+                
+                showJsonOutput('quiz-stats-output', data);
+            } catch (error) {
+                showError('Ошибка загрузки статистики: ' + error.message);
+            }
+        }
+
+        function showCreateBot() {
+            document.getElementById('create-bot-form').classList.remove('hidden');
+        }
+
+        function hideCreateBot() {
+            document.getElementById('create-bot-form').classList.add('hidden');
+            document.getElementById('bot-name').value = '';
+            document.getElementById('bot-token').value = '';
+        }
+
+        function showJsonOutput(elementId, data) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.classList.remove('hidden');
+        }
+
+        function showError(message) {
+            const status = document.getElementById('status');
+            status.className = 'error';
+            status.textContent = '❌ ' + message;
+        }
+
+        function showSuccess(message) {
+            const status = document.getElementById('status');
+            status.className = 'success';
+            status.textContent = '✅ ' + message;
+        }
+
+        function editBot(botId) {
+            // Пока просто показываем ID бота
+            alert(`Редактирование бота ${botId}\n\nДля полного редактирования нужно обновить сервер.`);
+        }
+    </script>
+</body>
+</html> 

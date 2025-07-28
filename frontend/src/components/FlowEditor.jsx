@@ -1,0 +1,1032 @@
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import QuizBlock from './QuizBlock';
+
+const FlowEditor = forwardRef(({ botId }, ref) => {
+  // Состояния для редактора
+  const [blocks, setBlocks] = useState([
+    {
+      id: 'start',
+      type: 'start',
+      position: { x: 2500, y: 2500 },
+      message: 'Начало диалога',
+      buttons: [],
+    }
+  ]);
+  const [connections, setConnections] = useState([]);
+  const [draggedBlock, setDraggedBlock] = useState(null);
+  const [connectingFrom, setConnectingFrom] = useState(null);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [scale, setScale] = useState(1);
+  const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
+  const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  const editorRef = useRef(null);
+
+  // Загрузка состояния при монтировании или смене бота
+  useEffect(() => {
+    const loadBotState = async () => {
+      if (!botId) return;
+
+      try {
+        setIsLoading(true);
+        setError(null);
+        console.log('Loading bot state for ID:', botId);
+        
+        const response = await fetch(`http://localhost:3001/api/bots/${botId}`);
+        if (!response.ok) {
+          throw new Error('Не удалось загрузить состояние бота');
+        }
+        const data = await response.json();
+        console.log('Loaded bot data:', data);
+        
+        if (data.editorState) {
+          if (data.editorState.blocks) {
+            console.log('Setting blocks:', data.editorState.blocks);
+            setBlocks(data.editorState.blocks);
+          }
+          if (data.editorState.connections) {
+            console.log('Setting connections:', data.editorState.connections);
+            setConnections(data.editorState.connections);
+          }
+          if (data.editorState.pan) {
+            console.log('Setting pan:', data.editorState.pan);
+            setPan(data.editorState.pan);
+          }
+          if (data.editorState.scale) {
+            console.log('Setting scale:', data.editorState.scale);
+            setScale(data.editorState.scale);
+          }
+        }
+      } catch (err) {
+        console.error('Error loading bot state:', err);
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadBotState();
+  }, [botId]);
+
+  // Экспортируем методы через ref
+  useImperativeHandle(ref, () => ({
+    getFlowData: () => ({
+      blocks,
+      connections
+    }),
+    getState: () => {
+      const state = {
+        blocks,
+        connections,
+        pan,
+        scale
+      };
+      console.log('getState() called, returning:', state);
+      return state;
+    },
+    createBlock: () => {
+      // Получаем размеры видимой области редактора
+      const editorRect = editorRef.current.getBoundingClientRect();
+      const centerX = (editorRect.width / 2 - pan.x) / scale;
+      const centerY = (editorRect.height / 2 - pan.y) / scale;
+
+      // Добавляем небольшой случайный отступ, чтобы блоки не накладывались
+      const offset = blocks.length * 20;
+      
+      const newBlock = {
+        id: Date.now(),
+        type: 'message',
+        position: {
+          x: centerX + offset,
+          y: centerY + offset
+        },
+        message: '',
+        buttons: [],
+        mediaFiles: null
+      };
+      setBlocks([...blocks, newBlock]);
+    },
+    createQuizBlock: () => {
+      // Получаем размеры видимой области редактора
+      const editorRect = editorRef.current.getBoundingClientRect();
+      const centerX = (editorRect.width / 2 - pan.x) / scale;
+      const centerY = (editorRect.height / 2 - pan.y) / scale;
+
+      // Добавляем небольшой случайный отступ, чтобы блоки не накладывались
+      const offset = blocks.length * 20;
+
+      const firstQuestion = {
+        id: Date.now(),
+        message: 'Вопрос 1',
+        buttons: [
+          { id: Date.now(), text: 'Вариант 1', isCorrect: true },
+          { id: Date.now() + 1, text: 'Вариант 2', isCorrect: false },
+          { id: Date.now() + 2, text: 'Вариант 3', isCorrect: false }
+        ],
+        successMessage: 'Правильно!',
+        failureMessage: 'Неправильно. Попробуйте еще раз.',
+        mediaFiles: []
+      };
+
+      const newQuizBlock = {
+        id: Date.now(),
+        type: 'quiz',
+        position: {
+          x: centerX + offset,
+          y: centerY + offset
+        },
+        message: firstQuestion.message, // Синхронизируем с первым вопросом
+        buttons: firstQuestion.buttons, // Синхронизируем кнопки с первым вопросом
+        questions: [firstQuestion],
+        currentQuestionIndex: 0,
+        finalSuccessMessage: 'Поздравляем! Вы успешно прошли квиз!',
+        returnToStartOnComplete: true,
+        mediaFiles: null
+      };
+      setBlocks([...blocks, newQuizBlock]);
+    }
+  }));
+
+  // Обработка колесика мыши для масштабирования
+  const handleWheel = (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setScale(prevScale => Math.min(Math.max(0.5, prevScale * delta), 2));
+    }
+  };
+
+  // Начало перетаскивания холста
+  const handleCanvasMouseDown = (e) => {
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      e.preventDefault();
+      setIsDraggingCanvas(true);
+      setLastMousePos({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  // Перетаскивание холста
+  const handleCanvasMouseMove = (e) => {
+    if (isDraggingCanvas) {
+      const dx = e.clientX - lastMousePos.x;
+      const dy = e.clientY - lastMousePos.y;
+      setPan(prevPan => ({
+        x: prevPan.x + dx,
+        y: prevPan.y + dy
+      }));
+      setLastMousePos({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  // Завершение перетаскивания холста
+  const handleCanvasMouseUp = () => {
+    setIsDraggingCanvas(false);
+  };
+
+  // Добавляем обработчики событий
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (editor) {
+      editor.addEventListener('wheel', handleWheel, { passive: false });
+    }
+    return () => {
+      if (editor) {
+        editor.removeEventListener('wheel', handleWheel);
+      }
+    };
+  }, []);
+
+  // Обработка движения мыши для отрисовки создаваемой связи
+  const handleMouseMove = (e) => {
+    if (connectingFrom) {
+      const rect = editorRef.current.getBoundingClientRect();
+      setMousePosition({
+        x: (e.clientX - rect.left - pan.x) / scale,
+        y: (e.clientY - rect.top - pan.y) / scale
+      });
+    }
+  };
+
+  // Создание нового блока
+  const createBlock = (type, position) => {
+    const newBlock = {
+      id: Date.now(),
+      type,
+      position: {
+        x: 2500 + (-pan.x / scale),
+        y: 2500 + (-pan.y / scale)
+      },
+      message: '',
+      buttons: [],
+      mediaFiles: null
+    };
+    setBlocks([...blocks, newBlock]);
+  };
+
+  // Добавление кнопки к блоку
+  const addButton = (blockId) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        if (block.type === 'quiz') {
+          const updatedQuestions = [...block.questions];
+          const currentQuestion = updatedQuestions[block.currentQuestionIndex];
+          const buttonNumber = currentQuestion.buttons.length + 1;
+          const newButton = {
+            id: Date.now(),
+            text: `Вариант ${buttonNumber}`,
+            isCorrect: currentQuestion.buttons.length === 0 // Первый вариант правильный по умолчанию
+          };
+          const updatedButtons = [...currentQuestion.buttons, newButton];
+          currentQuestion.buttons = updatedButtons;
+          return { 
+            ...block, 
+            questions: updatedQuestions,
+            buttons: updatedButtons // Синхронизируем с основным блоком
+          };
+        } else {
+          const buttonNumber = block.buttons.length + 1;
+          const updatedButtons = [...block.buttons, { 
+            id: Date.now(), 
+            text: `Кнопка ${buttonNumber}`,
+            url: '' // Добавляем поле для URL
+          }];
+          return {
+            ...block,
+            buttons: updatedButtons
+          };
+        }
+      }
+      return block;
+    }));
+  };
+
+  // Обновление текста сообщения
+  const updateMessage = (blockId, message) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        if (block.type === 'quiz') {
+          const updatedQuestions = [...block.questions];
+          const currentQuestion = updatedQuestions[block.currentQuestionIndex];
+          currentQuestion.message = message;
+          // Синхронизируем основное сообщение, кнопки и медиафайлы с текущим вопросом
+          return { 
+            ...block, 
+            message: message, // Обновляем основное сообщение
+            buttons: currentQuestion.buttons, // Синхронизируем кнопки
+            mediaFiles: currentQuestion.mediaFiles, // Синхронизируем медиафайлы
+            questions: updatedQuestions 
+          };
+        } else {
+          return { ...block, message };
+        }
+      }
+      return block;
+    }));
+  };
+
+  // Обновление текста кнопки
+  const updateButton = (blockId, buttonId, text) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        if (block.type === 'quiz') {
+          const updatedQuestions = [...block.questions];
+          const currentQuestion = updatedQuestions[block.currentQuestionIndex];
+          const updatedButtons = currentQuestion.buttons.map(btn => 
+            btn.id === buttonId ? { ...btn, text } : btn
+          );
+          currentQuestion.buttons = updatedButtons;
+          return { 
+            ...block, 
+            questions: updatedQuestions,
+            buttons: updatedButtons // Синхронизируем с основным блоком
+          };
+        } else {
+          const updatedButtons = block.buttons.map(btn => 
+            btn.id === buttonId ? { ...btn, text } : btn
+          );
+          return {
+            ...block,
+            buttons: updatedButtons
+          };
+        }
+      }
+      return block;
+    }));
+  };
+
+  // Обновление URL кнопки
+  const updateButtonUrl = (blockId, buttonId, url) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        if (block.type === 'quiz') {
+          const updatedQuestions = [...block.questions];
+          const currentQuestion = updatedQuestions[block.currentQuestionIndex];
+          const updatedButtons = currentQuestion.buttons.map(btn => 
+            btn.id === buttonId ? { ...btn, url } : btn
+          );
+          currentQuestion.buttons = updatedButtons;
+          return { 
+            ...block, 
+            questions: updatedQuestions,
+            buttons: updatedButtons // Синхронизируем с основным блоком
+          };
+        } else {
+          const updatedButtons = block.buttons.map(btn => 
+            btn.id === buttonId ? { ...btn, url } : btn
+          );
+          return {
+            ...block,
+            buttons: updatedButtons
+          };
+        }
+      }
+      return block;
+    }));
+  };
+
+  // Начало создания соединения
+  const startConnection = (blockId, buttonId, e) => {
+    e.stopPropagation();
+    setConnectingFrom({ blockId, buttonId });
+    setIsConnecting(true);
+  };
+
+  // Завершение создания соединения
+  const finishConnection = (toBlockId) => {
+    if (!isConnecting) return;
+    
+    // Запрещаем соединения к стартовому блоку
+    if (toBlockId === 'start') {
+      setConnectingFrom(null);
+      setIsConnecting(false);
+      return;
+    }
+
+    if (connectingFrom && connectingFrom.blockId !== toBlockId) {
+      // Удаляем старое соединение для этой кнопки, если оно существует
+      const filteredConnections = connections.filter(
+        conn => !(conn.from.blockId === connectingFrom.blockId && 
+                 conn.from.buttonId === connectingFrom.buttonId)
+      );
+      
+      const newConnection = {
+        id: Date.now(),
+        from: connectingFrom,
+        to: toBlockId
+      };
+      setConnections([...filteredConnections, newConnection]);
+    }
+    setConnectingFrom(null);
+    setIsConnecting(false);
+  };
+
+  // Отмена создания соединения
+  const cancelConnection = () => {
+    setConnectingFrom(null);
+    setIsConnecting(false);
+  };
+
+  // Удаление блока и всех его связей
+  const removeBlock = (blockId) => {
+    if (blockId === 'start') return;
+    setBlocks(blocks.filter(block => block.id !== blockId));
+    setConnections(connections.filter(conn => 
+      conn.from.blockId !== blockId && conn.to !== blockId
+    ));
+  };
+
+  // Удаление кнопки и её связей
+  const removeButton = (blockId, buttonId) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        if (block.type === 'quiz') {
+          const updatedQuestions = [...block.questions];
+          const currentQuestion = updatedQuestions[block.currentQuestionIndex];
+          const updatedButtons = currentQuestion.buttons.filter(btn => btn.id !== buttonId);
+          
+          // Если удалили правильный ответ, делаем первый оставшийся вариант правильным
+          if (updatedButtons.length > 0 && !updatedButtons.some(btn => btn.isCorrect)) {
+            updatedButtons[0].isCorrect = true;
+          }
+          
+          currentQuestion.buttons = updatedButtons;
+          return { 
+            ...block, 
+            questions: updatedQuestions,
+            buttons: updatedButtons // Синхронизируем с основным блоком
+          };
+        } else {
+          const updatedButtons = block.buttons.filter(btn => btn.id !== buttonId);
+          return {
+            ...block,
+            buttons: updatedButtons
+          };
+        }
+      }
+      return block;
+    }));
+    setConnections(connections.filter(conn => 
+      !(conn.from.blockId === blockId && conn.from.buttonId === buttonId)
+    ));
+  };
+
+  // Загрузка медиафайла
+  const handleMediaUpload = async (blockId, event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('media', file);
+
+      const response = await fetch('http://localhost:3001/api/upload-media', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Ошибка загрузки файла');
+      }
+
+      const result = await response.json();
+      
+      setBlocks(blocks.map(block => {
+        if (block.id === blockId) {
+          if (block.type === 'quiz') {
+            // Для квизов добавляем медиафайл к текущему вопросу
+            const updatedQuestions = [...block.questions];
+            const currentQuestion = updatedQuestions[block.currentQuestionIndex];
+            const currentMediaFiles = currentQuestion.mediaFiles || [];
+            currentQuestion.mediaFiles = [...currentMediaFiles, result.file];
+            
+            console.log('Adding media to quiz question:', {
+              questionIndex: block.currentQuestionIndex,
+              mediaFiles: currentQuestion.mediaFiles
+            });
+            
+            return {
+              ...block,
+              questions: updatedQuestions,
+              mediaFiles: currentQuestion.mediaFiles // Синхронизируем с основным блоком
+            };
+          } else {
+            // Для обычных блоков добавляем к основному блоку
+            const currentMediaFiles = block.mediaFiles || [];
+            return {
+              ...block,
+              mediaFiles: [...currentMediaFiles, result.file]
+            };
+          }
+        }
+        return block;
+      }));
+
+      // Очищаем input
+      event.target.value = '';
+    } catch (error) {
+      console.error('Error uploading media:', error);
+      alert('Ошибка загрузки файла: ' + error.message);
+    }
+  };
+
+  // Удаление медиафайла
+  const removeMediaFile = (blockId, index) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        if (block.type === 'quiz') {
+          // Для квизов удаляем медиафайл из текущего вопроса
+          const updatedQuestions = [...block.questions];
+          const currentQuestion = updatedQuestions[block.currentQuestionIndex];
+          const updatedMediaFiles = [...(currentQuestion.mediaFiles || [])];
+          updatedMediaFiles.splice(index, 1);
+          currentQuestion.mediaFiles = updatedMediaFiles.length > 0 ? updatedMediaFiles : [];
+          
+          return {
+            ...block,
+            questions: updatedQuestions,
+            mediaFiles: currentQuestion.mediaFiles // Синхронизируем с основным блоком
+          };
+        } else {
+          // Для обычных блоков удаляем из основного блока
+          const updatedMediaFiles = [...(block.mediaFiles || [])];
+          updatedMediaFiles.splice(index, 1);
+          return {
+            ...block,
+            mediaFiles: updatedMediaFiles.length > 0 ? updatedMediaFiles : null
+          };
+        }
+      }
+      return block;
+    }));
+  };
+
+  // Перемещение медиафайла
+  const moveMediaFile = (blockId, index, direction) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        if (block.type === 'quiz') {
+          // Для квизов перемещаем медиафайл в текущем вопросе
+          const updatedQuestions = [...block.questions];
+          const currentQuestion = updatedQuestions[block.currentQuestionIndex];
+          const updatedMediaFiles = [...(currentQuestion.mediaFiles || [])];
+          const newIndex = direction === 'up' ? index - 1 : index + 1;
+          
+          // Меняем местами элементы
+          [updatedMediaFiles[index], updatedMediaFiles[newIndex]] = 
+          [updatedMediaFiles[newIndex], updatedMediaFiles[index]];
+          
+          currentQuestion.mediaFiles = updatedMediaFiles;
+          
+          return {
+            ...block,
+            questions: updatedQuestions,
+            mediaFiles: currentQuestion.mediaFiles // Синхронизируем с основным блоком
+          };
+        } else {
+          // Для обычных блоков перемещаем в основном блоке
+          const updatedMediaFiles = [...(block.mediaFiles || [])];
+          const newIndex = direction === 'up' ? index - 1 : index + 1;
+          
+          // Меняем местами элементы
+          [updatedMediaFiles[index], updatedMediaFiles[newIndex]] = 
+          [updatedMediaFiles[newIndex], updatedMediaFiles[index]];
+          
+          return {
+            ...block,
+            mediaFiles: updatedMediaFiles
+          };
+        }
+      }
+      return block;
+    }));
+  };
+
+  // Обработка перетаскивания
+  const handleDragStart = (e, blockId) => {
+    setDraggedBlock(blockId);
+    const block = blocks.find(b => b.id === blockId);
+    const rect = e.target.getBoundingClientRect();
+    const offsetX = (e.clientX - rect.left) / scale;
+    const offsetY = (e.clientY - rect.top) / scale;
+    e.dataTransfer.setData('text/plain', JSON.stringify({ offsetX, offsetY }));
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    if (draggedBlock) {
+      const { offsetX, offsetY } = JSON.parse(e.dataTransfer.getData('text/plain'));
+      const editorRect = editorRef.current.getBoundingClientRect();
+      const x = (e.clientX - editorRect.left - pan.x) / scale - offsetX;
+      const y = (e.clientY - editorRect.top - pan.y) / scale - offsetY;
+
+      setBlocks(blocks.map(block => {
+        if (block.id === draggedBlock) {
+          return { ...block, position: { x, y } };
+        }
+        return block;
+      }));
+      setDraggedBlock(null);
+    }
+  };
+
+  // Добавляем функцию для обновления правильности ответа
+  const updateButtonCorrect = (blockId, buttonId) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        const updatedQuestions = [...block.questions];
+        const currentQuestion = updatedQuestions[block.currentQuestionIndex];
+        const updatedButtons = currentQuestion.buttons.map(btn => ({
+          ...btn,
+          isCorrect: btn.id === buttonId
+        }));
+        currentQuestion.buttons = updatedButtons;
+        return { 
+          ...block, 
+          questions: updatedQuestions,
+          buttons: updatedButtons // Синхронизируем с основным блоком
+        };
+      }
+      return block;
+    }));
+  };
+
+  // Добавляем функции для обновления сообщений квиза
+  const updateQuizSuccessMessage = (blockId, message) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        const updatedQuestions = [...block.questions];
+        const currentQuestion = updatedQuestions[block.currentQuestionIndex];
+        currentQuestion.successMessage = message;
+        return { ...block, questions: updatedQuestions };
+      }
+      return block;
+    }));
+  };
+
+  const updateQuizFailureMessage = (blockId, message) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        const updatedQuestions = [...block.questions];
+        const currentQuestion = updatedQuestions[block.currentQuestionIndex];
+        currentQuestion.failureMessage = message;
+        return { ...block, questions: updatedQuestions };
+      }
+      return block;
+    }));
+  };
+
+  const addQuestion = (blockId) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        const newQuestion = {
+          id: Date.now(),
+          message: 'Новый вопрос',
+          buttons: [
+            { id: Date.now(), text: 'Вариант 1', isCorrect: true },
+            { id: Date.now() + 1, text: 'Вариант 2', isCorrect: false }
+          ],
+          successMessage: 'Правильно!',
+          failureMessage: 'Неправильно. Попробуйте еще раз.',
+          mediaFiles: []
+        };
+        const newIndex = block.questions.length;
+        return {
+          ...block,
+          questions: [...block.questions, newQuestion],
+          currentQuestionIndex: newIndex,
+          message: newQuestion.message, // Синхронизируем основное сообщение
+          buttons: newQuestion.buttons, // Синхронизируем кнопки
+          mediaFiles: newQuestion.mediaFiles // Синхронизируем медиафайлы
+        };
+      }
+      return block;
+    }));
+  };
+
+  const removeQuestion = (blockId, questionIndex) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId && block.questions.length > 1) {
+        const updatedQuestions = block.questions.filter((_, index) => index !== questionIndex);
+        const newIndex = questionIndex >= updatedQuestions.length ? updatedQuestions.length - 1 : questionIndex;
+        const currentQuestion = updatedQuestions[newIndex];
+        return {
+          ...block,
+          questions: updatedQuestions,
+          currentQuestionIndex: newIndex,
+          message: currentQuestion.message, // Синхронизируем основное сообщение
+          buttons: currentQuestion.buttons, // Синхронизируем кнопки
+          mediaFiles: currentQuestion.mediaFiles // Синхронизируем медиафайлы
+        };
+      }
+      return block;
+    }));
+  };
+
+  const updateCurrentQuestionIndex = (blockId, newIndex) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        const currentQuestion = block.questions[newIndex];
+        // Обновляем индекс и синхронизируем основное сообщение, кнопки и медиафайлы
+        return { 
+          ...block, 
+          currentQuestionIndex: newIndex,
+          message: currentQuestion.message, // Синхронизируем сообщение с новым вопросом
+          buttons: currentQuestion.buttons, // Синхронизируем кнопки с новым вопросом
+          mediaFiles: currentQuestion.mediaFiles // Синхронизируем медиафайлы с новым вопросом
+        };
+      }
+      return block;
+    }));
+  };
+
+  const updateFinalMessage = (blockId, message) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        return { ...block, finalSuccessMessage: message };
+      }
+      return block;
+    }));
+  };
+
+  return (
+    <div className="flow-editor">
+      <div className="editor-controls">
+        <button 
+          className="editor-button"
+          onClick={() => createBlock('message')}
+        >
+          💬 Создать сообщение
+        </button>
+        <button 
+          className="editor-button"
+          onClick={() => createBlock('quiz')}
+        >
+          🎯 Создать квиз
+        </button>
+      </div>
+
+      <div 
+        className="editor-canvas"
+        ref={editorRef}
+        onDrop={handleDrop}
+        onDragOver={(e) => e.preventDefault()}
+        onMouseDown={handleCanvasMouseDown}
+        onMouseMove={(e) => {
+          handleCanvasMouseMove(e);
+          handleMouseMove(e);
+        }}
+        onMouseUp={handleCanvasMouseUp}
+        onMouseLeave={() => {
+          handleCanvasMouseUp();
+          cancelConnection();
+        }}
+        onClick={cancelConnection}
+      >
+        <div 
+          className="editor-content"
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+            transformOrigin: '0 0'
+          }}
+        >
+          {/* Отрисовка соединений */}
+          <svg className="connections-layer" style={{ transform: `scale(${1/scale})`, transformOrigin: '0 0' }}>
+            {connections.map(connection => {
+              const fromBlock = blocks.find(b => b.id === connection.from.blockId);
+              const toBlock = blocks.find(b => b.id === connection.to);
+              if (!fromBlock || !toBlock) return null;
+
+              // Находим кнопку, от которой идет соединение
+              const button = fromBlock.buttons.find(b => b.id === connection.from.buttonId);
+              if (!button) return null;
+
+              // Вычисляем позицию начала линии (от кнопки)
+              const buttonIndex = fromBlock.buttons.findIndex(b => b.id === button.id);
+              const buttonY = fromBlock.position.y + 180 + buttonIndex * 40;
+
+              const fromX = (fromBlock.position.x + 320) * scale;
+              const fromY = buttonY * scale;
+              const toX = toBlock.position.x * scale;
+              const toY = (toBlock.position.y + 50) * scale;
+
+              return (
+                <g key={connection.id}>
+                  <path
+                    d={`M ${fromX} ${fromY} C ${fromX + 100} ${fromY}, ${toX - 100} ${toY}, ${toX} ${toY}`}
+                    className="connection-path"
+                  />
+                  <circle cx={toX} cy={toY} r="4" className="connection-end" />
+                </g>
+              );
+            })}
+            {connectingFrom && (
+              <path
+                d={`M ${(blocks.find(b => b.id === connectingFrom.blockId).position.x + 320) * scale} 
+                   ${(blocks.find(b => b.id === connectingFrom.blockId).position.y + 50) * scale} 
+                   C ${(blocks.find(b => b.id === connectingFrom.blockId).position.x + 420) * scale} 
+                   ${(blocks.find(b => b.id === connectingFrom.blockId).position.y + 50) * scale},
+                   ${mousePosition.x * scale - 100} ${mousePosition.y * scale},
+                   ${mousePosition.x * scale} ${mousePosition.y * scale}`}
+                className="connection-path connection-preview"
+                style={{ opacity: 0.5 }}
+              />
+            )}
+          </svg>
+
+          {/* Отрисовка блоков */}
+          {blocks.map(block => {
+            if (block.type === 'quiz') {
+              return (
+                <div
+                  key={block.id}
+                  className={`dialog-block quiz ${isConnecting ? 'connecting' : ''}`}
+                  style={{
+                    left: block.position.x,
+                    top: block.position.y,
+                    transform: `scale(${1})`
+                  }}
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, block.id)}
+                  onClick={() => isConnecting && finishConnection(block.id)}
+                >
+                  <QuizBlock
+                    block={block}
+                    onMessageChange={(message) => updateMessage(block.id, message)}
+                    onButtonAdd={() => addButton(block.id)}
+                    onButtonRemove={(buttonId) => removeButton(block.id, buttonId)}
+                    onButtonUpdate={(buttonId, text) => updateButton(block.id, buttonId, text)}
+                    onButtonCorrectToggle={(buttonId) => updateButtonCorrect(block.id, buttonId)}
+                    onSuccessMessageChange={(message) => updateQuizSuccessMessage(block.id, message)}
+                    onFailureMessageChange={(message) => updateQuizFailureMessage(block.id, message)}
+                    onMediaUpload={(e) => handleMediaUpload(block.id, e)}
+                    onMediaRemove={(index) => removeMediaFile(block.id, index)}
+                    onMediaMove={(index, direction) => moveMediaFile(block.id, index, direction)}
+                    onStartConnection={(buttonId, e) => startConnection(block.id, buttonId, e)}
+                    onRemoveBlock={() => removeBlock(block.id)}
+                    onAddQuestion={() => addQuestion(block.id)}
+                    onRemoveQuestion={(questionIndex) => removeQuestion(block.id, questionIndex)}
+                    onUpdateCurrentQuestion={(newIndex) => updateCurrentQuestionIndex(block.id, newIndex)}
+                    onUpdateFinalMessage={(message) => updateFinalMessage(block.id, message)}
+                    isConnecting={isConnecting}
+                  />
+                </div>
+              );
+            }
+
+            // Отрисовка обычных блоков остается без изменений
+            return (
+              <div
+                key={block.id}
+                className={`dialog-block ${block.id === 'start' ? 'start' : ''} ${isConnecting ? 'connecting' : ''}`}
+                style={{
+                  left: block.position.x,
+                  top: block.position.y,
+                  transform: `scale(${1})`
+                }}
+                draggable={true}
+                onDragStart={(e) => handleDragStart(e, block.id)}
+                onClick={() => isConnecting && finishConnection(block.id)}
+              >
+                <div className="block-header">
+                  <span className="block-title">
+                    {block.id === 'start' ? '🚀 Начало' : '💬 Сообщение'}
+                  </span>
+                  <div className="block-controls">
+                    <button
+                      className="block-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addButton(block.id);
+                      }}
+                    >
+                      ➕
+                    </button>
+                    {block.id !== 'start' && (
+                      <button
+                        className="block-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeBlock(block.id);
+                        }}
+                      >
+                        🗑️
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <textarea
+                  value={block.message}
+                  onChange={(e) => updateMessage(block.id, e.target.value)}
+                  placeholder="Введите сообщение..."
+                  style={{ width: '100%', minHeight: '80px', marginBottom: '1rem' }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+
+                {/* Секция медиафайлов */}
+                <div className="media-section" style={{ marginBottom: '1rem' }}>
+                  <div className="media-header">
+                    <span>📎 Медиафайлы ({block.mediaFiles ? block.mediaFiles.length : 0}):</span>
+                    <input
+                      type="file"
+                      id={`media-${block.id}`}
+                      accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
+                      onChange={(e) => handleMediaUpload(block.id, e)}
+                      style={{ display: 'none' }}
+                    />
+                    <button
+                      className="block-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        document.getElementById(`media-${block.id}`).click();
+                      }}
+                      title="Добавить медиафайл"
+                    >
+                      📎
+                    </button>
+                  </div>
+                  {block.mediaFiles && block.mediaFiles.length > 0 && (
+                    <div className="media-files-list">
+                      {block.mediaFiles.map((media, index) => (
+                        <div key={media.filename} className="media-item">
+                          <div className="media-preview">
+                            {media.mimetype.startsWith('image/') ? (
+                              <img 
+                                src={`http://localhost:3001${media.path}`} 
+                                alt="Preview" 
+                                style={{ maxWidth: '100%', maxHeight: '80px', objectFit: 'contain' }}
+                              />
+                            ) : (
+                              <div className="file-info">
+                                <span>📄 {media.originalname}</span>
+                                <span style={{ fontSize: '0.8em', color: '#666' }}>
+                                  ({(media.size / 1024).toFixed(1)} KB)
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="media-controls">
+                            <button
+                              className="block-button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeMediaFile(block.id, index);
+                              }}
+                              title="Удалить медиафайл"
+                            >
+                              ❌
+                            </button>
+                            {index > 0 && (
+                              <button
+                                className="block-button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  moveMediaFile(block.id, index, 'up');
+                                }}
+                                title="Переместить вверх"
+                              >
+                                ⬆️
+                              </button>
+                            )}
+                            {index < block.mediaFiles.length - 1 && (
+                              <button
+                                className="block-button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  moveMediaFile(block.id, index, 'down');
+                                }}
+                                title="Переместить вниз"
+                              >
+                                ⬇️
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="block-buttons">
+                  {block.buttons.map(button => (
+                    <div key={button.id} className="button-item">
+                      <input
+                        type="text"
+                        value={button.text}
+                        onChange={(e) => updateButton(block.id, button.id, e.target.value)}
+                        placeholder="Текст кнопки"
+                        title={button.text}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <input
+                        type="url"
+                        value={button.url || ''}
+                        onChange={(e) => updateButtonUrl(block.id, button.id, e.target.value)}
+                        placeholder="Ссылка (необязательно)"
+                        title={button.url || 'Добавить ссылку'}
+                        onClick={(e) => e.stopPropagation()}
+                        className={button.url ? 'has-url' : ''}
+                      />
+                      <button
+                        className={`block-button ${connectingFrom?.buttonId === button.id ? 'connecting' : ''}`}
+                        onClick={(e) => startConnection(block.id, button.id, e)}
+                        title="Создать связь"
+                      >
+                        🔗
+                      </button>
+                      <button
+                        className="block-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeButton(block.id, button.id);
+                        }}
+                        title="Удалить кнопку"
+                      >
+                        ❌
+                      </button>
+                    </div>
+                  ))}
+                  
+                  {/* Информация о кнопке "Назад" */}
+                  {block.id !== 'start' && (
+                    <div className="back-button-info">
+                      <span className="info-text">
+                        ⬅️ Кнопка "Назад" будет автоматически добавлена в Telegram
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+export default FlowEditor; 
