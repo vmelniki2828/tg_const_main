@@ -329,7 +329,8 @@ body {
 
 .button-item {
   display: flex;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.5rem;
   background: white;
   padding: 0.75rem;
   border-radius: 8px;
@@ -338,16 +339,20 @@ body {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   width: 100%;
   box-sizing: border-box;
-  align-items: flex-start;
+}
+
+.button-item-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
 }
 
 .button-item-inputs {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  flex: 1;
-  min-width: 0;
-  margin-right: 0.5rem;
+  width: 100%;
 }
 
 .button-item:hover {
@@ -356,7 +361,7 @@ body {
 }
 
 .button-item input {
-  width: 100%;
+  flex: 1;
   padding: 0.625rem;
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -367,10 +372,6 @@ body {
   min-width: 0;
   color: var(--text-color);
   margin: 0;
-}
-
-.button-item input:first-child {
-  margin-bottom: 0.5rem;
 }
 
 .button-item input::placeholder {
@@ -401,12 +402,8 @@ body {
 
 .button-controls {
   display: flex;
-  flex-direction: column;
   gap: 0.5rem;
-  padding-left: 0.75rem;
-  border-left: 1px solid var(--border-color);
-  justify-content: center;
-  margin-top: 0.25rem;
+  align-items: center;
 }
 
 .button-item .block-button {
@@ -417,8 +414,8 @@ body {
   background: var(--background-color);
   cursor: pointer;
   transition: all 0.2s ease;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
