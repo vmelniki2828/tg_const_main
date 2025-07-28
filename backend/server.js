@@ -201,10 +201,12 @@ app.post('/api/cleanup-unused-media', async (req, res) => {
 // Эндпоинт для получения статистики квизов
 app.get('/api/quiz-stats', async (req, res) => {
   try {
+    console.log('📊 Запрос статистики квизов...');
     const stats = await readQuizStats();
+    console.log('📊 Статистика загружена:', Object.keys(stats).length, 'квизов');
     res.json(stats);
   } catch (error) {
-    console.error('Error getting quiz stats:', error);
+    console.error('❌ Error getting quiz stats:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -330,10 +332,14 @@ async function readState() {
 // Функции для работы со статистикой квизов
 async function readQuizStats() {
   try {
+    console.log('📊 Читаем файл статистики:', QUIZ_STATS_FILE);
     const data = await fsPromises.readFile(QUIZ_STATS_FILE, 'utf8');
-    return JSON.parse(data);
+    const stats = JSON.parse(data);
+    console.log('📊 Статистика прочитана успешно, квизов:', Object.keys(stats).length);
+    return stats;
   } catch (error) {
-    console.error('Error reading quiz stats:', error);
+    console.error('❌ Error reading quiz stats:', error);
+    console.log('📊 Возвращаем пустую статистику');
     return {};
   }
 }
