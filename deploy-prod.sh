@@ -52,6 +52,13 @@ EOF
     echo "✅ .env файл для фронтенда создан!"
 fi
 
+# Копируем nginx.conf в frontend если его там нет
+if [ ! -f frontend/nginx.conf ]; then
+    echo "📝 Копируем nginx.conf в frontend..."
+    cp nginx.conf frontend/
+    echo "✅ nginx.conf скопирован в frontend!"
+fi
+
 # Останавливаем существующие контейнеры
 echo "🛑 Останавливаем существующие контейнеры..."
 docker-compose -f docker-compose.prod.yml down || true
