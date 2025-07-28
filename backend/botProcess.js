@@ -383,6 +383,10 @@ function setupBotHandlers(bot, blocks, connections) {
               console.log(`📋 Всего вопросов: ${currentBlock.questions.length}`);
               console.log(`📋 Текущий индекс вопроса: ${userQuizState.currentQuestionIndex}`);
               console.log(`📋 Ответы пользователя:`, userQuizState.answers);
+              console.log(`🏁 Проверяем завершение квиза:`);
+              console.log(`   - Всего вопросов: ${currentBlock.questions.length}`);
+              console.log(`   - Текущий индекс: ${userQuizState.currentQuestionIndex}`);
+              console.log(`   - Условие завершения: ${userQuizState.currentQuestionIndex >= currentBlock.questions.length}`);
               
               const correctAnswers = userQuizState.answers.filter(answer => answer.isCorrect).length;
               const totalQuestions = currentBlock.questions.length;
@@ -411,6 +415,10 @@ function setupBotHandlers(bot, blocks, connections) {
               // Проверяем успешность (100% для прохождения)
               const isSuccessful = successRate === 100;
               console.log(`🎯 Определение успешности: ${successRate}% === 100% = ${isSuccessful}`);
+              console.log(`🎯 Детали успешности:`);
+              console.log(`   - Процент успешности: ${successRate}%`);
+              console.log(`   - Требуется для успеха: 100%`);
+              console.log(`   - Результат: ${isSuccessful ? 'УСПЕХ' : 'НЕУДАЧА'}`);
               
               if (isSuccessful) {
                 resultMessage += `🎉 ${currentBlock.finalSuccessMessage || 'Поздравляем! Вы успешно прошли квиз!'}\n`;
@@ -432,14 +440,18 @@ function setupBotHandlers(bot, blocks, connections) {
                 resultMessage += `❌ ${currentBlock.finalFailureMessage || 'К сожалению, вы не прошли квиз. Нужно ответить правильно на все вопросы.'}\n`;
               }
               
-              // Записываем статистику
-              console.log(`🎯 Начинаем сохранение статистики для квиза ${currentBlock.id}`);
-              console.log(`📊 Данные для сохранения: userId=${userId}, success=${isSuccessful}, score=${correctAnswers}`);
-              
-              try {
-                const fs = require('fs');
-                const path = require('path');
-                const statsPath = path.join(__dirname, 'quizStats.json');
+                              // Записываем статистику
+                console.log(`🎯 Начинаем сохранение статистики для квиза ${currentBlock.id}`);
+                console.log(`📊 Данные для сохранения: userId=${userId}, success=${isSuccessful}, score=${correctAnswers}`);
+                
+                try {
+                  const fs = require('fs');
+                  const path = require('path');
+                  const statsPath = path.join(__dirname, 'quizStats.json');
+                  
+                  console.log(`📁 Путь к файлу статистики: ${statsPath}`);
+                  console.log(`📁 Текущая директория: ${__dirname}`);
+                  console.log(`📁 Существует ли файл: ${fs.existsSync(statsPath)}`);
                 
                 // Проверяем права доступа к директории
                 const dirPath = path.dirname(statsPath);
@@ -505,11 +517,23 @@ function setupBotHandlers(bot, blocks, connections) {
                 console.log(`   - Новый размер массива: ${quizStats.userAttempts.length}`);
                 console.log(`👤 Добавлена попытка пользователя:`, userAttempt);
                 
-                const statsJson = JSON.stringify(stats, null, 2);
-                console.log(`💾 Записываем статистику: ${statsJson}`);
-                
-                fs.writeFileSync(statsPath, statsJson);
-                console.log(`✅ Статистика успешно сохранена для блока ${currentBlock.id}`);
+                                  const statsJson = JSON.stringify(stats, null, 2);
+                  console.log(`💾 Записываем статистику: ${statsJson}`);
+                  
+                  console.log(`📝 Пытаемся записать файл...`);
+                  fs.writeFileSync(statsPath, statsJson);
+                  console.log(`✅ Файл записан успешно`);
+                  
+                  // Проверяем, что файл действительно записался
+                  if (fs.existsSync(statsPath)) {
+                    const savedContent = fs.readFileSync(statsPath, 'utf8');
+                    console.log(`✅ Файл сохранен, размер: ${savedContent.length} символов`);
+                    console.log(`✅ Содержимое файла после записи: ${savedContent}`);
+                  } else {
+                    console.log(`❌ Файл не был создан!`);
+                  }
+                  
+                  console.log(`✅ Статистика успешно сохранена для блока ${currentBlock.id}`);
                 
                 // Проверяем, что файл действительно записался
                 if (fs.existsSync(statsPath)) {
@@ -551,6 +575,15 @@ function setupBotHandlers(bot, blocks, connections) {
                   
                   const req = http.request(options, (res) => {
                     console.log(`📊 Статистика отправлена через HTTP, статус: ${res.statusCode}`);
+                    
+                    let responseData = '';
+                    res.on('data', (chunk) => {
+                      responseData += chunk;
+                    });
+                    
+                    res.on('end', () => {
+                      console.log(`📊 Ответ сервера: ${responseData}`);
+                    });
                   });
                   
                   req.on('error', (e) => {
