@@ -86,6 +86,32 @@ const upload = multer({
 // Статические файлы для загрузок
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// CORS настройки для фронтенда
+app.use((req, res, next) => {
+  // Разрешаем запросы с любого origin в production
+  const allowedOrigins = [
+    'http://localhost:3000', 
+    'http://127.0.0.1:3000',
+    'http://95.164.119.96:3000',
+    'http://95.164.119.96'
+  ];
+  const origin = req.headers.origin;
+  
+  if (allowedOrigins.includes(origin) || process.env.NODE_ENV === 'production') {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+  }
+  
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
+
 // Эндпоинт для загрузки медиафайлов
 app.post('/api/upload-media', upload.single('media'), async (req, res) => {
   try {
@@ -820,6 +846,6 @@ process.on('SIGINT', () => shutdownServer('SIGINT'));
 process.on('SIGTERM', () => shutdownServer('SIGTERM'));
 
 // Запуск сервера
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
 }); 
