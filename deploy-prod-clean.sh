@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Скрипт для развертывания Telegram Quiz Bot на продакшен сервере
-# Использование: ./deploy-prod.sh
+# Использование: ./deploy-prod-clean.sh
 
 set -e
 
@@ -59,29 +59,24 @@ if [ ! -f frontend/nginx.conf ]; then
     echo "✅ nginx.conf скопирован в frontend!"
 fi
 
-# Останавливаем существующие контейнеры
-echo "🛑 Останавливаем существующие контейнеры..."
-docker-compose -f docker-compose.prod.yml down || true
-
-# Удаляем существующие контейнеры с конфликтующими именами
-echo "🗑️ Удаляем существующие контейнеры..."
-docker rm -f telegram-quiz-bot-backend telegram-quiz-bot-frontend telegram-quiz-bot-nginx 2>/dev/null || true
-
-# Удаляем старые образы
-echo "🧹 Удаляем старые образы..."
+# Полная очистка всех контейнеров и образов
+echo "🧹 Полная очистка Docker..."
+docker-compose -f docker-compose.prod-clean.yml down --remove-orphans 2>/dev/null || true
+docker rm -f $(docker ps -aq --filter "name=telegram-quiz-bot") 2>/dev/null || true
+docker rmi -f $(docker images -q --filter "reference=tg_const_main*") 2>/dev/null || true
 docker system prune -f
 
 # Собираем и запускаем контейнеры
 echo "🔨 Собираем и запускаем контейнеры..."
-docker-compose -f docker-compose.prod.yml up --build -d
+docker-compose -f docker-compose.prod-clean.yml up --build -d
 
 # Ждем немного для запуска сервисов
 echo "⏳ Ждем запуска сервисов..."
-sleep 10
+sleep 15
 
 # Проверяем статус контейнеров
 echo "📊 Проверяем статус контейнеров..."
-docker-compose -f docker-compose.prod.yml ps
+docker-compose -f docker-compose.prod-clean.yml ps
 
 # Проверяем доступность API
 echo "🔍 Проверяем доступность API..."
@@ -105,8 +100,8 @@ echo ""
 echo "📋 Информация о развертывании:"
 echo "   🌐 Фронтенд: http://95.164.119.96:3000"
 echo "   🔧 API: http://95.164.119.96:3001"
-echo "   📊 Статус контейнеров: docker-compose -f docker-compose.prod.yml ps"
-echo "   📝 Логи: docker-compose -f docker-compose.prod.yml logs -f"
+echo "   📊 Статус контейнеров: docker-compose -f docker-compose.prod-clean.yml ps"
+echo "   📝 Логи: docker-compose -f docker-compose.prod-clean.yml logs -f"
 echo ""
 echo "⚠️  Не забудьте:"
 echo "   1. Добавить ваш Telegram Bot токен в .env файл"
@@ -114,6 +109,6 @@ echo "   2. Настроить файрвол для портов 80, 3000, 3001
 echo "   3. Настроить SSL сертификат для HTTPS"
 echo ""
 echo "🔧 Полезные команды:"
-echo "   Остановить: docker-compose -f docker-compose.prod.yml down"
-echo "   Перезапустить: docker-compose -f docker-compose.prod.yml restart"
-echo "   Обновить: ./deploy-prod.sh" 
+echo "   Остановить: docker-compose -f docker-compose.prod-clean.yml down"
+echo "   Перезапустить: docker-compose -f docker-compose.prod-clean.yml restart"
+echo "   Обновить: ./deploy-prod-clean.sh" 
