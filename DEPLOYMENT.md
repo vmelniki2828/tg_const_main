@@ -48,6 +48,11 @@ chmod +x deploy.sh
 ```bash
 # Запуск развертывания
 ./deploy.sh
+
+# Если фронтенд все еще использует localhost, пересоберите его:
+docker-compose -f docker-compose.yml down
+docker rmi tg_const_main-frontend
+docker-compose -f docker-compose.yml up --build -d
 ```
 
 ## ✅ Проверка

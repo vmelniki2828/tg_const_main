@@ -16,11 +16,14 @@ function BotsList({ onSelectBot }) {
   const loadBots = async () => {
     try {
       setIsLoading(true);
+      console.log('🔧 Загружаем ботов с URL:', `${config.API_BASE_URL}/api/bots`);
       const response = await fetch(`${config.API_BASE_URL}/api/bots`);
+      console.log('🔧 Ответ сервера:', response.status, response.statusText);
       if (!response.ok) {
         throw new Error('Не удалось загрузить список ботов');
       }
       const data = await response.json();
+      console.log('🔧 Полученные данные:', data);
       setBots(data.bots);
     } catch (err) {
       console.error('Error loading bots:', err);
