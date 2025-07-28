@@ -9,13 +9,18 @@ services:
       - "3001:3001"
     environment:
       - NODE_ENV=production
+      - PORT=3001
+      - HOST=0.0.0.0
     volumes:
       - ./backend/uploads:/app/backend/uploads
       - ./backend/promocodes:/app/backend/promocodes
       - ./backend/state.json:/app/backend/state.json
       - ./backend/quizStats.json:/app/backend/quizStats.json
+      - ./backend/editorState.json:/app/backend/editorState.json
     restart: unless-stopped
     container_name: telegram-quiz-bot-backend
+    networks:
+      - app-network
 
   frontend:
     build:
@@ -24,8 +29,14 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:3001
+      - REACT_APP_API_URL=http://95.164.119.96:3001
     depends_on:
       - backend
     restart: unless-stopped
-    container_name: telegram-quiz-bot-frontend 
+    container_name: telegram-quiz-bot-frontend
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge 
