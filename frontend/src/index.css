@@ -346,17 +346,20 @@ body {
   gap: 0.5rem;
   align-items: center;
   width: 100%;
+  justify-content: space-between;
 }
 
 .button-item-row input {
   flex: 1;
   min-width: 0;
+  margin-right: 0.5rem;
 }
 
 .button-item-row .block-button {
   flex-shrink: 0;
   width: 36px;
   height: 36px;
+  margin-left: 0.5rem;
 }
 
 .button-item:hover {
@@ -426,6 +429,7 @@ body {
   color: var(--text-color);
   flex-shrink: 0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin: 0;
 }
 
 .button-item .block-button:hover {
