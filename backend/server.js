@@ -211,6 +211,51 @@ app.get('/api/quiz-stats', async (req, res) => {
   }
 });
 
+// Эндпоинт для добавления статистики квиза (от ботов)
+app.post('/api/quiz-stats', async (req, res) => {
+  try {
+    console.log('📊 Получена статистика от бота:', req.body);
+    const { quizId, userId, userName, timestamp, success, score, duration } = req.body;
+    
+    const stats = await readQuizStats();
+    
+    if (!stats[quizId]) {
+      stats[quizId] = {
+        totalAttempts: 0,
+        successfulCompletions: 0,
+        failedAttempts: 0,
+        userAttempts: []
+      };
+    }
+    
+    const quizStats = stats[quizId];
+    quizStats.totalAttempts++;
+    
+    if (success) {
+      quizStats.successfulCompletions++;
+    } else {
+      quizStats.failedAttempts++;
+    }
+    
+    quizStats.userAttempts.push({
+      userId,
+      userName,
+      timestamp,
+      success,
+      score,
+      duration
+    });
+    
+    await writeQuizStats(stats);
+    console.log(`✅ Статистика для квиза ${quizId} обновлена через API`);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ Error adding quiz stats:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Эндпоинт для получения статистики промокодов конкретного квиза
 app.get('/api/quiz-promocodes/:quizId', async (req, res) => {
   try {

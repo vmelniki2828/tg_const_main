@@ -414,12 +414,36 @@ function setupBotHandlers(bot, blocks, connections) {
                 const path = require('path');
                 const statsPath = path.join(__dirname, 'quizStats.json');
                 
+                // Проверяем права доступа к директории
+                const dirPath = path.dirname(statsPath);
+                console.log(`📁 Директория: ${dirPath}`);
+                console.log(`🔐 Права на директорию: ${fs.statSync(dirPath).mode.toString(8)}`);
+                
+                // Проверяем, можем ли мы писать в директорию
+                try {
+                  const testFile = path.join(dirPath, 'test-write.tmp');
+                  fs.writeFileSync(testFile, 'test');
+                  fs.unlinkSync(testFile);
+                  console.log(`✅ Права на запись в директорию есть`);
+                } catch (writeError) {
+                  console.log(`❌ Нет прав на запись в директорию: ${writeError.message}`);
+                }
+                
+                console.log(`📊 Сохраняем статистику для квиза ${currentBlock.id}`);
+                console.log(`📁 Путь к файлу: ${statsPath}`);
+                
                 let stats = {};
                 if (fs.existsSync(statsPath)) {
-                  stats = JSON.parse(fs.readFileSync(statsPath, 'utf8'));
+                  console.log(`✅ Файл статистики существует`);
+                  const fileContent = fs.readFileSync(statsPath, 'utf8');
+                  console.log(`📄 Содержимое файла: ${fileContent}`);
+                  stats = JSON.parse(fileContent);
+                } else {
+                  console.log(`❌ Файл статистики не существует, создаем новый`);
                 }
                 
                 if (!stats[currentBlock.id]) {
+                  console.log(`📊 Создаем новую запись для квиза ${currentBlock.id}`);
                   stats[currentBlock.id] = {
                     totalAttempts: 0,
                     successfulCompletions: 0,
@@ -433,23 +457,79 @@ function setupBotHandlers(bot, blocks, connections) {
                 
                 if (isSuccessful) {
                   quizStats.successfulCompletions++;
+                  console.log(`✅ Успешное прохождение квиза`);
                 } else {
                   quizStats.failedAttempts++;
+                  console.log(`❌ Неудачное прохождение квиза`);
                 }
                 
-                quizStats.userAttempts.push({
+                const userAttempt = {
                   userId: userId,
                   userName: ctx.from.first_name || ctx.from.username || `User ${userId}`,
                   timestamp: Date.now(),
                   success: isSuccessful,
                   score: correctAnswers,
                   duration: Date.now() - userQuizState.startTime
-                });
+                };
                 
-                fs.writeFileSync(statsPath, JSON.stringify(stats, null, 2));
-                console.log(`Quiz stats updated for block ${currentBlock.id}`);
+                quizStats.userAttempts.push(userAttempt);
+                console.log(`👤 Добавлена попытка пользователя:`, userAttempt);
+                
+                const statsJson = JSON.stringify(stats, null, 2);
+                console.log(`💾 Записываем статистику: ${statsJson}`);
+                
+                fs.writeFileSync(statsPath, statsJson);
+                console.log(`✅ Статистика успешно сохранена для блока ${currentBlock.id}`);
+                
+                // Проверяем, что файл действительно записался
+                if (fs.existsSync(statsPath)) {
+                  const savedContent = fs.readFileSync(statsPath, 'utf8');
+                  console.log(`✅ Файл сохранен, размер: ${savedContent.length} символов`);
+                } else {
+                  console.log(`❌ Файл не был создан!`);
+                }
               } catch (error) {
-                console.error('Error saving quiz stats:', error);
+                console.error('❌ Error saving quiz stats:', error);
+                console.error('❌ Stack trace:', error.stack);
+                
+                // Попробуем альтернативный способ - отправить статистику через HTTP
+                console.log(`🔄 Пробуем альтернативный способ сохранения статистики...`);
+                try {
+                  const http = require('http');
+                  const postData = JSON.stringify({
+                    quizId: currentBlock.id,
+                    userId: userId,
+                    userName: ctx.from.first_name || ctx.from.username || `User ${userId}`,
+                    timestamp: Date.now(),
+                    success: isSuccessful,
+                    score: correctAnswers,
+                    duration: Date.now() - userQuizState.startTime
+                  });
+                  
+                  const options = {
+                    hostname: 'localhost',
+                    port: 3001,
+                    path: '/api/quiz-stats',
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Content-Length': Buffer.byteLength(postData)
+                    }
+                  };
+                  
+                  const req = http.request(options, (res) => {
+                    console.log(`📊 Статистика отправлена через HTTP, статус: ${res.statusCode}`);
+                  });
+                  
+                  req.on('error', (e) => {
+                    console.error(`❌ Ошибка HTTP запроса: ${e.message}`);
+                  });
+                  
+                  req.write(postData);
+                  req.end();
+                } catch (httpError) {
+                  console.error('❌ Ошибка при отправке статистики через HTTP:', httpError);
+                }
               }
               
               // Отмечаем квиз как завершенный для этого пользователя
