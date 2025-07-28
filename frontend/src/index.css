@@ -323,41 +323,57 @@ body {
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  background: var(--background-color);
-  padding: 0.5rem 0.75rem;
+  background: white;
+  padding: 0.75rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .button-item:hover {
-  /* Убран эффект наведения */
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 .button-item input {
   flex: 1;
-  padding: 0.5rem;
+  padding: 0.75rem;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   font-size: 0.875rem;
+  transition: all 0.2s ease;
+  background: white;
 }
 
 .button-item input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px var(--primary-light);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  background: white;
+}
+
+.button-item input.has-url {
+  border-color: var(--success-color);
+  background: #f0fff4;
 }
 
 .button-item .block-button {
-  padding: 0.25rem;
+  padding: 0.5rem;
   font-size: 1rem;
-  opacity: 0.7;
+  opacity: 0.8;
   border-radius: var(--radius-sm);
+  border: none;
+  background: var(--background-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .button-item .block-button:hover {
   opacity: 1;
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--primary-color);
+  color: white;
+  transform: scale(1.05);
 }
 
 .dialog-block.start .button-item {
