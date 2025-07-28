@@ -204,6 +204,17 @@ app.get('/api/quiz-stats', async (req, res) => {
     console.log('📊 Запрос статистики квизов...');
     const stats = await readQuizStats();
     console.log('📊 Статистика загружена:', Object.keys(stats).length, 'квизов');
+    
+    // Подробная информация о каждом квизе
+    Object.keys(stats).forEach(quizId => {
+      const quizStats = stats[quizId];
+      console.log(`📊 Квиз ${quizId}:`);
+      console.log(`   - Попыток: ${quizStats.totalAttempts}`);
+      console.log(`   - Успешных: ${quizStats.successfulCompletions}`);
+      console.log(`   - Неудачных: ${quizStats.failedAttempts}`);
+      console.log(`   - Попыток пользователей: ${quizStats.userAttempts.length}`);
+    });
+    
     res.json(stats);
   } catch (error) {
     console.error('❌ Error getting quiz stats:', error);

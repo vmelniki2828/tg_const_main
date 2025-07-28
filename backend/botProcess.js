@@ -380,10 +380,19 @@ function setupBotHandlers(bot, blocks, connections) {
             } else {
               // Квиз завершен, показываем результаты
               console.log(`🏁 Квиз завершен для пользователя ${userId}`);
+              console.log(`📋 Всего вопросов: ${currentBlock.questions.length}`);
+              console.log(`📋 Текущий индекс вопроса: ${userQuizState.currentQuestionIndex}`);
+              console.log(`📋 Ответы пользователя:`, userQuizState.answers);
               
               const correctAnswers = userQuizState.answers.filter(answer => answer.isCorrect).length;
               const totalQuestions = currentBlock.questions.length;
               const successRate = (correctAnswers / totalQuestions) * 100;
+              
+              console.log(`📊 Подсчет результатов:`);
+              console.log(`   - Всего вопросов: ${totalQuestions}`);
+              console.log(`   - Правильных ответов: ${correctAnswers}`);
+              console.log(`   - Процент успешности: ${successRate.toFixed(1)}%`);
+              console.log(`   - Детали ответов:`, userQuizState.answers.map(a => ({ answer: a.selectedAnswer, correct: a.isCorrect })));
               
               console.log(`📊 Результаты: ${correctAnswers}/${totalQuestions} правильных ответов (${successRate.toFixed(1)}%)`);
               
@@ -490,7 +499,10 @@ function setupBotHandlers(bot, blocks, connections) {
                   duration: Date.now() - userQuizState.startTime
                 };
                 
+                console.log(`👤 Добавляем попытку пользователя в массив...`);
+                console.log(`   - Текущий размер массива: ${quizStats.userAttempts.length}`);
                 quizStats.userAttempts.push(userAttempt);
+                console.log(`   - Новый размер массива: ${quizStats.userAttempts.length}`);
                 console.log(`👤 Добавлена попытка пользователя:`, userAttempt);
                 
                 const statsJson = JSON.stringify(stats, null, 2);
