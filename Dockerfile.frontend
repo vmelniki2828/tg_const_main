@@ -12,7 +12,8 @@ WORKDIR /app/frontend
 RUN npm install
 
 # Копируем код фронтенда
-COPY frontend ./frontend
+COPY frontend/src ./src
+COPY frontend/public ./public
 
 # Собираем приложение
 RUN npm run build
