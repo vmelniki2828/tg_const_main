@@ -321,14 +321,17 @@ body {
 
 .button-item {
   display: flex;
-  gap: 0.5rem;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.75rem;
   background: white;
-  padding: 0.75rem;
+  padding: 1rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 0.75rem;
+  min-width: 0;
+  width: 100%;
 }
 
 .button-item:hover {
@@ -337,13 +340,15 @@ body {
 }
 
 .button-item input {
-  flex: 1;
+  width: 100%;
   padding: 0.75rem;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   font-size: 0.875rem;
   transition: all 0.2s ease;
   background: white;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .button-item input:focus {
@@ -358,6 +363,13 @@ body {
   background: #f0fff4;
 }
 
+.button-controls {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .button-item .block-button {
   padding: 0.5rem;
   font-size: 1rem;
@@ -367,6 +379,10 @@ body {
   background: var(--background-color);
   cursor: pointer;
   transition: all 0.2s ease;
+  min-width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .button-item .block-button:hover {
@@ -379,6 +395,22 @@ body {
 .dialog-block.start .button-item {
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(255, 255, 255, 0.2);
+}
+
+.back-button-info {
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border-radius: var(--radius-sm);
+  margin-top: 0.5rem;
+  border: 1px solid var(--border-color);
+}
+
+.info-text {
+  font-size: 0.85rem;
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .dialog-block.start .button-item:hover {
