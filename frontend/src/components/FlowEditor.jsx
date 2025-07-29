@@ -392,8 +392,27 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
   };
 
   // Удаление блока и всех его связей
-  const removeBlock = (blockId) => {
+  const removeBlock = async (blockId) => {
     if (blockId === 'start') return;
+    
+    // Если удаляем квиз, удаляем его промокоды
+    const blockToRemove = blocks.find(block => block.id === blockId);
+    if (blockToRemove && blockToRemove.type === 'quiz') {
+      try {
+        const response = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${blockId}`, {
+          method: 'DELETE'
+        });
+        
+        if (response.ok) {
+          console.log(`🗑️ Промокоды для квиза ${blockId} удалены`);
+        } else {
+          console.warn(`⚠️ Не удалось удалить промокоды для квиза ${blockId}`);
+        }
+      } catch (error) {
+        console.error('Ошибка при удалении промокодов:', error);
+      }
+    }
+    
     setBlocks(blocks.filter(block => block.id !== blockId));
     setConnections(connections.filter(conn => 
       conn.from.blockId !== blockId && conn.to !== blockId

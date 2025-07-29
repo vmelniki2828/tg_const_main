@@ -9,6 +9,24 @@ function getQuizPromoCodesPath(quizId) {
   return path.join(PROMOCODES_DIR, `quiz_${quizId}.csv`);
 }
 
+// Функция для удаления файла промокодов квиза
+function deleteQuizPromoCodes(quizId) {
+  try {
+    const filePath = getQuizPromoCodesPath(quizId);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`🗑️ Удален файл промокодов для квиза ${quizId}: ${filePath}`);
+      return true;
+    } else {
+      console.log(`ℹ️ Файл промокодов для квиза ${quizId} не найден`);
+      return true;
+    }
+  } catch (error) {
+    console.error(`❌ Ошибка удаления файла промокодов для квиза ${quizId}:`, error.message);
+    return false;
+  }
+}
+
 // Функция для загрузки промокодов в конкретный квиз
 function loadPromoCodesFromFile(filePath, quizId) {
   try {
@@ -16,6 +34,9 @@ function loadPromoCodesFromFile(filePath, quizId) {
     const fileContent = fs.readFileSync(filePath, 'utf8');
     const lines = fileContent.split('\n').filter(line => line.trim());
     if (lines.length < 2) throw new Error('Нет промокодов');
+    
+    // Удаляем старый файл промокодов если он существует
+    deleteQuizPromoCodes(quizId);
     
     // Копируем файл в папку промокодов с именем квиза
     const quizPromoCodesPath = getQuizPromoCodesPath(quizId);
@@ -151,5 +172,6 @@ module.exports = {
   getRandomPromoCode,
   updatePromoCodeFile,
   hasPromoCodes,
-  getAvailablePromoCodesCount
+  getAvailablePromoCodesCount,
+  deleteQuizPromoCodes
 }; 

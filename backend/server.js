@@ -365,6 +365,37 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
   }
 });
 
+// Эндпоинт для удаления промокодов квиза
+app.delete('/api/quiz-promocodes/:quizId', async (req, res) => {
+  try {
+    const { quizId } = req.params;
+    
+    if (!quizId) {
+      return res.status(400).json({ error: 'ID квиза не указан' });
+    }
+
+    // Импортируем функцию для удаления промокодов
+    const { deleteQuizPromoCodes } = require('./promoCodeManager');
+    
+    const success = deleteQuizPromoCodes(quizId);
+    
+    if (success) {
+      res.json({ 
+        success: true, 
+        message: `Промокоды для квиза ${quizId} успешно удалены`,
+        quizId: quizId
+      });
+    } else {
+      res.status(500).json({ 
+        error: 'Ошибка при удалении промокодов квиза' 
+      });
+    }
+  } catch (error) {
+    console.error('Promo codes deletion error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Храним активные процессы ботов
 const activeProcesses = new Map();
 

@@ -33,9 +33,23 @@ const QuizBlock = ({
   const handlePromoCodeUpload = async (file) => {
     const formData = new FormData();
     formData.append('promocodes', file);
-    formData.append('quizId', block.id); // Добавляем ID квиза
+    formData.append('quizId', block.id);
 
     try {
+      // Сначала удаляем старые промокоды
+      try {
+        const deleteResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${block.id}`, {
+          method: 'DELETE'
+        });
+        
+        if (deleteResponse.ok) {
+          console.log(`🗑️ Старые промокоды для квиза ${block.id} удалены`);
+        }
+      } catch (deleteError) {
+        console.warn('Не удалось удалить старые промокоды:', deleteError);
+      }
+
+      // Затем загружаем новые промокоды
       const response = await fetch(`${config.API_BASE_URL}/api/upload-promocodes`, {
         method: 'POST',
         body: formData,
