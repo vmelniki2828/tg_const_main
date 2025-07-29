@@ -713,6 +713,15 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
     }));
   };
 
+  const updateFinalFailureMessage = (blockId, message) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId) {
+        return { ...block, finalFailureMessage: message };
+      }
+      return block;
+    }));
+  };
+
   return (
     <div className="flow-editor">
       <div className="editor-controls">
@@ -832,6 +841,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                     onRemoveQuestion={(questionIndex) => removeQuestion(block.id, questionIndex)}
                     onUpdateCurrentQuestion={(newIndex) => updateCurrentQuestionIndex(block.id, newIndex)}
                     onUpdateFinalMessage={(message) => updateFinalMessage(block.id, message)}
+                    onUpdateFinalFailureMessage={(message) => updateFinalFailureMessage(block.id, message)}
                     isConnecting={isConnecting}
                   />
                 </div>
