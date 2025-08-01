@@ -413,13 +413,13 @@ function setupBotHandlers(bot, blocks, connections) {
                   const { getRandomPromoCode } = require('./promoCodeManager.js');
                   const promoCode = await getRandomPromoCode(currentBlock.id);
                   if (promoCode) {
-                    resultMessage += `🎁 Ваш промокод: ${promoCode} CUR ${currentRequest.s_currency}\n`;
+                    resultMessage += `🎁 Ваш промокод: ${promoCode}\n`;
                   } else {
                     resultMessage += `⚠️ К сожалению, промокоды закончились\n`;
                   }
                 } catch (error) {
                   console.error('Error getting promo code:', error);
-                  resultMessage += `⚠️ Ошибка при выдаче промокода\n`;
+                  resultMessage += `⚠️ Ошибка при выдаче промокода: ${error.message}\n`;
                 }
               } else {
                 resultMessage += `❌ ${currentBlock.finalFailureMessage || 'К сожалению, вы не прошли квиз. Нужно ответить правильно на все вопросы.'}\n`;
@@ -432,10 +432,17 @@ function setupBotHandlers(bot, blocks, connections) {
                   const path = require('path');
                   const statsPath = path.join(__dirname, 'quizStats.json');
                   
+                  console.log(`Saving quiz stats for block ${currentBlock.id}, user ${userId}`);
+                  
                   let stats = {};
                   if (fs.existsSync(statsPath)) {
-                    const fileContent = fs.readFileSync(statsPath, 'utf8');
-                    stats = JSON.parse(fileContent);
+                    try {
+                      const fileContent = fs.readFileSync(statsPath, 'utf8');
+                      stats = JSON.parse(fileContent);
+                    } catch (parseError) {
+                      console.error('Error parsing existing stats file:', parseError);
+                      stats = {};
+                    }
                   }
                   
                   if (!stats[currentBlock.id]) {
@@ -459,18 +466,31 @@ function setupBotHandlers(bot, blocks, connections) {
                   const userAttempt = {
                     userId: userId,
                     userName: ctx.from.first_name || ctx.from.username || `User ${userId}`,
+                    userLastName: ctx.from.last_name || '',
+                    username: ctx.from.username || '',
                     timestamp: Date.now(),
                     success: isSuccessful,
                     score: correctAnswers,
-                    duration: Date.now() - userQuizState.startTime
+                    totalQuestions: totalQuestions,
+                    successRate: successRate,
+                    duration: Date.now() - userQuizState.startTime,
+                    answers: userQuizState.answers
                   };
                   
                   quizStats.userAttempts.push(userAttempt);
                   
+                  // Ограничиваем количество попыток в истории (максимум 1000)
+                  if (quizStats.userAttempts.length > 1000) {
+                    quizStats.userAttempts = quizStats.userAttempts.slice(-1000);
+                  }
+                  
                   const statsJson = JSON.stringify(stats, null, 2);
                   fs.writeFileSync(statsPath, statsJson);
+                  
+                  console.log(`Quiz stats saved successfully for block ${currentBlock.id}`);
                 } catch (error) {
                   console.error('Error saving quiz stats:', error);
+                  console.error('Error details:', error.stack);
                 }
               });
               
