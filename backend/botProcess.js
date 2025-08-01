@@ -21,18 +21,13 @@ try {
   process.exit(1);
 }
 
-// Функция для отправки медиафайлов
+// Кэш для промокодов
+const promoCodeCache = new Map();
+
+// Функция для отправки медиафайлов (оптимизированная)
 async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboard = []) {
   const fs = require('fs');
   const path = require('path');
-  
-  console.log('sendMediaMessage called with:', {
-    message: message,
-    mediaFilesCount: mediaFiles ? mediaFiles.length : 0,
-    mediaFiles: mediaFiles,
-    keyboardLength: keyboard.length,
-    inlineKeyboardLength: inlineKeyboard.length
-  });
   
   try {
     // Проверяем, что mediaFiles существует и не пустой
@@ -58,11 +53,8 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
       const media = mediaFiles[0];
       const filePath = path.join(__dirname, 'uploads', media.filename);
       
-      console.log('Processing single media file:', media.filename, 'at path:', filePath);
-      
       // Проверяем существование файла
       if (!fs.existsSync(filePath)) {
-        console.error('Media file not found:', filePath);
         const replyMarkup = {};
         if (keyboard.length > 0) {
           replyMarkup.keyboard = keyboard;
@@ -99,53 +91,24 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
         await ctx.replyWithVideo({ source: filePath }, options);
       } else if (media.mimetype.startsWith('audio/')) {
         await ctx.replyWithAudio({ source: filePath }, options);
-      } else if (media.mimetype === 'application/pdf' || media.mimetype.startsWith('application/')) {
+      } else if (media.mimetype.startsWith('application/')) {
         await ctx.replyWithDocument({ source: filePath }, options);
       } else {
-        // Для остальных типов файлов отправляем как документ
         await ctx.replyWithDocument({ source: filePath }, options);
       }
     } else {
-      // Если несколько медиафайлов, отправляем их группой
+      // Множественные медиафайлы
       const mediaGroup = [];
+      const validFiles = [];
       
       for (const media of mediaFiles) {
         const filePath = path.join(__dirname, 'uploads', media.filename);
-        
-        if (!fs.existsSync(filePath)) {
-          console.error('Media file not found:', filePath);
-          continue;
-        }
-
-        if (media.mimetype.startsWith('image/')) {
-          mediaGroup.push({ type: 'photo', media: { source: filePath } });
-        } else if (media.mimetype.startsWith('video/')) {
-          mediaGroup.push({ type: 'video', media: { source: filePath } });
-        } else if (media.mimetype.startsWith('audio/')) {
-          mediaGroup.push({ type: 'audio', media: { source: filePath } });
-        } else {
-          mediaGroup.push({ type: 'document', media: { source: filePath } });
+        if (fs.existsSync(filePath)) {
+          validFiles.push({ ...media, filePath });
         }
       }
-
-      if (mediaGroup.length > 0) {
-        // Добавляем подпись к первому элементу
-        if (mediaGroup[0].media) {
-          mediaGroup[0].media.caption = message;
-          const replyMarkup = {};
-          if (keyboard.length > 0) {
-            replyMarkup.keyboard = keyboard;
-            replyMarkup.resize_keyboard = true;
-          }
-          if (inlineKeyboard.length > 0) {
-            replyMarkup.inline_keyboard = inlineKeyboard;
-          }
-          mediaGroup[0].media.reply_markup = Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined;
-        }
-
-        await ctx.telegram.sendMediaGroup(ctx.chat.id, mediaGroup);
-      } else {
-        // Если все файлы не найдены, отправляем только текст
+      
+      if (validFiles.length === 0) {
         const replyMarkup = {};
         if (keyboard.length > 0) {
           replyMarkup.keyboard = keyboard;
@@ -158,10 +121,44 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
         await ctx.reply(message, {
           reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
         });
+        return;
+      }
+      
+      // Добавляем медиафайлы в группу
+      for (let i = 0; i < validFiles.length; i++) {
+        const media = validFiles[i];
+        const mediaItem = {
+          type: media.mimetype.startsWith('image/') ? 'photo' : 
+                media.mimetype.startsWith('video/') ? 'video' : 
+                media.mimetype.startsWith('audio/') ? 'audio' : 'document',
+          media: { source: media.filePath }
+        };
+        
+        // Добавляем подпись только к первому элементу
+        if (i === 0) {
+          mediaItem.caption = message;
+        }
+        
+        mediaGroup.push(mediaItem);
+      }
+      
+      // Отправляем медиагруппу
+      await ctx.replyWithMediaGroup(mediaGroup);
+      
+      // Отправляем клавиатуру отдельно
+      if (keyboard.length > 0 || inlineKeyboard.length > 0) {
+        const replyMarkup = {};
+        if (keyboard.length > 0) {
+          replyMarkup.keyboard = keyboard;
+          replyMarkup.resize_keyboard = true;
+        }
+        if (inlineKeyboard.length > 0) {
+          replyMarkup.inline_keyboard = inlineKeyboard;
+        }
+        
+        await ctx.reply('Выберите действие:', { reply_markup: replyMarkup });
       }
     }
-    
-    console.log('Media message sent successfully');
   } catch (error) {
     console.error('Error sending media message:', error);
     // Fallback к текстовому сообщению
@@ -180,10 +177,7 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
   }
 }
 
-// Функция для настройки обработчиков бота
 function setupBotHandlers(bot, blocks, connections) {
-  console.log('Setting up handlers with blocks:', blocks.length, 'connections:', connections.length);
-  
   // Создаем карту диалогов для быстрого доступа
   const dialogMap = new Map();
   blocks.forEach(block => {
@@ -193,7 +187,6 @@ function setupBotHandlers(bot, blocks, connections) {
       mediaFiles: block.mediaFiles || [],
       type: block.type
     });
-    console.log(`Block ${block.id}: "${block.message}" with ${(block.buttons || []).length} buttons and ${(block.mediaFiles || []).length} media files`);
   });
 
   // Карта для отслеживания истории навигации пользователей
@@ -216,7 +209,6 @@ function setupBotHandlers(bot, blocks, connections) {
     // Добавляем кнопки
     if (buttons && buttons.length > 0) {
       buttons.forEach(btn => {
-        // Все кнопки добавляем в обычную клавиатуру для отображения
         keyboard.push([{ text: btn.text }]);
       });
     }
@@ -238,12 +230,10 @@ function setupBotHandlers(bot, blocks, connections) {
   connections.forEach(conn => {
     const key = `${conn.from.blockId}_${conn.from.buttonId}`;
     connectionMap.set(key, conn.to);
-    console.log(`Connection: ${key} -> ${conn.to}`);
   });
 
   // Обработка команды /start
   bot.command('start', async (ctx) => {
-    console.log('Received /start command');
     const userId = ctx.from.id;
     
     // Очищаем историю навигации пользователя
@@ -258,71 +248,72 @@ function setupBotHandlers(bot, blocks, connections) {
     const startBlock = dialogMap.get('start');
     if (startBlock) {
       const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-      
-      console.log('Sending start message:', startBlock.message, 'with keyboard:', keyboard, 'inlineKeyboard:', inlineKeyboard);
-      
-      // Проверяем есть ли медиафайлы
-      if (startBlock.mediaFiles && Array.isArray(startBlock.mediaFiles) && startBlock.mediaFiles.length > 0) {
-        await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-      } else {
-        const replyMarkup = {};
-        if (keyboard.length > 0) {
-          replyMarkup.keyboard = keyboard;
-          replyMarkup.resize_keyboard = true;
-        }
-        if (inlineKeyboard.length > 0) {
-          replyMarkup.inline_keyboard = inlineKeyboard;
-        }
-        
-        await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-      }
+      await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
     } else {
-      console.log('Start block not found');
       await ctx.reply('Бот не настроен');
     }
+  });
+
+  // Обработка команды /help
+  bot.command('help', async (ctx) => {
+    const userId = ctx.from.id;
+    let currentBlockId = userCurrentBlock.get(userId);
+    
+    let helpMessage = '🤖 **Помощь по использованию бота:**\n\n';
+    helpMessage += '📱 **Как использовать:**\n';
+    helpMessage += '• Используйте кнопки для навигации\n';
+    helpMessage += '• Нажимайте на кнопки вместо ввода текста\n';
+    helpMessage += '• Кнопка "Назад" вернет вас к предыдущему блоку\n\n';
+    helpMessage += '🔗 **Кнопки с ссылками:**\n';
+    helpMessage += '• Если кнопка содержит ссылку, она откроется в браузере\n\n';
+    helpMessage += '📊 **Квизы:**\n';
+    helpMessage += '• Отвечайте на вопросы, выбирая правильные варианты\n';
+    helpMessage += '• За правильные ответы вы можете получить промокоды\n\n';
+    helpMessage += '💡 **Советы:**\n';
+    helpMessage += '• Не вводите текст вручную - используйте кнопки\n';
+    helpMessage += '• Если заблудились, нажмите /start для возврата в начало';
+    
+    if (currentBlockId) {
+      const currentBlock = dialogMap.get(currentBlockId);
+      if (currentBlock) {
+        const { keyboard, inlineKeyboard } = createKeyboardWithBack(currentBlock.buttons, userId, currentBlockId);
+        
+        await ctx.reply(helpMessage, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            keyboard: keyboard,
+            resize_keyboard: true
+          }
+        });
+        return;
+      }
+    }
+    
+    await ctx.reply(helpMessage, { parse_mode: 'Markdown' });
   });
 
   // Обработка текстовых сообщений
   bot.on('text', async (ctx) => {
     const messageText = ctx.message.text;
     const userId = ctx.from.id;
-    console.log('Received text message:', messageText);
+    let currentBlockId = userCurrentBlock.get(userId);
+    
+    // Игнорируем очень короткие сообщения (менее 2 символов)
+    if (messageText.length < 2) {
+      return;
+    }
     
     // Обработка кнопки "Назад"
     if (messageText === '⬅️ Назад') {
       const userHistory = userNavigationHistory.get(userId);
       if (userHistory && userHistory.length > 0) {
-        // Получаем предыдущий блок из истории
         const previousBlockId = userHistory.pop();
         const prevBlock = dialogMap.get(previousBlockId);
         
         if (prevBlock) {
           const { keyboard, inlineKeyboard } = createKeyboardWithBack(prevBlock.buttons, userId, previousBlockId);
-          
-          console.log('Going back to previous block:', previousBlockId, 'History remaining:', userHistory.length);
-          
-          // Проверяем есть ли медиафайлы
-          if (prevBlock.mediaFiles && Array.isArray(prevBlock.mediaFiles) && prevBlock.mediaFiles.length > 0) {
-            await sendMediaMessage(ctx, prevBlock.message, prevBlock.mediaFiles, keyboard, inlineKeyboard);
-          } else {
-            const replyMarkup = {};
-            if (keyboard.length > 0) {
-              replyMarkup.keyboard = keyboard;
-              replyMarkup.resize_keyboard = true;
-            }
-            if (inlineKeyboard.length > 0) {
-              replyMarkup.inline_keyboard = inlineKeyboard;
-            }
-            
-            await ctx.reply(prevBlock.message, {
-              reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
-            });
-          }
-          
-          // Обновляем текущий блок пользователя
+          await sendMediaMessage(ctx, prevBlock.message, prevBlock.mediaFiles, keyboard, inlineKeyboard);
           userCurrentBlock.set(userId, previousBlockId);
-          
-          // Обновляем историю
           userNavigationHistory.set(userId, userHistory);
           return;
         }
@@ -332,16 +323,11 @@ function setupBotHandlers(bot, blocks, connections) {
     }
     
     // Специальная обработка квизов
-    const currentBlockId = userCurrentBlock.get(userId);
-    console.log(`🔍 Проверяем блок ${currentBlockId} для пользователя ${userId}`);
     
     if (currentBlockId) {
       const currentBlock = blocks.find(b => b.id === currentBlockId);
-      console.log(`📋 Найден блок:`, currentBlock ? { id: currentBlock.id, type: currentBlock.type } : 'не найден');
       
       if (currentBlock && currentBlock.type === 'quiz') {
-        console.log(`🎯 Обрабатываем квиз для пользователя ${userId}`);
-        // Обработка ответов в квизе
         const userQuizState = userQuizStates.get(userId) || {
           currentQuestionIndex: 0,
           answers: [],
@@ -349,12 +335,9 @@ function setupBotHandlers(bot, blocks, connections) {
         };
         
         const currentQuestion = currentBlock.questions[userQuizState.currentQuestionIndex];
-        console.log(`❓ Обрабатываем вопрос ${userQuizState.currentQuestionIndex + 1} из ${currentBlock.questions.length}`);
-        console.log(`📝 Ответ пользователя: "${messageText}"`);
         
         if (currentQuestion) {
           const selectedButton = currentQuestion.buttons.find(btn => btn.text === messageText);
-          console.log(`🔘 Найденная кнопка:`, selectedButton ? { text: selectedButton.text, isCorrect: selectedButton.isCorrect } : 'не найдена');
           
           if (selectedButton) {
             // Сохраняем ответ
@@ -372,34 +355,13 @@ function setupBotHandlers(bot, blocks, connections) {
               const nextQuestion = currentBlock.questions[userQuizState.currentQuestionIndex];
               const keyboard = nextQuestion.buttons.map(btn => [{ text: btn.text }]);
               
-              console.log(`Quiz: User ${userId} answered question ${userQuizState.currentQuestionIndex - 1}, moving to question ${userQuizState.currentQuestionIndex}`);
-              console.log('Sending next quiz question:', nextQuestion.message, 'with mediaFiles:', nextQuestion.mediaFiles);
-              
               await sendMediaMessage(ctx, nextQuestion.message, nextQuestion.mediaFiles || [], keyboard, []);
               return;
             } else {
               // Квиз завершен, показываем результаты
-              console.log(`🏁 Квиз завершен для пользователя ${userId}`);
-              console.log(`📋 Всего вопросов: ${currentBlock.questions.length}`);
-              console.log(`📋 Текущий индекс вопроса: ${userQuizState.currentQuestionIndex}`);
-              console.log(`📋 Ответы пользователя:`, userQuizState.answers);
-              console.log(`🏁 Проверяем завершение квиза:`);
-              console.log(`   - Всего вопросов: ${currentBlock.questions.length}`);
-              console.log(`   - Текущий индекс: ${userQuizState.currentQuestionIndex}`);
-              console.log(`   - Условие завершения: ${userQuizState.currentQuestionIndex >= currentBlock.questions.length}`);
-              console.log(`🏁 Начинаем обработку результатов квиза...`);
-              
               const correctAnswers = userQuizState.answers.filter(answer => answer.isCorrect).length;
               const totalQuestions = currentBlock.questions.length;
               const successRate = (correctAnswers / totalQuestions) * 100;
-              
-              console.log(`📊 Подсчет результатов:`);
-              console.log(`   - Всего вопросов: ${totalQuestions}`);
-              console.log(`   - Правильных ответов: ${correctAnswers}`);
-              console.log(`   - Процент успешности: ${successRate.toFixed(1)}%`);
-              console.log(`   - Детали ответов:`, userQuizState.answers.map(a => ({ answer: a.selectedAnswer, correct: a.isCorrect })));
-              
-              console.log(`📊 Результаты: ${correctAnswers}/${totalQuestions} правильных ответов (${successRate.toFixed(1)}%)`);
               
               let resultMessage = `📊 Результаты квиза:\n`;
               resultMessage += `✅ Правильных ответов: ${correctAnswers} из ${totalQuestions}\n`;
@@ -407,7 +369,6 @@ function setupBotHandlers(bot, blocks, connections) {
               
               // Показываем результаты по каждому вопросу
               userQuizState.answers.forEach((answer, index) => {
-                const question = currentBlock.questions[index];
                 resultMessage += `${answer.isCorrect ? '✅' : '❌'} Вопрос ${index + 1}: ${answer.isCorrect ? 'Правильно' : 'Неправильно'}\n`;
               });
               
@@ -415,11 +376,6 @@ function setupBotHandlers(bot, blocks, connections) {
               
               // Проверяем успешность (100% для прохождения)
               const isSuccessful = successRate === 100;
-              console.log(`🎯 Определение успешности: ${successRate}% === 100% = ${isSuccessful}`);
-              console.log(`🎯 Детали успешности:`);
-              console.log(`   - Процент успешности: ${successRate}%`);
-              console.log(`   - Требуется для успеха: 100%`);
-              console.log(`   - Результат: ${isSuccessful ? 'УСПЕХ' : 'НЕУДАЧА'}`);
               
               if (isSuccessful) {
                 resultMessage += `🎉 ${currentBlock.finalSuccessMessage || 'Поздравляем! Вы успешно прошли квиз!'}\n`;
@@ -429,7 +385,7 @@ function setupBotHandlers(bot, blocks, connections) {
                   const { getRandomPromoCode } = require('./promoCodeManager.js');
                   const promoCode = await getRandomPromoCode(currentBlock.id);
                   if (promoCode) {
-                    resultMessage += `🎁 Ваш промокод: ${promoCode}\n`;
+                    resultMessage += `🎁 Ваш промокод: ${promoCode} CUR ${currentRequest.s_currency}\n`;
                   } else {
                     resultMessage += `⚠️ К сожалению, промокоды закончились\n`;
                   }
@@ -441,175 +397,59 @@ function setupBotHandlers(bot, blocks, connections) {
                 resultMessage += `❌ ${currentBlock.finalFailureMessage || 'К сожалению, вы не прошли квиз. Нужно ответить правильно на все вопросы.'}\n`;
               }
               
-                              // Записываем статистику
-                console.log(`🎯 Начинаем сохранение статистики для квиза ${currentBlock.id}`);
-                console.log(`📊 Данные для сохранения: userId=${userId}, success=${isSuccessful}, score=${correctAnswers}`);
-                console.log(`🎯 Детали попытки:`);
-                console.log(`   - ID квиза: ${currentBlock.id}`);
-                console.log(`   - ID пользователя: ${userId}`);
-                console.log(`   - Имя пользователя: ${ctx.from.first_name || ctx.from.username || `User ${userId}`}`);
-                console.log(`   - Успешность: ${isSuccessful}`);
-                console.log(`   - Баллы: ${correctAnswers}/${currentBlock.questions.length}`);
-                console.log(`   - Время: ${Date.now() - userQuizState.startTime}ms`);
-                
+              // Асинхронно сохраняем статистику
+              setImmediate(async () => {
                 try {
                   const fs = require('fs');
                   const path = require('path');
                   const statsPath = path.join(__dirname, 'quizStats.json');
                   
-                  console.log(`📁 Путь к файлу статистики: ${statsPath}`);
-                  console.log(`📁 Текущая директория: ${__dirname}`);
-                  console.log(`📁 Существует ли файл: ${fs.existsSync(statsPath)}`);
-                  
-                                    // Проверяем права доступа к директории
-                  const dirPath = path.dirname(statsPath);
-                  console.log(`📁 Директория: ${dirPath}`);
-                  console.log(`🔐 Права на директорию: ${fs.statSync(dirPath).mode.toString(8)}`);
-                  
-                  // Проверяем, можем ли мы писать в директорию
-                  try {
-                    const testFile = path.join(dirPath, 'test-write.tmp');
-                    fs.writeFileSync(testFile, 'test');
-                    fs.unlinkSync(testFile);
-                    console.log(`✅ Права на запись в директорию есть`);
-                  } catch (writeError) {
-                    console.log(`❌ Нет прав на запись в директорию: ${writeError.message}`);
-                  }
-                
-                console.log(`📊 Сохраняем статистику для квиза ${currentBlock.id}`);
-                console.log(`📁 Путь к файлу: ${statsPath}`);
-                
-                let stats = {};
-                if (fs.existsSync(statsPath)) {
-                  console.log(`✅ Файл статистики существует`);
-                  const fileContent = fs.readFileSync(statsPath, 'utf8');
-                  console.log(`📄 Содержимое файла: ${fileContent}`);
-                  stats = JSON.parse(fileContent);
-                } else {
-                  console.log(`❌ Файл статистики не существует, создаем новый`);
-                }
-                
-                if (!stats[currentBlock.id]) {
-                  console.log(`📊 Создаем новую запись для квиза ${currentBlock.id}`);
-                  stats[currentBlock.id] = {
-                    totalAttempts: 0,
-                    successfulCompletions: 0,
-                    failedAttempts: 0,
-                    userAttempts: []
-                  };
-                }
-                
-                const quizStats = stats[currentBlock.id];
-                quizStats.totalAttempts++;
-                
-                if (isSuccessful) {
-                  quizStats.successfulCompletions++;
-                  console.log(`✅ Успешное прохождение квиза`);
-                } else {
-                  quizStats.failedAttempts++;
-                  console.log(`❌ Неудачное прохождение квиза`);
-                }
-                
-                const userAttempt = {
-                  userId: userId,
-                  userName: ctx.from.first_name || ctx.from.username || `User ${userId}`,
-                  timestamp: Date.now(),
-                  success: isSuccessful,
-                  score: correctAnswers,
-                  duration: Date.now() - userQuizState.startTime
-                };
-                
-                console.log(`👤 Добавляем попытку пользователя в массив...`);
-                console.log(`   - Текущий размер массива: ${quizStats.userAttempts.length}`);
-                quizStats.userAttempts.push(userAttempt);
-                console.log(`   - Новый размер массива: ${quizStats.userAttempts.length}`);
-                console.log(`👤 Добавлена попытка пользователя:`, userAttempt);
-                
-                                  const statsJson = JSON.stringify(stats, null, 2);
-                  console.log(`💾 Записываем статистику: ${statsJson}`);
-                  
-                  console.log(`📝 Пытаемся записать файл...`);
-                  fs.writeFileSync(statsPath, statsJson);
-                  console.log(`✅ Файл записан успешно`);
-                  
-                  // Проверяем, что файл действительно записался
+                  let stats = {};
                   if (fs.existsSync(statsPath)) {
-                    const savedContent = fs.readFileSync(statsPath, 'utf8');
-                    console.log(`✅ Файл сохранен, размер: ${savedContent.length} символов`);
-                    console.log(`✅ Содержимое файла после записи: ${savedContent}`);
-                  } else {
-                    console.log(`❌ Файл не был создан!`);
+                    const fileContent = fs.readFileSync(statsPath, 'utf8');
+                    stats = JSON.parse(fileContent);
                   }
                   
-                  console.log(`✅ Статистика успешно сохранена для блока ${currentBlock.id}`);
-                
-                // Проверяем, что файл действительно записался
-                if (fs.existsSync(statsPath)) {
-                  const savedContent = fs.readFileSync(statsPath, 'utf8');
-                  console.log(`✅ Файл сохранен, размер: ${savedContent.length} символов`);
-                } else {
-                  console.log(`❌ Файл не был создан!`);
-                }
-              } catch (error) {
-                console.error('❌ Error saving quiz stats:', error);
-                console.error('❌ Stack trace:', error.stack);
-                
-                // Попробуем альтернативный способ - отправить статистику через HTTP
-                console.log(`🔄 Пробуем альтернативный способ сохранения статистики...`);
-                try {
-                  const http = require('http');
-                  const postData = JSON.stringify({
-                    quizId: currentBlock.id,
+                  if (!stats[currentBlock.id]) {
+                    stats[currentBlock.id] = {
+                      totalAttempts: 0,
+                      successfulCompletions: 0,
+                      failedAttempts: 0,
+                      userAttempts: []
+                    };
+                  }
+                  
+                  const quizStats = stats[currentBlock.id];
+                  quizStats.totalAttempts++;
+                  
+                  if (isSuccessful) {
+                    quizStats.successfulCompletions++;
+                  } else {
+                    quizStats.failedAttempts++;
+                  }
+                  
+                  const userAttempt = {
                     userId: userId,
                     userName: ctx.from.first_name || ctx.from.username || `User ${userId}`,
                     timestamp: Date.now(),
                     success: isSuccessful,
                     score: correctAnswers,
                     duration: Date.now() - userQuizState.startTime
-                  });
-                  
-                  console.log(`📤 Отправляем данные через HTTP:`, postData);
-                  
-                  const options = {
-                    hostname: 'localhost',
-                    port: 3001,
-                    path: '/api/quiz-stats',
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Content-Length': Buffer.byteLength(postData)
-                    }
                   };
                   
-                  const req = http.request(options, (res) => {
-                    console.log(`📊 Статистика отправлена через HTTP, статус: ${res.statusCode}`);
-                    
-                    let responseData = '';
-                    res.on('data', (chunk) => {
-                      responseData += chunk;
-                    });
-                    
-                    res.on('end', () => {
-                      console.log(`📊 Ответ сервера: ${responseData}`);
-                    });
-                  });
+                  quizStats.userAttempts.push(userAttempt);
                   
-                  req.on('error', (e) => {
-                    console.error(`❌ Ошибка HTTP запроса: ${e.message}`);
-                  });
-                  
-                  req.write(postData);
-                  req.end();
-                } catch (httpError) {
-                  console.error('❌ Ошибка при отправке статистики через HTTP:', httpError);
+                  const statsJson = JSON.stringify(stats, null, 2);
+                  fs.writeFileSync(statsPath, statsJson);
+                } catch (error) {
+                  console.error('Error saving quiz stats:', error);
                 }
-              }
+              });
               
               // Отмечаем квиз как завершенный для этого пользователя
               let userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
               userCompletedQuizzes.add(currentBlock.id);
               completedQuizzes.set(userId, userCompletedQuizzes);
-              console.log(`Quiz ${currentBlock.id} marked as completed for user ${userId}`);
               
               // Очищаем состояние квиза и устанавливаем стартовый блок
               userQuizStates.delete(userId);
@@ -674,79 +514,18 @@ function setupBotHandlers(bot, blocks, connections) {
           if (nextBlockId && dialogMap.has(nextBlockId)) {
             const nextBlock = dialogMap.get(nextBlockId);
             
-            // Добавляем текущий блок в историю навигации пользователя
+            // Добавляем текущий блок в историю навигации
             let userHistory = userNavigationHistory.get(userId) || [];
             userHistory.push(currentBlockId);
-            
-            // Ограничиваем размер истории (максимум 10 блоков)
-            if (userHistory.length > 10) {
-              userHistory = userHistory.slice(-10);
-            }
-            
             userNavigationHistory.set(userId, userHistory);
             
             // Обновляем текущий блок пользователя
             userCurrentBlock.set(userId, nextBlockId);
             
-            console.log('Navigation history for user', userId, ':', userHistory);
-            console.log('Current block updated to:', nextBlockId);
-            
-            // Если переходим к квизу, проверяем не проходил ли пользователь его уже
-            const nextBlockData = blocks.find(b => b.id === nextBlockId);
-            if (nextBlockData && nextBlockData.type === 'quiz') {
-              // Проверяем, не завершал ли пользователь этот квиз ранее
-              const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
-              if (userCompletedQuizzes.has(nextBlockId)) {
-                await ctx.reply('❌ Вы уже проходили этот квиз. Каждый квиз можно пройти только один раз.');
-                return;
-              }
-              
-              userNavigationHistory.delete(userId);
-              console.log('Cleared navigation history for quiz transition');
-              
-              // Инициализируем состояние квиза
-              const quizState = {
-                currentQuestionIndex: 0,
-                answers: [],
-                startTime: Date.now()
-              };
-              userQuizStates.set(userId, quizState);
-              console.log('Initialized quiz state for user', userId);
-              
-              // Отправляем первый вопрос квиза
-              const firstQuestion = nextBlockData.questions[0];
-              if (firstQuestion) {
-                const keyboard = firstQuestion.buttons.map(btn => [{ text: btn.text }]);
-                console.log('Sending first quiz question (fallback):', firstQuestion.message, 'with mediaFiles:', firstQuestion.mediaFiles);
-                await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles || [], keyboard, []);
-                return;
-              }
-            }
-            
             const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
             
-            console.log('Sending response:', nextBlock.message, 'with keyboard:', keyboard, 'inlineKeyboard:', inlineKeyboard);
-            
-            // Проверяем есть ли медиафайлы
-            if (nextBlock.mediaFiles && Array.isArray(nextBlock.mediaFiles) && nextBlock.mediaFiles.length > 0) {
-              await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
-            } else {
-              const replyMarkup = {};
-              if (keyboard.length > 0) {
-                replyMarkup.keyboard = keyboard;
-                replyMarkup.resize_keyboard = true;
-              }
-              if (inlineKeyboard.length > 0) {
-                replyMarkup.inline_keyboard = inlineKeyboard;
-              }
-              
-              await ctx.reply(nextBlock.message, {
-                reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
-              });
-            }
+            await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
             found = true;
-          } else {
-            console.log(`No connection found for button ${button.id} in block ${currentBlockId}`);
           }
         }
       }
@@ -776,142 +555,62 @@ function setupBotHandlers(bot, blocks, connections) {
           if (nextBlockId && dialogMap.has(nextBlockId)) {
             const nextBlock = dialogMap.get(nextBlockId);
             
-            // Добавляем текущий блок в историю навигации пользователя
+            // Добавляем текущий блок в историю навигации
             let userHistory = userNavigationHistory.get(userId) || [];
             userHistory.push(block.id);
-            
-            // Ограничиваем размер истории (максимум 10 блоков)
-            if (userHistory.length > 10) {
-              userHistory = userHistory.slice(-10);
-            }
-            
             userNavigationHistory.set(userId, userHistory);
             
             // Обновляем текущий блок пользователя
             userCurrentBlock.set(userId, nextBlockId);
             
-            console.log('Navigation history for user', userId, ':', userHistory);
-            console.log('Current block updated to:', nextBlockId);
-            
-            // Если переходим к квизу, проверяем не проходил ли пользователь его уже
-            const nextBlockData = blocks.find(b => b.id === nextBlockId);
-            if (nextBlockData && nextBlockData.type === 'quiz') {
-              // Проверяем, не завершал ли пользователь этот квиз ранее
-              const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
-              if (userCompletedQuizzes.has(nextBlockId)) {
-                await ctx.reply('❌ Вы уже проходили этот квиз. Каждый квиз можно пройти только один раз.');
-                return;
-              }
-              
-              userNavigationHistory.delete(userId);
-              console.log('Cleared navigation history for quiz transition');
-              
-              // Инициализируем состояние квиза
-              const quizState = {
-                currentQuestionIndex: 0,
-                answers: [],
-                startTime: Date.now()
-              };
-              userQuizStates.set(userId, quizState);
-              console.log('Initialized quiz state for user', userId);
-              
-              // Отправляем первый вопрос квиза
-              const firstQuestion = nextBlockData.questions[0];
-              if (firstQuestion) {
-                const keyboard = firstQuestion.buttons.map(btn => [{ text: btn.text }]);
-                console.log('Sending first quiz question (fallback):', firstQuestion.message, 'with mediaFiles:', firstQuestion.mediaFiles);
-                await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles || [], keyboard, []);
-                return;
-              }
-            }
-            
             const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
             
-            console.log('Sending response:', nextBlock.message, 'with keyboard:', keyboard, 'inlineKeyboard:', inlineKeyboard);
-            
-            // Проверяем есть ли медиафайлы
-            if (nextBlock.mediaFiles && Array.isArray(nextBlock.mediaFiles) && nextBlock.mediaFiles.length > 0) {
-              await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
-            } else {
-              const replyMarkup = {};
-              if (keyboard.length > 0) {
-                replyMarkup.keyboard = keyboard;
-                replyMarkup.resize_keyboard = true;
-              }
-              if (inlineKeyboard.length > 0) {
-                replyMarkup.inline_keyboard = inlineKeyboard;
-              }
-              
-              await ctx.reply(nextBlock.message, {
-                reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
-              });
-            }
-            found = true;
-            break;
-          } else {
-            console.log(`No connection found for button ${button.id} in block ${block.id}`);
+            await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
+            return;
           }
         }
       }
     }
     
-    if (!found) {
-      console.log('No matching button found for message:', messageText);
-      await ctx.reply('Кнопка не найдена');
+    // Если не найдено соответствие, показываем текущий блок с кнопками
+    if (currentBlockId) {
+      const currentBlock = dialogMap.get(currentBlockId);
+      if (currentBlock) {
+        const { keyboard, inlineKeyboard } = createKeyboardWithBack(currentBlock.buttons, userId, currentBlockId);
+        
+        await ctx.reply('❓ Я не понимаю эту команду. Пожалуйста, используйте кнопки ниже для навигации:', {
+          reply_markup: {
+            keyboard: keyboard,
+            resize_keyboard: true
+          }
+        });
+        return;
+      }
     }
-  });
-
-  // Обработка ошибок
-  bot.catch((err) => {
-    console.error('Bot error:', err);
+    
+    // Если не можем показать текущий блок, отправляем общее сообщение
+    await ctx.reply('❓ Неизвестная команда. Пожалуйста, используйте кнопки для навигации.');
   });
 }
 
 async function startBot() {
+  const bot = new Telegraf(token);
+  
+  // Настраиваем обработчики
+  setupBotHandlers(bot, state.blocks, state.connections);
+  
+  // Запускаем бота
   try {
-    // Создаем бота
-    console.log('Creating bot instance...');
-    const bot = new Telegraf(token);
-
-    // Проверяем токен
-    console.log('Checking bot token...');
-    const me = await bot.telegram.getMe();
-    console.log('Bot token is valid, username:', me.username);
-
-    // Настраиваем обработчики
-    console.log('Setting up handlers...');
-    setupBotHandlers(bot, state.blocks, state.connections);
-
-    // Удаляем вебхук
-    console.log('Deleting webhook...');
-    await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-    console.log('Webhook deleted successfully');
-
-    // Запускаем бота
-    console.log('Launching bot...');
-    
-    // Запускаем бота и ждем завершения
     await bot.launch();
     console.log('Bot started successfully');
-
-    // Обработка остановки
-    process.once('SIGINT', async () => {
-      console.log('Stopping bot...');
-      await bot.stop('SIGINT');
-      process.exit(0);
-    });
-
-    process.once('SIGTERM', async () => {
-      console.log('Stopping bot...');
-      await bot.stop('SIGTERM');
-      process.exit(0);
-    });
-
   } catch (error) {
-    console.error('Error starting bot:', error);
+    console.error('Failed to start bot:', error);
     process.exit(1);
   }
+  
+  // Graceful shutdown
+  process.once('SIGINT', () => bot.stop('SIGINT'));
+  process.once('SIGTERM', () => bot.stop('SIGTERM'));
 }
 
-// Запускаем бота
-startBot(); 
+startBot();
