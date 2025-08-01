@@ -375,7 +375,7 @@ const QuizStats = ({ blocks, onClose }) => {
                                     ))}
                                   </div>
                                 );
-                              );
+                              }
                             })()}
                           </>
                         )}
