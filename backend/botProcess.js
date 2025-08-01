@@ -1,5 +1,4 @@
 const { Telegraf } = require('telegraf');
-const fetch = require('node-fetch');
 
 // Получаем параметры из аргументов командной строки
 const [token, stateJson] = process.argv.slice(2);
@@ -426,114 +425,69 @@ function setupBotHandlers(bot, blocks, connections) {
                 resultMessage += `❌ ${currentBlock.finalFailureMessage || 'К сожалению, вы не прошли квиз. Нужно ответить правильно на все вопросы.'}\n`;
               }
               
-              // Асинхронно сохраняем статистику
-              // Сохраняем статистику квиза
-              try {
-                const fs = require('fs');
-                const path = require('path');
-                const statsPath = path.join(__dirname, 'quizStats.json');
-                
-                console.log(`📊 Saving quiz stats for block ${currentBlock.id}, user ${userId}`);
-                console.log(`📊 User attempt details:`, {
-                  userId,
-                  userName: ctx.from.first_name || ctx.from.username || `User ${userId}`,
-                  success: isSuccessful,
-                  score: correctAnswers,
-                  totalQuestions,
-                  successRate
-                });
-                
-                let stats = {};
-                if (fs.existsSync(statsPath)) {
-                  try {
-                    const fileContent = fs.readFileSync(statsPath, 'utf8');
-                    console.log(`📊 Existing stats file content:`, fileContent);
-                    stats = JSON.parse(fileContent);
-                  } catch (parseError) {
-                    console.error('❌ Error parsing existing stats file:', parseError);
-                    stats = {};
-                  }
-                } else {
-                  console.log(`📊 Stats file doesn't exist, creating new one`);
-                }
-                
-                if (!stats[currentBlock.id]) {
-                  console.log(`📊 Creating new stats entry for block ${currentBlock.id}`);
-                  stats[currentBlock.id] = {
-                    totalAttempts: 0,
-                    successfulCompletions: 0,
-                    failedAttempts: 0,
-                    userAttempts: []
-                  };
-                }
-                
-                const quizStats = stats[currentBlock.id];
-                quizStats.totalAttempts++;
-                
-                if (isSuccessful) {
-                  quizStats.successfulCompletions++;
-                } else {
-                  quizStats.failedAttempts++;
-                }
-                
-                const userAttempt = {
-                  userId: userId,
-                  userName: ctx.from.first_name || ctx.from.username || `User ${userId}`,
-                  userLastName: ctx.from.last_name || '',
-                  username: ctx.from.username || '',
-                  timestamp: Date.now(),
-                  success: isSuccessful,
-                  score: correctAnswers,
-                  totalQuestions: totalQuestions,
-                  successRate: successRate,
-                  duration: Date.now() - userQuizState.startTime,
-                  answers: userQuizState.answers
-                };
-                
-                quizStats.userAttempts.push(userAttempt);
-                console.log(`📊 Added user attempt to stats. Total attempts: ${quizStats.userAttempts.length}`);
-                
-                // Ограничиваем количество попыток в истории (максимум 1000)
-                if (quizStats.userAttempts.length > 1000) {
-                  quizStats.userAttempts = quizStats.userAttempts.slice(-1000);
-                }
-                
-                const statsJson = JSON.stringify(stats, null, 2);
-                console.log(`📊 Writing stats to file:`, statsJson);
-                fs.writeFileSync(statsPath, statsJson);
-                
-                // Проверяем, что файл записался
-                if (fs.existsSync(statsPath)) {
-                  const savedContent = fs.readFileSync(statsPath, 'utf8');
-                  console.log(`✅ Stats file saved successfully, size: ${savedContent.length} characters`);
-                } else {
-                  console.error(`❌ Stats file was not created!`);
-                }
-                
-                // Отправляем статистику через API для синхронизации
+              // Асинхронно сохраняем статистику через API
+              setImmediate(async () => {
                 try {
-                  const response = await fetch('http://localhost:3001/api/quiz-stats', {
+                  const https = require('https');
+                  const http = require('http');
+                  
+                  console.log(`Saving quiz stats for block ${currentBlock.id}, user ${userId}`);
+                  
+                  const userAttempt = {
+                    userId: userId,
+                    userName: ctx.from.first_name || ctx.from.username || `User ${userId}`,
+                    userLastName: ctx.from.last_name || '',
+                    username: ctx.from.username || '',
+                    timestamp: Date.now(),
+                    success: isSuccessful,
+                    score: correctAnswers,
+                    totalQuestions: totalQuestions,
+                    successRate: successRate,
+                    duration: Date.now() - userQuizState.startTime,
+                    answers: userQuizState.answers
+                  };
+                  
+                  // Отправляем данные через API
+                  const postData = JSON.stringify({
+                    quizId: currentBlock.id,
+                    userAttempt: userAttempt
+                  });
+                  
+                  const options = {
+                    hostname: 'localhost',
+                    port: 3001,
+                    path: '/api/quiz-stats',
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(stats)
+                      'Content-Length': Buffer.byteLength(postData)
+                    }
+                  };
+                  
+                  const req = http.request(options, (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => {
+                      data += chunk;
+                    });
+                    res.on('end', () => {
+                      console.log(`Quiz stats saved successfully for block ${currentBlock.id} via API`);
+                      console.log('API response:', data);
+                    });
                   });
                   
-                  if (response.ok) {
-                    console.log(`✅ Quiz stats saved via API for block ${currentBlock.id}`);
-                  } else {
-                    console.error(`❌ Failed to save quiz stats via API: ${response.status}`);
-                  }
-                } catch (apiError) {
-                  console.error('❌ Error saving quiz stats via API:', apiError);
+                  req.on('error', (error) => {
+                    console.error('Error saving quiz stats via API:', error);
+                    console.error('Error details:', error.stack);
+                  });
+                  
+                  req.write(postData);
+                  req.end();
+                  
+                } catch (error) {
+                  console.error('Error saving quiz stats:', error);
+                  console.error('Error details:', error.stack);
                 }
-                
-                console.log(`✅ Quiz stats saved successfully for block ${currentBlock.id}`);
-              } catch (error) {
-                console.error('❌ Error saving quiz stats:', error);
-                console.error('❌ Error details:', error.stack);
-              }
+              });
               
               // Отмечаем квиз как завершенный для этого пользователя
               let userCompletedQuizzes = completedQuizzes.get(userId) || new Set();

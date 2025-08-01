@@ -231,7 +231,7 @@ app.get('/api/quiz-stats', async (req, res) => {
 app.post('/api/quiz-stats', async (req, res) => {
   try {
     console.log('📊 Получена статистика от бота:', req.body);
-    const { quizId, userId, userName, timestamp, success, score, duration } = req.body;
+    const { quizId, userAttempt } = req.body;
     
     const stats = await readQuizStats();
     
@@ -247,23 +247,23 @@ app.post('/api/quiz-stats', async (req, res) => {
     const quizStats = stats[quizId];
     quizStats.totalAttempts++;
     
-    if (success) {
+    if (userAttempt.success) {
       quizStats.successfulCompletions++;
     } else {
       quizStats.failedAttempts++;
     }
     
-    quizStats.userAttempts.push({
-      userId,
-      userName,
-      timestamp,
-      success,
-      score,
-      duration
-    });
+    // Добавляем полную информацию о попытке пользователя
+    quizStats.userAttempts.push(userAttempt);
+    
+    // Ограничиваем количество попыток в истории (максимум 1000)
+    if (quizStats.userAttempts.length > 1000) {
+      quizStats.userAttempts = quizStats.userAttempts.slice(-1000);
+    }
     
     await writeQuizStats(stats);
     console.log(`✅ Статистика для квиза ${quizId} обновлена через API`);
+    console.log(`📊 Добавлена попытка пользователя ${userAttempt.userName} (${userAttempt.userId})`);
     
     res.json({ success: true });
   } catch (error) {
