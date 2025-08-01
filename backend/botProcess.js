@@ -514,6 +514,7 @@ function setupBotHandlers(bot, blocks, connections) {
             return;
           }
           
+          // Если это обычная кнопка (не ссылка), переходим к следующему блоку
           const nextBlockId = connectionMap.get(`${currentBlockId}_${button.id}`);
           if (nextBlockId && dialogMap.has(nextBlockId)) {
             const nextBlock = dialogMap.get(nextBlockId);
@@ -557,6 +558,7 @@ function setupBotHandlers(bot, blocks, connections) {
             return;
           }
           
+          // Если это обычная кнопка (не ссылка), переходим к следующему блоку
           const nextBlockId = connectionMap.get(`${block.id}_${button.id}`);
           if (nextBlockId && dialogMap.has(nextBlockId)) {
             const nextBlock = dialogMap.get(nextBlockId);
@@ -579,18 +581,14 @@ function setupBotHandlers(bot, blocks, connections) {
     }
     
     // Если не найдено соответствие, показываем текущий блок с кнопками
-    console.log(`No button found for message "${messageText}", showing error message`);
+    console.log(`No button found for message "${messageText}", showing current block`);
     if (currentBlockId) {
       const currentBlock = dialogMap.get(currentBlockId);
       if (currentBlock) {
         const { keyboard, inlineKeyboard } = createKeyboardWithBack(currentBlock.buttons, userId, currentBlockId);
         
-        await ctx.reply('❓ Я не понимаю эту команду. Пожалуйста, используйте кнопки ниже для навигации:', {
-          reply_markup: {
-            keyboard: keyboard,
-            resize_keyboard: true
-          }
-        });
+        // Показываем текущий блок без сообщения об ошибке
+        await sendMediaMessage(ctx, currentBlock.message, currentBlock.mediaFiles, keyboard, inlineKeyboard);
         return;
       }
     }
