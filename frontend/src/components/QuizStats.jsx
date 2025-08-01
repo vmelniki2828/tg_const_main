@@ -340,40 +340,41 @@ const QuizStats = ({ blocks, onClose }) => {
                               } else {
                                 console.log(`📊 Отображаем ${quizStats.userAttempts.length} попыток`);
                                 return (
-                              <div className="attempts-list">
-                                {quizStats.userAttempts.map((attempt, index) => (
-                                  <div key={index} className={`attempt-item ${attempt.success ? 'success' : 'failed'}`}>
-                                    <div className="attempt-header">
-                                      <span className="user-name">
-                                        {attempt.userName || `Пользователь ${attempt.userId}`}
-                                      </span>
-                                      <span className={`attempt-status ${attempt.success ? 'success' : 'failed'}`}>
-                                        {attempt.success ? '✅ Успешно' : '❌ Неудачно'}
-                                      </span>
-                                    </div>
-                                    <div className="attempt-details">
-                                      <span className="attempt-date">
-                                        {formatDate(attempt.timestamp)}
-                                      </span>
-                                      {attempt.score !== undefined && (
-                                        <span className="attempt-score">
-                                          Баллов: {attempt.score}/{selectedQuiz.questions?.length || 0}
-                                        </span>
-                                      )}
-                                      {attempt.duration && (
-                                        <span className="attempt-duration">
-                                          Время: {Math.round(attempt.duration / 1000)}с
-                                        </span>
-                                      )}
-                                      {attempt.promoCode && (
-                                        <span className="attempt-promocode">
-                                          🎁 Промокод: {attempt.promoCode}
-                                        </span>
-                                      )}
-                                    </div>
+                                  <div className="attempts-list">
+                                    {quizStats.userAttempts.map((attempt, index) => (
+                                      <div key={index} className={`attempt-item ${attempt.success ? 'success' : 'failed'}`}>
+                                        <div className="attempt-header">
+                                          <span className="user-name">
+                                            {attempt.userName || `Пользователь ${attempt.userId}`}
+                                          </span>
+                                          <span className={`attempt-status ${attempt.success ? 'success' : 'failed'}`}>
+                                            {attempt.success ? '✅ Успешно' : '❌ Неудачно'}
+                                          </span>
+                                        </div>
+                                        <div className="attempt-details">
+                                          <span className="attempt-date">
+                                            {formatDate(attempt.timestamp)}
+                                          </span>
+                                          {attempt.score !== undefined && (
+                                            <span className="attempt-score">
+                                              Баллов: {attempt.score}/{selectedQuiz.questions?.length || 0}
+                                            </span>
+                                          )}
+                                          {attempt.duration && (
+                                            <span className="attempt-duration">
+                                              Время: {Math.round(attempt.duration / 1000)}с
+                                            </span>
+                                          )}
+                                          {attempt.promoCode && (
+                                            <span className="attempt-promocode">
+                                              🎁 Промокод: {attempt.promoCode}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
-                                ))}
-                                                              </div>
+                                );
                               );
                             })()}
                           </>
