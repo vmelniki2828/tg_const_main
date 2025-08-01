@@ -206,11 +206,19 @@ function setupBotHandlers(bot, blocks, connections) {
     const keyboard = [];
     const inlineKeyboard = [];
     
-    // Добавляем кнопки
+    // Добавляем кнопки по 2 в ряд
     if (buttons && buttons.length > 0) {
-      buttons.forEach(btn => {
-        keyboard.push([{ text: btn.text }]);
-      });
+      for (let i = 0; i < buttons.length; i += 2) {
+        const row = [];
+        row.push({ text: buttons[i].text });
+        
+        // Добавляем вторую кнопку в ряд, если она есть
+        if (i + 1 < buttons.length) {
+          row.push({ text: buttons[i + 1].text });
+        }
+        
+        keyboard.push(row);
+      }
     }
     
     // Добавляем кнопку "Назад" если это не стартовый блок и не квиз
@@ -360,7 +368,20 @@ function setupBotHandlers(bot, blocks, connections) {
               userQuizStates.set(userId, userQuizState);
               
               const nextQuestion = currentBlock.questions[userQuizState.currentQuestionIndex];
-              const keyboard = nextQuestion.buttons.map(btn => [{ text: btn.text }]);
+              
+              // Создаем клавиатуру по 2 кнопки в ряд для квиза
+              const keyboard = [];
+              for (let i = 0; i < nextQuestion.buttons.length; i += 2) {
+                const row = [];
+                row.push({ text: nextQuestion.buttons[i].text });
+                
+                // Добавляем вторую кнопку в ряд, если она есть
+                if (i + 1 < nextQuestion.buttons.length) {
+                  row.push({ text: nextQuestion.buttons[i + 1].text });
+                }
+                
+                keyboard.push(row);
+              }
               
               await sendMediaMessage(ctx, nextQuestion.message, nextQuestion.mediaFiles || [], keyboard, []);
               return;
@@ -553,7 +574,20 @@ function setupBotHandlers(bot, blocks, connections) {
               // Отправляем первый вопрос квиза с медиафайлами
               const firstQuestion = nextBlockData.questions[0];
               if (firstQuestion) {
-                const keyboard = firstQuestion.buttons.map(btn => [{ text: btn.text }]);
+                // Создаем клавиатуру по 2 кнопки в ряд для квиза
+                const keyboard = [];
+                for (let i = 0; i < firstQuestion.buttons.length; i += 2) {
+                  const row = [];
+                  row.push({ text: firstQuestion.buttons[i].text });
+                  
+                  // Добавляем вторую кнопку в ряд, если она есть
+                  if (i + 1 < firstQuestion.buttons.length) {
+                    row.push({ text: firstQuestion.buttons[i + 1].text });
+                  }
+                  
+                  keyboard.push(row);
+                }
+                
                 console.log('Sending first quiz question:', firstQuestion.message, 'with mediaFiles:', firstQuestion.mediaFiles);
                 await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles || [], keyboard, []);
                 return;
@@ -623,7 +657,20 @@ function setupBotHandlers(bot, blocks, connections) {
               // Отправляем первый вопрос квиза с медиафайлами
               const firstQuestion = nextBlockData.questions[0];
               if (firstQuestion) {
-                const keyboard = firstQuestion.buttons.map(btn => [{ text: btn.text }]);
+                // Создаем клавиатуру по 2 кнопки в ряд для квиза
+                const keyboard = [];
+                for (let i = 0; i < firstQuestion.buttons.length; i += 2) {
+                  const row = [];
+                  row.push({ text: firstQuestion.buttons[i].text });
+                  
+                  // Добавляем вторую кнопку в ряд, если она есть
+                  if (i + 1 < firstQuestion.buttons.length) {
+                    row.push({ text: firstQuestion.buttons[i + 1].text });
+                  }
+                  
+                  keyboard.push(row);
+                }
+                
                 console.log('Sending first quiz question (fallback):', firstQuestion.message, 'with mediaFiles:', firstQuestion.mediaFiles);
                 await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles || [], keyboard, []);
                 return;
