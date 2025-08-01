@@ -534,6 +534,32 @@ function setupBotHandlers(bot, blocks, connections) {
             // Обновляем текущий блок пользователя
             userCurrentBlock.set(userId, nextBlockId);
             
+            // Специальная обработка для квизов
+            const nextBlockData = blocks.find(b => b.id === nextBlockId);
+            if (nextBlockData && nextBlockData.type === 'quiz') {
+              console.log('Transitioning to quiz block:', nextBlockId);
+              
+              // Очищаем историю навигации для квиза
+              userNavigationHistory.delete(userId);
+              
+              // Инициализируем состояние квиза
+              const quizState = {
+                currentQuestionIndex: 0,
+                answers: [],
+                startTime: Date.now()
+              };
+              userQuizStates.set(userId, quizState);
+              
+              // Отправляем первый вопрос квиза с медиафайлами
+              const firstQuestion = nextBlockData.questions[0];
+              if (firstQuestion) {
+                const keyboard = firstQuestion.buttons.map(btn => [{ text: btn.text }]);
+                console.log('Sending first quiz question:', firstQuestion.message, 'with mediaFiles:', firstQuestion.mediaFiles);
+                await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles || [], keyboard, []);
+                return;
+              }
+            }
+            
             const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
             
             await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
@@ -577,6 +603,32 @@ function setupBotHandlers(bot, blocks, connections) {
             
             // Обновляем текущий блок пользователя
             userCurrentBlock.set(userId, nextBlockId);
+            
+            // Специальная обработка для квизов
+            const nextBlockData = blocks.find(b => b.id === nextBlockId);
+            if (nextBlockData && nextBlockData.type === 'quiz') {
+              console.log('Transitioning to quiz block (fallback):', nextBlockId);
+              
+              // Очищаем историю навигации для квиза
+              userNavigationHistory.delete(userId);
+              
+              // Инициализируем состояние квиза
+              const quizState = {
+                currentQuestionIndex: 0,
+                answers: [],
+                startTime: Date.now()
+              };
+              userQuizStates.set(userId, quizState);
+              
+              // Отправляем первый вопрос квиза с медиафайлами
+              const firstQuestion = nextBlockData.questions[0];
+              if (firstQuestion) {
+                const keyboard = firstQuestion.buttons.map(btn => [{ text: btn.text }]);
+                console.log('Sending first quiz question (fallback):', firstQuestion.message, 'with mediaFiles:', firstQuestion.mediaFiles);
+                await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles || [], keyboard, []);
+                return;
+              }
+            }
             
             const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
             
