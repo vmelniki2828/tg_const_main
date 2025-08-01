@@ -1,4 +1,5 @@
 const { Telegraf } = require('telegraf');
+const fetch = require('node-fetch');
 
 // Получаем параметры из аргументов командной строки
 const [token, stateJson] = process.argv.slice(2);
@@ -486,6 +487,25 @@ function setupBotHandlers(bot, blocks, connections) {
                   
                   const statsJson = JSON.stringify(stats, null, 2);
                   fs.writeFileSync(statsPath, statsJson);
+                  
+                  // Отправляем статистику через API для синхронизации
+                  try {
+                    const response = await fetch('http://localhost:3001/api/quiz-stats', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(stats)
+                    });
+                    
+                    if (response.ok) {
+                      console.log(`Quiz stats saved via API for block ${currentBlock.id}`);
+                    } else {
+                      console.error(`Failed to save quiz stats via API: ${response.status}`);
+                    }
+                  } catch (apiError) {
+                    console.error('Error saving quiz stats via API:', apiError);
+                  }
                   
                   console.log(`Quiz stats saved successfully for block ${currentBlock.id}`);
                 } catch (error) {
