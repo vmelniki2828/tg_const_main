@@ -425,14 +425,54 @@ function setupBotHandlers(bot, blocks, connections) {
                 resultMessage += `❌ ${currentBlock.finalFailureMessage || 'К сожалению, вы не прошли квиз. Нужно ответить правильно на все вопросы.'}\n`;
               }
               
-              // Асинхронно сохраняем статистику через API
+              // Асинхронно сохраняем статистику напрямую в файл
               setImmediate(async () => {
                 try {
-                  const https = require('https');
-                  const http = require('http');
+                  const fs = require('fs');
+                  const path = require('path');
+                  const statsPath = path.join(__dirname, 'quizStats.json');
                   
                   console.log(`Saving quiz stats for block ${currentBlock.id}, user ${userId}`);
+                  console.log(`Stats file path: ${statsPath}`);
                   
+                  // Читаем существующую статистику
+                  let stats = {};
+                  if (fs.existsSync(statsPath)) {
+                    try {
+                      const fileContent = fs.readFileSync(statsPath, 'utf8');
+                      if (fileContent.trim()) {
+                        stats = JSON.parse(fileContent);
+                        console.log(`Loaded existing stats for ${Object.keys(stats).length} quizzes`);
+                      }
+                    } catch (parseError) {
+                      console.error('Error parsing existing stats file:', parseError);
+                      stats = {};
+                    }
+                  } else {
+                    console.log('Stats file does not exist, creating new one');
+                  }
+                  
+                  // Инициализируем статистику для квиза если её нет
+                  if (!stats[currentBlock.id]) {
+                    stats[currentBlock.id] = {
+                      totalAttempts: 0,
+                      successfulCompletions: 0,
+                      failedAttempts: 0,
+                      userAttempts: []
+                    };
+                    console.log(`Initialized stats for quiz ${currentBlock.id}`);
+                  }
+                  
+                  const quizStats = stats[currentBlock.id];
+                  quizStats.totalAttempts++;
+                  
+                  if (isSuccessful) {
+                    quizStats.successfulCompletions++;
+                  } else {
+                    quizStats.failedAttempts++;
+                  }
+                  
+                  // Создаем объект попытки пользователя
                   const userAttempt = {
                     userId: userId,
                     userName: ctx.from.first_name || ctx.from.username || `User ${userId}`,
@@ -447,41 +487,23 @@ function setupBotHandlers(bot, blocks, connections) {
                     answers: userQuizState.answers
                   };
                   
-                  // Отправляем данные через API
-                  const postData = JSON.stringify({
-                    quizId: currentBlock.id,
-                    userAttempt: userAttempt
-                  });
+                  // Добавляем попытку пользователя
+                  quizStats.userAttempts.push(userAttempt);
                   
-                  const options = {
-                    hostname: 'localhost',
-                    port: 3001,
-                    path: '/api/quiz-stats',
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Content-Length': Buffer.byteLength(postData)
-                    }
-                  };
+                  // Ограничиваем количество попыток в истории (максимум 1000)
+                  if (quizStats.userAttempts.length > 1000) {
+                    quizStats.userAttempts = quizStats.userAttempts.slice(-1000);
+                  }
                   
-                  const req = http.request(options, (res) => {
-                    let data = '';
-                    res.on('data', (chunk) => {
-                      data += chunk;
-                    });
-                    res.on('end', () => {
-                      console.log(`Quiz stats saved successfully for block ${currentBlock.id} via API`);
-                      console.log('API response:', data);
-                    });
-                  });
+                  // Сохраняем в файл
+                  const statsJson = JSON.stringify(stats, null, 2);
+                  fs.writeFileSync(statsPath, statsJson);
                   
-                  req.on('error', (error) => {
-                    console.error('Error saving quiz stats via API:', error);
-                    console.error('Error details:', error.stack);
-                  });
-                  
-                  req.write(postData);
-                  req.end();
+                  console.log(`Quiz stats saved successfully for block ${currentBlock.id}`);
+                  console.log(`User ${userAttempt.userName} (${userId}) attempt recorded`);
+                  console.log(`Total attempts for this quiz: ${quizStats.totalAttempts}`);
+                  console.log(`Successful completions: ${quizStats.successfulCompletions}`);
+                  console.log(`Failed attempts: ${quizStats.failedAttempts}`);
                   
                 } catch (error) {
                   console.error('Error saving quiz stats:', error);
