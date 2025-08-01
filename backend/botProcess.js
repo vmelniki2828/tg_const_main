@@ -343,6 +343,13 @@ function setupBotHandlers(bot, blocks, connections) {
       const currentBlock = blocks.find(b => b.id === currentBlockId);
       
       if (currentBlock && currentBlock.type === 'quiz') {
+        // Проверяем, не прошел ли пользователь уже этот квиз
+        const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
+        if (userCompletedQuizzes.has(currentBlock.id)) {
+          await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+          return;
+        }
+        
         const userQuizState = userQuizStates.get(userId) || {
           currentQuestionIndex: 0,
           answers: [],
@@ -425,91 +432,89 @@ function setupBotHandlers(bot, blocks, connections) {
                 resultMessage += `❌ ${currentBlock.finalFailureMessage || 'К сожалению, вы не прошли квиз. Нужно ответить правильно на все вопросы.'}\n`;
               }
               
-              // Асинхронно сохраняем статистику напрямую в файл
-              setImmediate(async () => {
-                try {
-                  const fs = require('fs');
-                  const path = require('path');
-                  const statsPath = path.join(__dirname, 'quizStats.json');
-                  
-                  console.log(`Saving quiz stats for block ${currentBlock.id}, user ${userId}`);
-                  console.log(`Stats file path: ${statsPath}`);
-                  
-                  // Читаем существующую статистику
-                  let stats = {};
-                  if (fs.existsSync(statsPath)) {
-                    try {
-                      const fileContent = fs.readFileSync(statsPath, 'utf8');
-                      if (fileContent.trim()) {
-                        stats = JSON.parse(fileContent);
-                        console.log(`Loaded existing stats for ${Object.keys(stats).length} quizzes`);
-                      }
-                    } catch (parseError) {
-                      console.error('Error parsing existing stats file:', parseError);
-                      stats = {};
+              // Синхронно сохраняем статистику напрямую в файл
+              try {
+                const fs = require('fs');
+                const path = require('path');
+                const statsPath = path.join(__dirname, 'quizStats.json');
+                
+                console.log(`Saving quiz stats for block ${currentBlock.id}, user ${userId}`);
+                console.log(`Stats file path: ${statsPath}`);
+                
+                // Читаем существующую статистику
+                let stats = {};
+                if (fs.existsSync(statsPath)) {
+                  try {
+                    const fileContent = fs.readFileSync(statsPath, 'utf8');
+                    if (fileContent.trim()) {
+                      stats = JSON.parse(fileContent);
+                      console.log(`Loaded existing stats for ${Object.keys(stats).length} quizzes`);
                     }
-                  } else {
-                    console.log('Stats file does not exist, creating new one');
+                  } catch (parseError) {
+                    console.error('Error parsing existing stats file:', parseError);
+                    stats = {};
                   }
-                  
-                  // Инициализируем статистику для квиза если её нет
-                  if (!stats[currentBlock.id]) {
-                    stats[currentBlock.id] = {
-                      totalAttempts: 0,
-                      successfulCompletions: 0,
-                      failedAttempts: 0,
-                      userAttempts: []
-                    };
-                    console.log(`Initialized stats for quiz ${currentBlock.id}`);
-                  }
-                  
-                  const quizStats = stats[currentBlock.id];
-                  quizStats.totalAttempts++;
-                  
-                  if (isSuccessful) {
-                    quizStats.successfulCompletions++;
-                  } else {
-                    quizStats.failedAttempts++;
-                  }
-                  
-                  // Создаем объект попытки пользователя
-                  const userAttempt = {
-                    userId: userId,
-                    userName: ctx.from.first_name || ctx.from.username || `User ${userId}`,
-                    userLastName: ctx.from.last_name || '',
-                    username: ctx.from.username || '',
-                    timestamp: Date.now(),
-                    success: isSuccessful,
-                    score: correctAnswers,
-                    totalQuestions: totalQuestions,
-                    successRate: successRate,
-                    duration: Date.now() - userQuizState.startTime,
-                    answers: userQuizState.answers
-                  };
-                  
-                  // Добавляем попытку пользователя
-                  quizStats.userAttempts.push(userAttempt);
-                  
-                  // Ограничиваем количество попыток в истории (максимум 1000)
-                  if (quizStats.userAttempts.length > 1000) {
-                    quizStats.userAttempts = quizStats.userAttempts.slice(-1000);
-                  }
-                  
-                  // Сохраняем в файл
-                  const statsJson = JSON.stringify(stats, null, 2);
-                  fs.writeFileSync(statsPath, statsJson);
-                  
-                  console.log(`Quiz stats saved successfully for block ${currentBlock.id}`);
-                  console.log(`User ${userAttempt.userName} (${userId}) attempt recorded`);
-                  console.log(`Total attempts for this quiz: ${quizStats.totalAttempts}`);
-                  console.log(`Successful completions: ${quizStats.successfulCompletions}`);
-                  console.log(`Failed attempts: ${quizStats.failedAttempts}`);
-                  
-                } catch (error) {
-                  console.error('Error saving quiz stats:', error);
-                  console.error('Error details:', error.stack);
+                } else {
+                  console.log('Stats file does not exist, creating new one');
                 }
-              });
+                
+                // Инициализируем статистику для квиза если её нет
+                if (!stats[currentBlock.id]) {
+                  stats[currentBlock.id] = {
+                    totalAttempts: 0,
+                    successfulCompletions: 0,
+                    failedAttempts: 0,
+                    userAttempts: []
+                  };
+                  console.log(`Initialized stats for quiz ${currentBlock.id}`);
+                }
+                
+                const quizStats = stats[currentBlock.id];
+                quizStats.totalAttempts++;
+                
+                if (isSuccessful) {
+                  quizStats.successfulCompletions++;
+                } else {
+                  quizStats.failedAttempts++;
+                }
+                
+                // Создаем объект попытки пользователя
+                const userAttempt = {
+                  userId: userId,
+                  userName: ctx.from.first_name || ctx.from.username || `User ${userId}`,
+                  userLastName: ctx.from.last_name || '',
+                  username: ctx.from.username || '',
+                  timestamp: Date.now(),
+                  success: isSuccessful,
+                  score: correctAnswers,
+                  totalQuestions: totalQuestions,
+                  successRate: successRate,
+                  duration: Date.now() - userQuizState.startTime,
+                  answers: userQuizState.answers
+                };
+                
+                // Добавляем попытку пользователя
+                quizStats.userAttempts.push(userAttempt);
+                
+                // Ограничиваем количество попыток в истории (максимум 1000)
+                if (quizStats.userAttempts.length > 1000) {
+                  quizStats.userAttempts = quizStats.userAttempts.slice(-1000);
+                }
+                
+                // Сохраняем в файл
+                const statsJson = JSON.stringify(stats, null, 2);
+                fs.writeFileSync(statsPath, statsJson);
+                
+                console.log(`Quiz stats saved successfully for block ${currentBlock.id}`);
+                console.log(`User ${userAttempt.userName} (${userId}) attempt recorded`);
+                console.log(`Total attempts for this quiz: ${quizStats.totalAttempts}`);
+                console.log(`Successful completions: ${quizStats.successfulCompletions}`);
+                console.log(`Failed attempts: ${quizStats.failedAttempts}`);
+                
+              } catch (error) {
+                console.error('Error saving quiz stats:', error);
+                console.error('Error details:', error.stack);
+              }
               
               // Отмечаем квиз как завершенный для этого пользователя
               let userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
@@ -597,6 +602,13 @@ function setupBotHandlers(bot, blocks, connections) {
             if (nextBlockData && nextBlockData.type === 'quiz') {
               console.log('Transitioning to quiz block:', nextBlockId);
               
+              // Проверяем, не прошел ли пользователь уже этот квиз
+              const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
+              if (userCompletedQuizzes.has(nextBlockId)) {
+                await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+                return;
+              }
+              
               // Очищаем историю навигации для квиза
               userNavigationHistory.delete(userId);
               
@@ -679,6 +691,13 @@ function setupBotHandlers(bot, blocks, connections) {
             const nextBlockData = blocks.find(b => b.id === nextBlockId);
             if (nextBlockData && nextBlockData.type === 'quiz') {
               console.log('Transitioning to quiz block (fallback):', nextBlockId);
+              
+              // Проверяем, не прошел ли пользователь уже этот квиз
+              const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
+              if (userCompletedQuizzes.has(nextBlockId)) {
+                await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+                return;
+              }
               
               // Очищаем историю навигации для квиза
               userNavigationHistory.delete(userId);
