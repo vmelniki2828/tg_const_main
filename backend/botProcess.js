@@ -298,8 +298,15 @@ function setupBotHandlers(bot, blocks, connections) {
     const userId = ctx.from.id;
     let currentBlockId = userCurrentBlock.get(userId);
     
+    console.log(`Received message: "${messageText}" from user ${userId} in block ${currentBlockId}`);
+    
     // Игнорируем очень короткие сообщения (менее 1 символа)
     if (messageText.length < 1) {
+      return;
+    }
+    
+    // Игнорируем команды, которые обрабатываются отдельно
+    if (messageText.startsWith('/')) {
       return;
     }
     
@@ -580,22 +587,9 @@ function setupBotHandlers(bot, blocks, connections) {
       }
     }
     
-    // Если не найдено соответствие, показываем текущий блок с кнопками
-    console.log(`No button found for message "${messageText}", showing current block`);
-    if (currentBlockId) {
-      const currentBlock = dialogMap.get(currentBlockId);
-      if (currentBlock) {
-        const { keyboard, inlineKeyboard } = createKeyboardWithBack(currentBlock.buttons, userId, currentBlockId);
-        
-        // Показываем текущий блок без сообщения об ошибке
-        await sendMediaMessage(ctx, currentBlock.message, currentBlock.mediaFiles, keyboard, inlineKeyboard);
-        return;
-      }
-    }
-    
-    // Если не можем показать текущий блок, отправляем общее сообщение
-    console.log(`Sending general error message for unknown command: "${messageText}"`);
-    await ctx.reply('❓ Неизвестная команда. Пожалуйста, используйте кнопки для навигации.');
+    // Если не найдено соответствие, игнорируем сообщение
+    console.log(`No button found for message "${messageText}", ignoring`);
+    return;
   });
 }
 
