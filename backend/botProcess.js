@@ -298,8 +298,8 @@ function setupBotHandlers(bot, blocks, connections) {
     const userId = ctx.from.id;
     let currentBlockId = userCurrentBlock.get(userId);
     
-    // Игнорируем очень короткие сообщения (менее 2 символов)
-    if (messageText.length < 2) {
+    // Игнорируем очень короткие сообщения (менее 1 символа)
+    if (messageText.length < 1) {
       return;
     }
     
@@ -493,6 +493,9 @@ function setupBotHandlers(bot, blocks, connections) {
     if (currentBlockId) {
       const currentBlock = blocks.find(b => b.id === currentBlockId);
       if (currentBlock) {
+        console.log(`Processing message "${messageText}" in block ${currentBlockId}`);
+        console.log(`Available buttons:`, currentBlock.buttons?.map(b => ({ text: b.text, url: b.url })));
+        
         const button = (currentBlock.buttons || []).find(btn => btn.text === messageText);
         if (button) {
           console.log(`Found button "${messageText}" in current block ${currentBlockId}`);
@@ -507,6 +510,7 @@ function setupBotHandlers(bot, blocks, connections) {
                 inline_keyboard: [[{ text: button.text, url: button.url.trim() }]]
               }
             });
+            console.log(`Link button processed successfully, returning`);
             return;
           }
           
@@ -533,6 +537,7 @@ function setupBotHandlers(bot, blocks, connections) {
     
     // Если не нашли в текущем блоке, ищем во всех блоках (fallback)
     if (!found) {
+      console.log(`Button not found in current block, searching in all blocks...`);
       for (const block of blocks) {
         const button = (block.buttons || []).find(btn => btn.text === messageText);
         if (button) {
@@ -548,6 +553,7 @@ function setupBotHandlers(bot, blocks, connections) {
                 inline_keyboard: [[{ text: button.text, url: button.url.trim() }]]
               }
             });
+            console.log(`Link button processed successfully in fallback, returning`);
             return;
           }
           
@@ -573,6 +579,7 @@ function setupBotHandlers(bot, blocks, connections) {
     }
     
     // Если не найдено соответствие, показываем текущий блок с кнопками
+    console.log(`No button found for message "${messageText}", showing error message`);
     if (currentBlockId) {
       const currentBlock = dialogMap.get(currentBlockId);
       if (currentBlock) {
@@ -589,6 +596,7 @@ function setupBotHandlers(bot, blocks, connections) {
     }
     
     // Если не можем показать текущий блок, отправляем общее сообщение
+    console.log(`Sending general error message for unknown command: "${messageText}"`);
     await ctx.reply('❓ Неизвестная команда. Пожалуйста, используйте кнопки для навигации.');
   });
 }
