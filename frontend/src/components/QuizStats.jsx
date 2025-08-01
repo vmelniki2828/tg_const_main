@@ -20,6 +20,7 @@ const QuizStats = ({ blocks, onClose }) => {
   const fetchStats = async () => {
     try {
       setError(null); // Сбрасываем ошибку при новой попытке
+      console.log('📊 Загружаем статистику квизов...');
       const response = await fetch(`${config.API_BASE_URL}/api/quiz-stats`);
       
       if (!response.ok) {
@@ -27,6 +28,19 @@ const QuizStats = ({ blocks, onClose }) => {
       }
       
       const data = await response.json();
+      console.log('📊 Получены данные статистики:', data);
+      console.log('📊 Ключи квизов:', Object.keys(data));
+      
+      // Подробная информация о каждом квизе
+      Object.keys(data).forEach(quizId => {
+        const quizStats = data[quizId];
+        console.log(`📊 Квиз ${quizId}:`);
+        console.log(`   - Попыток: ${quizStats.totalAttempts}`);
+        console.log(`   - Успешных: ${quizStats.successfulCompletions}`);
+        console.log(`   - Неудачных: ${quizStats.failedAttempts}`);
+        console.log(`   - Попыток пользователей: ${quizStats.userAttempts?.length || 0}`);
+      });
+      
       setStats(data);
       
       // Загружаем статистику промокодов для всех квизов
@@ -315,9 +329,17 @@ const QuizStats = ({ blocks, onClose }) => {
                         </div>
                         {!collapsedSections.userAttempts && (
                           <>
-                            {quizStats.userAttempts.length === 0 ? (
-                              <p className="no-attempts">Пока нет попыток прохождения</p>
-                            ) : (
+                            {(() => {
+                              console.log('📊 Отображаем попытки для квиза:', selectedQuiz.id);
+                              console.log('📊 Статистика квиза:', quizStats);
+                              console.log('📊 Попытки пользователей:', quizStats.userAttempts);
+                              
+                              if (!quizStats.userAttempts || quizStats.userAttempts.length === 0) {
+                                console.log('📊 Нет попыток для отображения');
+                                return <p className="no-attempts">Пока нет попыток прохождения</p>;
+                              } else {
+                                console.log(`📊 Отображаем ${quizStats.userAttempts.length} попыток`);
+                                return (
                               <div className="attempts-list">
                                 {quizStats.userAttempts.map((attempt, index) => (
                                   <div key={index} className={`attempt-item ${attempt.success ? 'success' : 'failed'}`}>
@@ -351,8 +373,9 @@ const QuizStats = ({ blocks, onClose }) => {
                                     </div>
                                   </div>
                                 ))}
-                              </div>
-                            )}
+                                                              </div>
+                              );
+                            })()}
                           </>
                         )}
                       </div>
