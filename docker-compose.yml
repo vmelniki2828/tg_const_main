@@ -15,7 +15,6 @@ services:
       - ./backend/uploads:/app/backend/uploads
       - ./backend/promocodes:/app/backend/promocodes
       - ./backend/state.json:/app/backend/state.json
-      - ./backend/quizStats.json:/app/backend/quizStats.json
       - ./backend/editorState.json:/app/backend/editorState.json
     restart: unless-stopped
 
