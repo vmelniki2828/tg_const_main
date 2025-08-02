@@ -884,20 +884,35 @@ app.post('/api/export-quiz-stats', async (req, res) => {
     
     // Таблица 3: Попытки пользователей
     csvLines.push('ПОПЫТКИ ПОЛЬЗОВАТЕЛЕЙ');
-    csvLines.push('ID квиза,Название квиза,ID пользователя,Имя пользователя,Дата попытки,Результат,Баллы,Время прохождения (сек),Полученный промокод');
+    csvLines.push('ID квиза,Название квиза,ID пользователя,Имя пользователя,Фамилия пользователя,Username,Дата попытки,Результат,Баллы,Процент успешности,Время прохождения (сек),Полученный промокод,Ответы пользователя');
     
     blocks.forEach(quiz => {
       const quizStats = stats[quiz.id] || { userAttempts: [] };
       
       quizStats.userAttempts.forEach(attempt => {
+        // Формируем строку с ответами пользователя
+        const answersString = attempt.answers ? 
+          attempt.answers.map((answer, index) => 
+            `Вопрос ${index + 1}: ${answer.selectedAnswer} (${answer.isCorrect ? 'Правильно' : 'Неправильно'})`
+          ).join('; ') : '';
+        
         csvLines.push([
           quiz.id,
           quiz.message || `Квиз ${quiz.id}`,
           attempt.userId,
           attempt.userName || `Пользователь ${attempt.userId}`,
+          attempt.userLastName || '',
+          attempt.username ? `@${attempt.username}` : '',
           new Date(attempt.timestamp).toLocaleString('ru-RU'),
           attempt.success ? 'Успешно' : 'Неудачно',
           attempt.score !== undefined ? `${attempt.score}/${quiz.questions?.length || 0}` : '',
+          attempt.successRate ? `${attempt.successRate.toFixed(1)}%` : '',
+          attempt.duration ? Math.round(attempt.duration / 1000) : '',
+          attempt.promoCode || '',
+          answersString
+        ].map(escapeCsvValue).join(','));
+      });
+    });
           attempt.duration ? Math.round(attempt.duration / 1000) : '',
           attempt.promoCode || ''
         ].map(escapeCsvValue).join(','));

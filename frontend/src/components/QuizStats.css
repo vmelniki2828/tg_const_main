@@ -594,4 +594,528 @@
   .promocodes-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Стили для новой таблицы статистики */
+.attempts-summary {
+  display: flex;
+  justify-content: space-around;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid #e0e0e0;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.summary-label {
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.summary-value {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #333;
+}
+
+.attempts-table {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.table-header {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 0.8fr 1fr;
+  background: #f8f9fa;
+  border-bottom: 2px solid #e0e0e0;
+  font-weight: bold;
+  color: #333;
+}
+
+.header-cell {
+  padding: 12px 16px;
+  border-right: 1px solid #e0e0e0;
+  font-size: 0.9rem;
+}
+
+.header-cell:last-child {
+  border-right: none;
+}
+
+.table-row {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 0.8fr 1fr;
+  border-bottom: 1px solid #e0e0e0;
+  transition: background-color 0.2s;
+}
+
+.table-row:hover {
+  background: #f8f9fa;
+}
+
+.table-row.success {
+  background: #f8fff9;
+}
+
+.table-row.failed {
+  background: #fff8f8;
+}
+
+.table-row:last-child {
+  border-bottom: none;
+}
+
+.table-cell {
+  padding: 12px 16px;
+  border-right: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.table-cell:last-child {
+  border-right: none;
+}
+
+.user-info {
+  gap: 2px;
+}
+
+.user-name {
+  font-weight: bold;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.user-lastname {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.user-username {
+  color: #007bff;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.user-id {
+  color: #999;
+  font-size: 0.75rem;
+  font-family: monospace;
+}
+
+.result-info {
+  gap: 4px;
+}
+
+.result-status {
+  font-weight: bold;
+  font-size: 0.9rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.result-status.success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.result-status.failed {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.result-score {
+  font-size: 0.85rem;
+  color: #333;
+  font-weight: 500;
+}
+
+.result-rate {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.date-info {
+  justify-content: center;
+}
+
+.attempt-date {
+  font-size: 0.85rem;
+  color: #333;
+  text-align: center;
+}
+
+.duration-info {
+  justify-content: center;
+}
+
+.attempt-duration {
+  font-size: 0.85rem;
+  color: #333;
+  text-align: center;
+  font-weight: 500;
+}
+
+.no-duration {
+  font-size: 0.85rem;
+  color: #999;
+  text-align: center;
+  font-style: italic;
+}
+
+.promocode-info {
+  justify-content: center;
+}
+
+.promocode-received {
+  font-size: 0.85rem;
+  color: #155724;
+  background: #d4edda;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.no-promocode {
+  font-size: 0.85rem;
+  color: #999;
+  text-align: center;
+  font-style: italic;
+}
+
+/* Адаптивность для таблицы */
+@media (max-width: 768px) {
+  .attempts-summary {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .summary-item {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+  
+  .table-header,
+  .table-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  
+  .header-cell,
+  .table-cell {
+    border-right: none;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 8px 12px;
+  }
+  
+  .table-cell:last-child {
+    border-bottom: none;
+  }
+  
+  .user-info,
+  .result-info,
+  .date-info,
+  .duration-info,
+  .promocode-info {
+    gap: 2px;
+  }
+  
+  .user-name,
+  .user-lastname,
+  .user-username,
+  .user-id {
+    font-size: 0.9rem;
+  }
+}
+
+/* Стили для элементов управления */
+.attempts-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.search-box {
+  position: relative;
+  flex: 1;
+  max-width: 300px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 12px 8px 35px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.sort-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sort-controls label {
+  font-size: 0.9rem;
+  color: #666;
+  white-space: nowrap;
+}
+
+.sort-select {
+  padding: 6px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: #007bff;
+}
+
+/* Адаптивность для элементов управления */
+@media (max-width: 768px) {
+  .attempts-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  
+  .search-box {
+    max-width: none;
+  }
+  
+  .sort-controls {
+    justify-content: space-between;
+  }
+}
+
+/* Стили для модального окна с детальной информацией */
+.user-details-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  padding: 20px;
+}
+
+.user-details-content {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.user-details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #f8f9fa;
+}
+
+.user-details-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.3rem;
+}
+
+.user-details-body {
+  padding: 24px;
+  max-height: calc(90vh - 100px);
+  overflow-y: auto;
+}
+
+.user-info-section,
+.quiz-result-section,
+.answers-section {
+  margin-bottom: 24px;
+}
+
+.user-info-section h4,
+.quiz-result-section h4,
+.answers-section h4 {
+  margin: 0 0 16px 0;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.info-grid,
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.info-item,
+.result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.info-label,
+.result-label {
+  font-weight: 500;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.info-value,
+.result-value {
+  font-weight: bold;
+  color: #333;
+  font-size: 0.9rem;
+}
+
+.result-value.success {
+  color: #155724;
+}
+
+.result-value.failed {
+  color: #721c24;
+}
+
+.result-value.promocode {
+  color: #155724;
+  background: #d4edda;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.answers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.answer-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  background: white;
+  transition: border-color 0.2s;
+}
+
+.answer-item.correct {
+  border-left: 4px solid #28a745;
+  background: #f8fff9;
+}
+
+.answer-item.incorrect {
+  border-left: 4px solid #dc3545;
+  background: #fff8f8;
+}
+
+.answer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.question-number {
+  font-weight: bold;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.answer-status {
+  font-size: 0.85rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.answer-status.correct {
+  background: #d4edda;
+  color: #155724;
+}
+
+.answer-status.incorrect {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.answer-text {
+  font-size: 0.9rem;
+  color: #333;
+}
+
+/* Адаптивность для модального окна */
+@media (max-width: 768px) {
+  .user-details-modal {
+    padding: 10px;
+  }
+  
+  .user-details-content {
+    width: 95%;
+  }
+  
+  .user-details-body {
+    padding: 16px;
+  }
+  
+  .info-grid,
+  .result-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .info-item,
+  .result-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
 } 
