@@ -438,24 +438,29 @@ function setupBotHandlers(bot, blocks, connections) {
                 const path = require('path');
                 const statsPath = path.join(__dirname, 'quizStats.json');
                 
-                console.log(`Saving quiz stats for block ${currentBlock.id}, user ${userId}`);
-                console.log(`Stats file path: ${statsPath}`);
+                console.log(`📊 Saving quiz stats for block ${currentBlock.id}, user ${userId}`);
+                console.log(`📁 Stats file path: ${statsPath}`);
+                console.log(`🔍 File exists: ${fs.existsSync(statsPath)}`);
                 
                 // Читаем существующую статистику
                 let stats = {};
                 if (fs.existsSync(statsPath)) {
                   try {
                     const fileContent = fs.readFileSync(statsPath, 'utf8');
+                    console.log(`📄 File content length: ${fileContent.length} characters`);
                     if (fileContent.trim()) {
                       stats = JSON.parse(fileContent);
-                      console.log(`Loaded existing stats for ${Object.keys(stats).length} quizzes`);
+                      console.log(`✅ Loaded existing stats for ${Object.keys(stats).length} quizzes`);
+                    } else {
+                      console.log(`⚠️ File is empty, starting with empty stats`);
                     }
                   } catch (parseError) {
-                    console.error('Error parsing existing stats file:', parseError);
+                    console.error('❌ Error parsing existing stats file:', parseError);
+                    console.error('📄 File content:', fs.readFileSync(statsPath, 'utf8'));
                     stats = {};
                   }
                 } else {
-                  console.log('Stats file does not exist, creating new one');
+                  console.log('📝 Stats file does not exist, creating new one');
                 }
                 
                 // Инициализируем статистику для квиза если её нет
@@ -503,17 +508,36 @@ function setupBotHandlers(bot, blocks, connections) {
                 
                 // Сохраняем в файл
                 const statsJson = JSON.stringify(stats, null, 2);
+                console.log(`💾 Writing ${statsJson.length} characters to file`);
                 fs.writeFileSync(statsPath, statsJson);
                 
-                console.log(`Quiz stats saved successfully for block ${currentBlock.id}`);
-                console.log(`User ${userAttempt.userName} (${userId}) attempt recorded`);
-                console.log(`Total attempts for this quiz: ${quizStats.totalAttempts}`);
-                console.log(`Successful completions: ${quizStats.successfulCompletions}`);
-                console.log(`Failed attempts: ${quizStats.failedAttempts}`);
+                // Проверяем, что файл действительно записался
+                const verifyContent = fs.readFileSync(statsPath, 'utf8');
+                console.log(`✅ File written successfully, verification length: ${verifyContent.length}`);
+                
+                console.log(`🎉 Quiz stats saved successfully for block ${currentBlock.id}`);
+                console.log(`👤 User ${userAttempt.userName} (${userId}) attempt recorded`);
+                console.log(`📊 Total attempts for this quiz: ${quizStats.totalAttempts}`);
+                console.log(`✅ Successful completions: ${quizStats.successfulCompletions}`);
+                console.log(`❌ Failed attempts: ${quizStats.failedAttempts}`);
                 
               } catch (error) {
-                console.error('Error saving quiz stats:', error);
-                console.error('Error details:', error.stack);
+                console.error('❌ Error saving quiz stats:', error);
+                console.error('📄 Error details:', error.stack);
+                console.error('📁 Current directory:', __dirname);
+                console.error('🔍 File permissions check...');
+                try {
+                  const fs = require('fs');
+                  const statsPath = path.join(__dirname, 'quizStats.json');
+                  console.error(`📁 File exists: ${fs.existsSync(statsPath)}`);
+                  if (fs.existsSync(statsPath)) {
+                    const stats = fs.statSync(statsPath);
+                    console.error(`📄 File permissions: ${stats.mode.toString(8)}`);
+                    console.error(`📄 File size: ${stats.size} bytes`);
+                  }
+                } catch (permError) {
+                  console.error('❌ Error checking file permissions:', permError);
+                }
               }
               
               // Отмечаем квиз как завершенный для этого пользователя
