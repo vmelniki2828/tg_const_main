@@ -199,7 +199,8 @@ const QuizStats = ({ blocks, onClose }) => {
   const quizBlocks = getQuizBlocks();
 
   return (
-    <div className="quiz-stats-overlay">
+    <>
+      <div className="quiz-stats-overlay">
       <div className="quiz-stats-modal">
         <div className="quiz-stats-header">
           <h2>📊 Статистика квизов</h2>
@@ -401,7 +402,6 @@ const QuizStats = ({ blocks, onClose }) => {
                                 </select>
                               </div>
                             </div>
-                          <>
                             {(() => {
                               console.log('📊 Отображаем попытки для квиза:', selectedQuiz.id);
                               console.log('📊 Статистика квиза:', quizStats);
@@ -628,7 +628,8 @@ const QuizStats = ({ blocks, onClose }) => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 
