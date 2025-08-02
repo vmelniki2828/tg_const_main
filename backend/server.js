@@ -913,11 +913,6 @@ app.post('/api/export-quiz-stats', async (req, res) => {
         ].map(escapeCsvValue).join(','));
       });
     });
-          attempt.duration ? Math.round(attempt.duration / 1000) : '',
-          attempt.promoCode || ''
-        ].map(escapeCsvValue).join(','));
-      });
-    });
     
     csvLines.push(''); // Пустая строка для разделения таблиц
     
