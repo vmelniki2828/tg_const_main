@@ -528,6 +528,7 @@ function setupBotHandlers(bot, blocks, connections) {
                 console.error('🔍 File permissions check...');
                 try {
                   const fs = require('fs');
+                  const path = require('path');
                   const statsPath = path.join(__dirname, 'quizStats.json');
                   console.error(`📁 File exists: ${fs.existsSync(statsPath)}`);
                   if (fs.existsSync(statsPath)) {
