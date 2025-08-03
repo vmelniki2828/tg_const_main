@@ -345,37 +345,72 @@ function setupBotHandlers(bot, blocks, connections) {
       if (currentBlock && currentBlock.type === 'quiz') {
         // Проверяем, не прошел ли пользователь уже этот квиз
         const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
-                 if (userCompletedQuizzes.has(currentBlock.id)) {
-           await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
-           // Очищаем состояние квиза
-           userQuizStates.delete(userId);
-           // Возвращаем пользователя к предыдущему блоку из истории
-           const userHistory = userNavigationHistory.get(userId);
-           if (userHistory && userHistory.length > 0) {
-             const previousBlockId = userHistory[userHistory.length - 1];
-             userCurrentBlock.set(userId, previousBlockId);
-             const prevBlock = dialogMap.get(previousBlockId);
-             if (prevBlock) {
-               const { keyboard, inlineKeyboard } = createKeyboardWithBack(prevBlock.buttons, userId, previousBlockId);
-               await sendMediaMessage(ctx, prevBlock.message, prevBlock.mediaFiles, keyboard, inlineKeyboard);
-             }
-           } else {
-             // Если нет истории, возвращаемся к стартовому блоку
-             userCurrentBlock.set(userId, 'start');
-             const startBlock = dialogMap.get('start');
-             if (startBlock) {
-               const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-               await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-             }
-           }
-           return;
-         }
+        if (userCompletedQuizzes.has(currentBlock.id)) {
+          await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+          // Очищаем состояние квиза
+          userQuizStates.delete(userId);
+          // Возвращаем пользователя к предыдущему блоку из истории
+          const userHistory = userNavigationHistory.get(userId);
+          if (userHistory && userHistory.length > 0) {
+            const previousBlockId = userHistory[userHistory.length - 1];
+            userCurrentBlock.set(userId, previousBlockId);
+            const prevBlock = dialogMap.get(previousBlockId);
+            if (prevBlock) {
+              const { keyboard, inlineKeyboard } = createKeyboardWithBack(prevBlock.buttons, userId, previousBlockId);
+              await sendMediaMessage(ctx, prevBlock.message, prevBlock.mediaFiles, keyboard, inlineKeyboard);
+            }
+          } else {
+            // Если нет истории, возвращаемся к стартовому блоку
+            userCurrentBlock.set(userId, 'start');
+            const startBlock = dialogMap.get('start');
+            if (startBlock) {
+              const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+              await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+            }
+          }
+          return;
+        }
         
-        const userQuizState = userQuizStates.get(userId) || {
-          currentQuestionIndex: 0,
-          answers: [],
-          startTime: Date.now()
-        };
+        // Проверяем, есть ли состояние квиза для пользователя
+        const existingQuizState = userQuizStates.get(userId);
+        if (!existingQuizState) {
+          // Если нет состояния квиза, значит пользователь только что попал в квиз
+          // Инициализируем состояние квиза
+          const newQuizState = {
+            currentQuestionIndex: 0,
+            answers: [],
+            startTime: Date.now()
+          };
+          userQuizStates.set(userId, newQuizState);
+          
+          // Отправляем первый вопрос
+          const firstQuestion = currentBlock.questions[0];
+          if (firstQuestion) {
+            // Создаем клавиатуру по 2 кнопки в ряд для квиза
+            const keyboard = [];
+            for (let i = 0; i < firstQuestion.buttons.length; i += 2) {
+              const row = [];
+              row.push({ text: firstQuestion.buttons[i].text });
+              
+              // Добавляем вторую кнопку в ряд, если она есть
+              if (i + 1 < firstQuestion.buttons.length) {
+                row.push({ text: firstQuestion.buttons[i + 1].text });
+              }
+              
+              keyboard.push(row);
+            }
+            
+            await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles || [], keyboard, []);
+            return;
+          }
+        }
+        
+        // Получаем состояние квиза (оно уже должно существовать после инициализации выше)
+        const userQuizState = userQuizStates.get(userId);
+        if (!userQuizState) {
+          // Если по какой-то причине состояние квиза не найдено, игнорируем сообщение
+          return;
+        }
         
         const currentQuestion = currentBlock.questions[userQuizState.currentQuestionIndex];
         
