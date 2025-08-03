@@ -321,6 +321,27 @@ function setupBotHandlers(bot, blocks, connections) {
       return;
     }
     
+    // --- ВАЖНО: Проверка завершённости квиза в самом начале ---
+    if (currentBlockId) {
+      const currentBlock = blocks.find(b => b.id === currentBlockId);
+      if (currentBlock && currentBlock.type === 'quiz') {
+        const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
+        if (userCompletedQuizzes.has(currentBlock.id)) {
+          console.log(`🔍 DEBUG: User is in completed quiz block, redirecting to start`);
+          await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+          userQuizStates.delete(userId);
+          userCurrentBlock.set(userId, 'start');
+          const startBlock = dialogMap.get('start');
+          if (startBlock) {
+            const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+            await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+          }
+          return;
+        }
+      }
+    }
+    // --- конец проверки ---
+    
     // Обработка кнопки "Назад"
     if (messageText === '⬅️ Назад') {
       const userHistory = userNavigationHistory.get(userId);
@@ -347,23 +368,6 @@ function setupBotHandlers(bot, blocks, connections) {
       
       if (currentBlock && currentBlock.type === 'quiz') {
         console.log(`🔍 DEBUG: Processing quiz block: ${currentBlock.id}`);
-        // Проверяем, не прошел ли пользователь уже этот квиз
-        const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
-        console.log(`🔍 DEBUG: User completed quizzes for ${userId}: ${Array.from(userCompletedQuizzes)}`);
-        console.log(`🔍 DEBUG: Current block ID: ${currentBlock.id}`);
-        console.log(`🔍 DEBUG: Is current block completed: ${userCompletedQuizzes.has(currentBlock.id)}`);
-        
-        if (userCompletedQuizzes.has(currentBlock.id)) {
-          await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
-          userQuizStates.delete(userId);
-          userCurrentBlock.set(userId, 'start');
-          const startBlock = dialogMap.get('start');
-          if (startBlock) {
-            const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-            await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-          }
-          return;
-        }
         
         // Проверяем, есть ли состояние квиза для пользователя
         const existingQuizState = userQuizStates.get(userId);
