@@ -368,6 +368,8 @@ function setupBotHandlers(bot, blocks, connections) {
               await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
             }
           }
+          // Дополнительно очищаем состояние квиза и устанавливаем правильный блок
+          userQuizStates.delete(userId);
           return;
         }
         
@@ -708,6 +710,8 @@ function setupBotHandlers(bot, blocks, connections) {
                     await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
                   }
                 }
+                // Дополнительно очищаем состояние квиза и устанавливаем правильный блок
+                userQuizStates.delete(userId);
                 return;
               }
               
@@ -819,6 +823,8 @@ function setupBotHandlers(bot, blocks, connections) {
                     await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
                   }
                 }
+                // Дополнительно очищаем состояние квиза и устанавливаем правильный блок
+                userQuizStates.delete(userId);
                 return;
               }
               
