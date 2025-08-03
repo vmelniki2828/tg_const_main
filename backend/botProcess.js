@@ -361,8 +361,7 @@ function setupBotHandlers(bot, blocks, connections) {
       return;
     }
     
-    // Специальная обработка квизов
-    
+    // Специальная обработка квизов (только для незавершённых квизов)
     if (currentBlockId) {
       const currentBlock = blocks.find(b => b.id === currentBlockId);
       
@@ -596,10 +595,10 @@ function setupBotHandlers(bot, blocks, connections) {
                 }
               }
               
-                              console.log(`🔍 DEBUG: After stats saving, proceeding to quiz completion`);
-                console.log(`🔍 DEBUG: About to enter quiz completion block`);
-                
-                try {
+              console.log(`🔍 DEBUG: After stats saving, proceeding to quiz completion`);
+              console.log(`🔍 DEBUG: About to enter quiz completion block`);
+              
+              try {
                 // Отмечаем квиз как завершенный для этого пользователя
                 let userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
                 userCompletedQuizzes.add(currentBlock.id);
@@ -688,6 +687,7 @@ function setupBotHandlers(bot, blocks, connections) {
           // Если это обычная кнопка (не ссылка), переходим к следующему блоку
           const nextBlockId = connectionMap.get(`${currentBlockId}_${button.id}`);
           const nextBlockData = blocks.find(b => b.id === nextBlockId);
+          
           // --- ВАЖНО: Проверка завершённости квиза ДО изменения состояния ---
           if (nextBlockData && nextBlockData.type === 'quiz') {
             const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
@@ -704,6 +704,7 @@ function setupBotHandlers(bot, blocks, connections) {
             }
           }
           // --- конец блока проверки ---
+          
           if (nextBlockId && dialogMap.has(nextBlockId)) {
             const nextBlock = dialogMap.get(nextBlockId);
             
@@ -788,6 +789,7 @@ function setupBotHandlers(bot, blocks, connections) {
           // Если это обычная кнопка (не ссылка), переходим к следующему блоку
           const nextBlockId = connectionMap.get(`${block.id}_${button.id}`);
           const nextBlockData = blocks.find(b => b.id === nextBlockId);
+          
           // --- ВАЖНО: Проверка завершённости квиза ДО изменения состояния ---
           if (nextBlockData && nextBlockData.type === 'quiz') {
             const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
@@ -804,6 +806,7 @@ function setupBotHandlers(bot, blocks, connections) {
             }
           }
           // --- конец блока проверки ---
+          
           if (nextBlockId && dialogMap.has(nextBlockId)) {
             const nextBlock = dialogMap.get(nextBlockId);
             
