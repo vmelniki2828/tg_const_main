@@ -683,6 +683,23 @@ function setupBotHandlers(bot, blocks, connections) {
           
           // Если это обычная кнопка (не ссылка), переходим к следующему блоку
           const nextBlockId = connectionMap.get(`${currentBlockId}_${button.id}`);
+          const nextBlockData = blocks.find(b => b.id === nextBlockId);
+          // --- ВАЖНО: Проверка завершённости квиза ДО изменения состояния ---
+          if (nextBlockData && nextBlockData.type === 'quiz') {
+            const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
+            if (userCompletedQuizzes.has(nextBlockId)) {
+              await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+              userQuizStates.delete(userId);
+              userCurrentBlock.set(userId, 'start');
+              const startBlock = dialogMap.get('start');
+              if (startBlock) {
+                const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+                await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+              }
+              return;
+            }
+          }
+          // --- конец блока проверки ---
           if (nextBlockId && dialogMap.has(nextBlockId)) {
             const nextBlock = dialogMap.get(nextBlockId);
             
@@ -783,6 +800,23 @@ function setupBotHandlers(bot, blocks, connections) {
           
           // Если это обычная кнопка (не ссылка), переходим к следующему блоку
           const nextBlockId = connectionMap.get(`${block.id}_${button.id}`);
+          const nextBlockData = blocks.find(b => b.id === nextBlockId);
+          // --- ВАЖНО: Проверка завершённости квиза ДО изменения состояния ---
+          if (nextBlockData && nextBlockData.type === 'quiz') {
+            const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
+            if (userCompletedQuizzes.has(nextBlockId)) {
+              await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+              userQuizStates.delete(userId);
+              userCurrentBlock.set(userId, 'start');
+              const startBlock = dialogMap.get('start');
+              if (startBlock) {
+                const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+                await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+              }
+              return;
+            }
+          }
+          // --- конец блока проверки ---
           if (nextBlockId && dialogMap.has(nextBlockId)) {
             const nextBlock = dialogMap.get(nextBlockId);
             
