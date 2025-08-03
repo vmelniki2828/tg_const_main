@@ -345,17 +345,10 @@ function setupBotHandlers(bot, blocks, connections) {
       if (currentBlock && currentBlock.type === 'quiz') {
         // Проверяем, не прошел ли пользователь уже этот квиз
         const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
-        if (userCompletedQuizzes.has(currentBlock.id)) {
-          await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
-          // Возвращаем пользователя к стартовому блоку
-          userCurrentBlock.set(userId, 'start');
-          const startBlock = dialogMap.get('start');
-          if (startBlock) {
-            const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-            await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-          }
-          return;
-        }
+                 if (userCompletedQuizzes.has(currentBlock.id)) {
+           await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+           return;
+         }
         
         const userQuizState = userQuizStates.get(userId) || {
           currentQuestionIndex: 0,
@@ -638,13 +631,6 @@ function setupBotHandlers(bot, blocks, connections) {
               const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
               if (userCompletedQuizzes.has(nextBlockId)) {
                 await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
-                // Возвращаем пользователя к стартовому блоку
-                userCurrentBlock.set(userId, 'start');
-                const startBlock = dialogMap.get('start');
-                if (startBlock) {
-                  const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-                  await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-                }
                 return;
               }
               
@@ -735,13 +721,6 @@ function setupBotHandlers(bot, blocks, connections) {
               const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
               if (userCompletedQuizzes.has(nextBlockId)) {
                 await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
-                // Возвращаем пользователя к стартовому блоку
-                userCurrentBlock.set(userId, 'start');
-                const startBlock = dialogMap.get('start');
-                if (startBlock) {
-                  const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-                  await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-                }
                 return;
               }
               
