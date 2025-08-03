@@ -716,23 +716,6 @@ function setupBotHandlers(bot, blocks, connections) {
             if (nextBlockData && nextBlockData.type === 'quiz') {
               console.log(`🔍 DEBUG: Transitioning to quiz block: ${nextBlockId}`);
               
-              // Проверяем, не прошел ли пользователь уже этот квиз
-              const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
-              console.log(`🔍 DEBUG: User completed quizzes: ${Array.from(userCompletedQuizzes)}`);
-              console.log(`🔍 DEBUG: Is next block completed: ${userCompletedQuizzes.has(nextBlockId)}`);
-              
-              if (userCompletedQuizzes.has(nextBlockId)) {
-                await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
-                userQuizStates.delete(userId);
-                userCurrentBlock.set(userId, 'start');
-                const startBlock = dialogMap.get('start');
-                if (startBlock) {
-                  const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-                  await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-                }
-                return;
-              }
-              
               // Очищаем историю навигации для квиза
               userNavigationHistory.delete(userId);
               
@@ -832,20 +815,6 @@ function setupBotHandlers(bot, blocks, connections) {
             const nextBlockData = blocks.find(b => b.id === nextBlockId);
             if (nextBlockData && nextBlockData.type === 'quiz') {
               console.log('Transitioning to quiz block (fallback):', nextBlockId);
-              
-              // Проверяем, не прошел ли пользователь уже этот квиз
-              const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
-              if (userCompletedQuizzes.has(nextBlockId)) {
-                await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
-                userQuizStates.delete(userId);
-                userCurrentBlock.set(userId, 'start');
-                const startBlock = dialogMap.get('start');
-                if (startBlock) {
-                  const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-                  await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-                }
-                return;
-              }
               
               // Очищаем историю навигации для квиза
               userNavigationHistory.delete(userId);
