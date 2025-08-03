@@ -617,51 +617,61 @@ function setupBotHandlers(bot, blocks, connections) {
                 }
               }
               
-              // Отмечаем квиз как завершенный для этого пользователя
-              let userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
-              userCompletedQuizzes.add(currentBlock.id);
-              completedQuizzes.set(userId, userCompletedQuizzes);
-              console.log(`🔍 DEBUG: Marked quiz ${currentBlock.id} as completed for user ${userId}`);
+              console.log(`🔍 DEBUG: After stats saving, proceeding to quiz completion`);
               
-              // Очищаем состояние квиза и устанавливаем стартовый блок
-              userQuizStates.delete(userId);
-              userCurrentBlock.set(userId, 'start');
-              console.log(`🔍 DEBUG: Cleared quiz state and set user ${userId} to start block`);
-              
-              // Возвращаемся к стартовому блоку
-              const startBlock = dialogMap.get('start');
-              console.log(`🔍 DEBUG: Start block found: ${!!startBlock}`);
-              
-              if (startBlock) {
-                const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-                console.log(`🔍 DEBUG: Created keyboard for start block`);
+              try {
+                // Отмечаем квиз как завершенный для этого пользователя
+                let userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
+                userCompletedQuizzes.add(currentBlock.id);
+                completedQuizzes.set(userId, userCompletedQuizzes);
+                console.log(`🔍 DEBUG: Marked quiz ${currentBlock.id} as completed for user ${userId}`);
                 
-                // Сначала отправляем результаты квиза
-                console.log(`🔍 DEBUG: Sending quiz results`);
-                await ctx.reply(resultMessage);
+                // Очищаем состояние квиза и устанавливаем стартовый блок
+                userQuizStates.delete(userId);
+                userCurrentBlock.set(userId, 'start');
+                console.log(`🔍 DEBUG: Cleared quiz state and set user ${userId} to start block`);
                 
-                // Затем отправляем сообщение стартового блока
-                const replyMarkup = {};
-                if (keyboard.length > 0) {
-                  replyMarkup.keyboard = keyboard;
-                  replyMarkup.resize_keyboard = true;
+                // Возвращаемся к стартовому блоку
+                const startBlock = dialogMap.get('start');
+                console.log(`🔍 DEBUG: Start block found: ${!!startBlock}`);
+                
+                if (startBlock) {
+                  const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+                  console.log(`🔍 DEBUG: Created keyboard for start block`);
+                  
+                  // Сначала отправляем результаты квиза
+                  console.log(`🔍 DEBUG: Sending quiz results`);
+                  await ctx.reply(resultMessage);
+                  
+                  // Затем отправляем сообщение стартового блока
+                  const replyMarkup = {};
+                  if (keyboard.length > 0) {
+                    replyMarkup.keyboard = keyboard;
+                    replyMarkup.resize_keyboard = true;
+                  }
+                  if (inlineKeyboard.length > 0) {
+                    replyMarkup.inline_keyboard = inlineKeyboard;
+                  }
+                  
+                  console.log(`🔍 DEBUG: Sending start block message`);
+                  await ctx.reply(startBlock.message, {
+                    reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
+                  });
+                  console.log(`🔍 DEBUG: Successfully returned to start block`);
+                } else {
+                  console.log(`🔍 DEBUG: Start block not found, sending only results`);
+                  await ctx.reply(resultMessage);
                 }
-                if (inlineKeyboard.length > 0) {
-                  replyMarkup.inline_keyboard = inlineKeyboard;
-                }
                 
-                console.log(`🔍 DEBUG: Sending start block message`);
-                await ctx.reply(startBlock.message, {
-                  reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
-                });
-                console.log(`🔍 DEBUG: Successfully returned to start block`);
-              } else {
-                console.log(`🔍 DEBUG: Start block not found, sending only results`);
+                console.log(`🔍 DEBUG: Quiz completion finished, returning`);
+                return;
+              } catch (completionError) {
+                console.error('❌ Error during quiz completion:', completionError);
+                console.error('📄 Completion error details:', completionError.stack);
+                console.log(`🔍 DEBUG: Fallback - sending only results due to error`);
                 await ctx.reply(resultMessage);
+                return;
               }
-              
-              console.log(`🔍 DEBUG: Quiz completion finished, returning`);
-              return;
             }
           }
         }
