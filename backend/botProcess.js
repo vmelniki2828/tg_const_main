@@ -650,6 +650,25 @@ function setupBotHandlers(bot, blocks, connections) {
               const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
               if (userCompletedQuizzes.has(nextBlockId)) {
                 await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+                // Возвращаем пользователя к предыдущему блоку из истории
+                const userHistory = userNavigationHistory.get(userId);
+                if (userHistory && userHistory.length > 0) {
+                  const previousBlockId = userHistory[userHistory.length - 1];
+                  userCurrentBlock.set(userId, previousBlockId);
+                  const prevBlock = dialogMap.get(previousBlockId);
+                  if (prevBlock) {
+                    const { keyboard, inlineKeyboard } = createKeyboardWithBack(prevBlock.buttons, userId, previousBlockId);
+                    await sendMediaMessage(ctx, prevBlock.message, prevBlock.mediaFiles, keyboard, inlineKeyboard);
+                  }
+                } else {
+                  // Если нет истории, возвращаемся к стартовому блоку
+                  userCurrentBlock.set(userId, 'start');
+                  const startBlock = dialogMap.get('start');
+                  if (startBlock) {
+                    const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+                    await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+                  }
+                }
                 return;
               }
               
@@ -740,6 +759,25 @@ function setupBotHandlers(bot, blocks, connections) {
               const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
               if (userCompletedQuizzes.has(nextBlockId)) {
                 await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+                // Возвращаем пользователя к предыдущему блоку из истории
+                const userHistory = userNavigationHistory.get(userId);
+                if (userHistory && userHistory.length > 0) {
+                  const previousBlockId = userHistory[userHistory.length - 1];
+                  userCurrentBlock.set(userId, previousBlockId);
+                  const prevBlock = dialogMap.get(previousBlockId);
+                  if (prevBlock) {
+                    const { keyboard, inlineKeyboard } = createKeyboardWithBack(prevBlock.buttons, userId, previousBlockId);
+                    await sendMediaMessage(ctx, prevBlock.message, prevBlock.mediaFiles, keyboard, inlineKeyboard);
+                  }
+                } else {
+                  // Если нет истории, возвращаемся к стартовому блоку
+                  userCurrentBlock.set(userId, 'start');
+                  const startBlock = dialogMap.get('start');
+                  if (startBlock) {
+                    const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+                    await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+                  }
+                }
                 return;
               }
               
