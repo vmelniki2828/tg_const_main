@@ -368,6 +368,21 @@ function setupBotHandlers(bot, blocks, connections) {
       if (currentBlock && currentBlock.type === 'quiz') {
         console.log(`🔍 DEBUG: Processing quiz block: ${currentBlock.id}`);
         
+        // Дополнительная проверка завершённости квиза
+        const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
+        if (userCompletedQuizzes.has(currentBlock.id)) {
+          console.log(`🔍 DEBUG: Quiz is completed, redirecting to start`);
+          await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+          userQuizStates.delete(userId);
+          userCurrentBlock.set(userId, 'start');
+          const startBlock = dialogMap.get('start');
+          if (startBlock) {
+            const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+            await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+          }
+          return;
+        }
+        
         // Проверяем, есть ли состояние квиза для пользователя
         const existingQuizState = userQuizStates.get(userId);
         if (!existingQuizState) {
