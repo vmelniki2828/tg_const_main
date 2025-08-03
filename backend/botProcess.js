@@ -470,6 +470,7 @@ function setupBotHandlers(bot, blocks, connections) {
               return;
             } else {
               // Квиз завершен, показываем результаты
+              console.log(`🔍 DEBUG: Quiz completed, processing results`);
               const correctAnswers = userQuizState.answers.filter(answer => answer.isCorrect).length;
               const totalQuestions = currentBlock.questions.length;
               const successRate = (correctAnswers / totalQuestions) * 100;
@@ -617,9 +618,10 @@ function setupBotHandlers(bot, blocks, connections) {
                 }
               }
               
-              console.log(`🔍 DEBUG: After stats saving, proceeding to quiz completion`);
-              
-              try {
+                              console.log(`🔍 DEBUG: After stats saving, proceeding to quiz completion`);
+                console.log(`🔍 DEBUG: About to enter quiz completion block`);
+                
+                try {
                 // Отмечаем квиз как завершенный для этого пользователя
                 let userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
                 userCompletedQuizzes.add(currentBlock.id);
