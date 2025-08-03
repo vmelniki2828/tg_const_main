@@ -347,6 +347,8 @@ function setupBotHandlers(bot, blocks, connections) {
         const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
                  if (userCompletedQuizzes.has(currentBlock.id)) {
            await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+           // Очищаем состояние квиза
+           userQuizStates.delete(userId);
            // Возвращаем пользователя к предыдущему блоку из истории
            const userHistory = userNavigationHistory.get(userId);
            if (userHistory && userHistory.length > 0) {
@@ -650,6 +652,8 @@ function setupBotHandlers(bot, blocks, connections) {
               const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
               if (userCompletedQuizzes.has(nextBlockId)) {
                 await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+                // Очищаем состояние квиза
+                userQuizStates.delete(userId);
                 // Возвращаем пользователя к предыдущему блоку из истории
                 const userHistory = userNavigationHistory.get(userId);
                 if (userHistory && userHistory.length > 0) {
@@ -759,6 +763,8 @@ function setupBotHandlers(bot, blocks, connections) {
               const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
               if (userCompletedQuizzes.has(nextBlockId)) {
                 await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
+                // Очищаем состояние квиза
+                userQuizStates.delete(userId);
                 // Возвращаем пользователя к предыдущему блоку из истории
                 const userHistory = userNavigationHistory.get(userId);
                 if (userHistory && userHistory.length > 0) {
