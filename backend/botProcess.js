@@ -313,13 +313,17 @@ function setupBotHandlers(bot, blocks, connections) {
     
     // Игнорируем очень короткие сообщения (менее 1 символа)
     if (messageText.length < 1) {
+      console.log(`🔍 DEBUG: Message too short, ignoring`);
       return;
     }
     
     // Игнорируем команды, которые обрабатываются отдельно
     if (messageText.startsWith('/')) {
+      console.log(`🔍 DEBUG: Command message, ignoring`);
       return;
     }
+    
+    console.log(`🔍 DEBUG: Starting message processing for user ${userId}`);
     
     // --- ВАЖНО: Проверка завершённости квиза в самом начале ---
     if (currentBlockId) {
@@ -636,6 +640,7 @@ function setupBotHandlers(bot, blocks, connections) {
                   // Сначала отправляем результаты квиза
                   console.log(`🔍 DEBUG: Sending quiz results`);
                   await ctx.reply(resultMessage);
+                  console.log(`🔍 DEBUG: Quiz results sent successfully`);
                   
                   // Затем отправляем сообщение стартового блока
                   const replyMarkup = {};
@@ -648,13 +653,18 @@ function setupBotHandlers(bot, blocks, connections) {
                   }
                   
                   console.log(`🔍 DEBUG: Sending start block message`);
+                  console.log(`🔍 DEBUG: Start block message: ${startBlock.message}`);
+                  console.log(`🔍 DEBUG: Reply markup: ${JSON.stringify(replyMarkup)}`);
+                  
                   await ctx.reply(startBlock.message, {
                     reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
                   });
+                  console.log(`🔍 DEBUG: Start block message sent successfully`);
                   console.log(`🔍 DEBUG: Successfully returned to start block`);
                 } else {
                   console.log(`🔍 DEBUG: Start block not found, sending only results`);
                   await ctx.reply(resultMessage);
+                  console.log(`🔍 DEBUG: Only results sent successfully`);
                 }
                 
                 console.log(`🔍 DEBUG: Quiz completion finished, returning`);
@@ -663,7 +673,12 @@ function setupBotHandlers(bot, blocks, connections) {
                 console.error('❌ Error during quiz completion:', completionError);
                 console.error('📄 Completion error details:', completionError.stack);
                 console.log(`🔍 DEBUG: Fallback - sending only results due to error`);
-                await ctx.reply(resultMessage);
+                try {
+                  await ctx.reply(resultMessage);
+                  console.log(`🔍 DEBUG: Fallback results sent successfully`);
+                } catch (fallbackError) {
+                  console.error('❌ Error sending fallback results:', fallbackError);
+                }
                 return;
               }
             }
