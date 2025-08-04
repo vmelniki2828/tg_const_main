@@ -251,33 +251,73 @@ function setupBotHandlers(bot, blocks, connections) {
     const now = Date.now();
     const maxAge = 24 * 60 * 60 * 1000; // 24 часа
     
+    console.log(`🧹 Starting memory cleanup...`);
+    console.log(`🧹 Before cleanup - Active users: ${userCurrentBlock.size}, Quiz states: ${userQuizStates.size}, History: ${userNavigationHistory.size}`);
+    
     // Очищаем старые состояния квизов
+    let cleanedQuizStates = 0;
     for (const [userId, quizState] of userQuizStates.entries()) {
       if (now - quizState.startTime > maxAge) {
         userQuizStates.delete(userId);
-        console.log(`🧹 Cleaned up old quiz state for user ${userId}`);
+        cleanedQuizStates++;
       }
     }
     
-    // Очищаем неактивных пользователей (не было активности более 1 часа)
-    const inactiveThreshold = 60 * 60 * 1000; // 1 час
+    // Очищаем неактивных пользователей (не было активности более 30 минут)
+    const inactiveThreshold = 30 * 60 * 1000; // 30 минут
+    let cleanedUsers = 0;
     for (const [userId, lastActivity] of userLastActivity.entries()) {
       if (now - lastActivity > inactiveThreshold) {
         userCurrentBlock.delete(userId);
         userNavigationHistory.delete(userId);
         userLastActivity.delete(userId);
-        console.log(`🧹 Cleaned up inactive user ${userId}`);
+        completedQuizzes.delete(userId);
+        cleanedUsers++;
       }
     }
     
-    console.log(`🧹 Memory cleanup completed. Active users: ${userCurrentBlock.size}`);
+    // Принудительная очистка если слишком много пользователей
+    if (userCurrentBlock.size > 1000) {
+      console.log(`🧹 Too many users (${userCurrentBlock.size}), forcing cleanup...`);
+      const userArray = Array.from(userCurrentBlock.entries());
+      const toRemove = userArray.slice(0, 500); // Удаляем 500 самых старых
+      
+      for (const [userId] of toRemove) {
+        userCurrentBlock.delete(userId);
+        userNavigationHistory.delete(userId);
+        userLastActivity.delete(userId);
+        completedQuizzes.delete(userId);
+        userQuizStates.delete(userId);
+      }
+      console.log(`🧹 Forced cleanup: removed ${toRemove.length} users`);
+    }
+    
+    console.log(`🧹 Memory cleanup completed. Cleaned: ${cleanedQuizStates} quiz states, ${cleanedUsers} users`);
+    console.log(`🧹 After cleanup - Active users: ${userCurrentBlock.size}, Quiz states: ${userQuizStates.size}, History: ${userNavigationHistory.size}`);
+    
+    // Принудительная сборка мусора
+    if (global.gc) {
+      global.gc();
+      console.log(`🧹 Garbage collection triggered`);
+    }
   }
 
   // Карта для отслеживания последней активности пользователей
   const userLastActivity = new Map();
 
-  // Запускаем очистку памяти каждые 30 минут
-  setInterval(cleanupOldUserData, 30 * 60 * 1000);
+  // Запускаем очистку памяти каждые 15 минут (более часто)
+  setInterval(cleanupOldUserData, 15 * 60 * 1000);
+  
+  // Дополнительная очистка при высоком использовании памяти
+  setInterval(() => {
+    const memUsage = process.memoryUsage();
+    const memPercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
+    
+    if (memPercent > 80) {
+      console.log(`⚠️ High memory usage: ${memPercent.toFixed(1)}%, triggering cleanup`);
+      cleanupOldUserData();
+    }
+  }, 5 * 60 * 1000); // Каждые 5 минут
 
   // Функция для создания клавиатуры с кнопкой "Назад"
   function createKeyboardWithBack(buttons, userId, currentBlockId) {
@@ -1020,7 +1060,8 @@ function setupBotHandlers(bot, blocks, connections) {
       }
       return;
     } catch (error) {
-      console.error('❌ Error in message handler:', error);
+      console.error('❌ Critical error in message handler:', error);
+      console.error('📄 Error stack:', error.stack);
       
       // Обработка ошибки 403 (пользователь заблокировал бота)
       if (error.response && error.response.error_code === 403) {
@@ -1028,8 +1069,19 @@ function setupBotHandlers(bot, blocks, connections) {
         return;
       }
       
-      // Для других ошибок логируем и продолжаем
-      console.error('📄 Error details:', error.stack);
+      // Попытка отправить сообщение об ошибке пользователю
+      try {
+        await ctx.reply('Произошла ошибка. Попробуйте еще раз или нажмите /start для перезапуска.');
+      } catch (replyError) {
+        console.error('❌ Error sending error message:', replyError);
+      }
+      
+      // Принудительная очистка памяти при критической ошибке
+      try {
+        cleanupOldUserData();
+      } catch (cleanupError) {
+        console.error('❌ Error during cleanup:', cleanupError);
+      }
     }
   });
 }
@@ -1037,21 +1089,63 @@ function setupBotHandlers(bot, blocks, connections) {
 async function startBot() {
   const bot = new Telegraf(token);
   
+  // Счетчик ошибок для автоматического перезапуска
+  let errorCount = 0;
+  const maxErrors = 10;
+  const errorWindow = 5 * 60 * 1000; // 5 минут
+  
+  // Функция для обработки критических ошибок
+  const handleCriticalError = (error) => {
+    errorCount++;
+    console.error(`❌ Critical bot error #${errorCount}:`, error);
+    
+    if (errorCount >= maxErrors) {
+      console.error(`🚨 Too many errors (${errorCount}), restarting bot...`);
+      process.exit(1); // Docker перезапустит контейнер
+    }
+    
+    // Сброс счетчика ошибок через 5 минут
+    setTimeout(() => {
+      errorCount = Math.max(0, errorCount - 1);
+    }, errorWindow);
+  };
+  
   // Настраиваем обработчики
   setupBotHandlers(bot, state.blocks, state.connections);
+  
+  // Обработчик ошибок бота
+  bot.catch((err, ctx) => {
+    console.error('❌ Bot error:', err);
+    handleCriticalError(err);
+  });
   
   // Запускаем бота
   try {
     await bot.launch();
     console.log('Bot started successfully');
+    
+    // Сброс счетчика ошибок при успешном запуске
+    errorCount = 0;
   } catch (error) {
     console.error('Failed to start bot:', error);
+    handleCriticalError(error);
     process.exit(1);
   }
   
   // Graceful shutdown
   process.once('SIGINT', () => bot.stop('SIGINT'));
   process.once('SIGTERM', () => bot.stop('SIGTERM'));
+  
+  // Обработчик необработанных ошибок
+  process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    handleCriticalError(error);
+  });
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    handleCriticalError(reason);
+  });
 }
 
 startBot();
