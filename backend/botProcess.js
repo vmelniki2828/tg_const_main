@@ -745,17 +745,21 @@ function setupBotHandlers(bot, blocks, connections) {
                 }
               });
               console.log(`Link button processed successfully, returning`);
+              found = true;
               return;
             }
             
             // Если это обычная кнопка (не ссылка), переходим к следующему блоку
             const nextBlockId = connectionMap.get(`${currentBlockId}_${button.id}`);
+            console.log(`🔍 DEBUG: Next block ID for button ${button.id}: ${nextBlockId}`);
+            
             const nextBlockData = blocks.find(b => b.id === nextBlockId);
             
             // --- ВАЖНО: Проверка завершённости квиза ДО изменения состояния ---
             if (nextBlockData && nextBlockData.type === 'quiz') {
               const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
               if (userCompletedQuizzes.has(nextBlockId)) {
+                console.log(`🔍 DEBUG: Quiz already completed, redirecting to start`);
                 await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
                 userQuizStates.delete(userId);
                 userCurrentBlock.set(userId, 'start');
@@ -764,12 +768,14 @@ function setupBotHandlers(bot, blocks, connections) {
                   const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
                   await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
                 }
+                found = true;
                 return;
               }
             }
             // --- конец блока проверки ---
             
             if (nextBlockId && dialogMap.has(nextBlockId)) {
+              console.log(`🔍 DEBUG: Transitioning to next block: ${nextBlockId}`);
               const nextBlock = dialogMap.get(nextBlockId);
               
               // Добавляем текущий блок в историю навигации
@@ -815,6 +821,7 @@ function setupBotHandlers(bot, blocks, connections) {
                   
                   console.log('Sending first quiz question:', firstQuestion.message, 'with mediaFiles:', firstQuestion.mediaFiles);
                   await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles || [], keyboard, []);
+                  found = true;
                   return;
                 }
               }
@@ -823,7 +830,13 @@ function setupBotHandlers(bot, blocks, connections) {
               
               await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
               found = true;
+              console.log(`🔍 DEBUG: Successfully processed button "${messageText}" and transitioned to block ${nextBlockId}`);
+              return;
+            } else {
+              console.log(`🔍 DEBUG: No next block found for button ${button.id} (${nextBlockId})`);
             }
+          } else {
+            console.log(`🔍 DEBUG: Button "${messageText}" not found in current block ${currentBlockId}`);
           }
         }
       }
@@ -847,6 +860,7 @@ function setupBotHandlers(bot, blocks, connections) {
                 }
               });
               console.log(`Link button processed successfully in fallback, returning`);
+              found = true;
               return;
             }
             
@@ -858,6 +872,7 @@ function setupBotHandlers(bot, blocks, connections) {
             if (nextBlockData && nextBlockData.type === 'quiz') {
               const userCompletedQuizzes = completedQuizzes.get(userId) || new Set();
               if (userCompletedQuizzes.has(nextBlockId)) {
+                console.log(`🔍 DEBUG: Quiz already completed (fallback), redirecting to start`);
                 await ctx.reply('Вы уже проходили этот квиз. Результаты не будут сохранены повторно.');
                 userQuizStates.delete(userId);
                 userCurrentBlock.set(userId, 'start');
@@ -866,6 +881,7 @@ function setupBotHandlers(bot, blocks, connections) {
                   const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
                   await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
                 }
+                found = true;
                 return;
               }
             }
@@ -917,6 +933,7 @@ function setupBotHandlers(bot, blocks, connections) {
                   
                   console.log('Sending first quiz question (fallback):', firstQuestion.message, 'with mediaFiles:', firstQuestion.mediaFiles);
                   await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles || [], keyboard, []);
+                  found = true;
                   return;
                 }
               }
@@ -924,6 +941,8 @@ function setupBotHandlers(bot, blocks, connections) {
               const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
               
               await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
+              found = true;
+              console.log(`🔍 DEBUG: Successfully processed button "${messageText}" in fallback and transitioned to block ${nextBlockId}`);
               return;
             }
           }
@@ -931,7 +950,9 @@ function setupBotHandlers(bot, blocks, connections) {
       }
       
       // Если не найдено соответствие, игнорируем сообщение
-      console.log(`No button found for message "${messageText}", ignoring`);
+      if (!found) {
+        console.log(`No button found for message "${messageText}", ignoring`);
+      }
       return;
     } catch (error) {
       console.error('❌ Error in message handler:', error);
