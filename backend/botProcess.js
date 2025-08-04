@@ -246,6 +246,39 @@ function setupBotHandlers(bot, blocks, connections) {
   // Карта для отслеживания завершенных квизов пользователей
   const completedQuizzes = new Map();
 
+  // Функция для очистки старых данных пользователей (оптимизация памяти)
+  function cleanupOldUserData() {
+    const now = Date.now();
+    const maxAge = 24 * 60 * 60 * 1000; // 24 часа
+    
+    // Очищаем старые состояния квизов
+    for (const [userId, quizState] of userQuizStates.entries()) {
+      if (now - quizState.startTime > maxAge) {
+        userQuizStates.delete(userId);
+        console.log(`🧹 Cleaned up old quiz state for user ${userId}`);
+      }
+    }
+    
+    // Очищаем неактивных пользователей (не было активности более 1 часа)
+    const inactiveThreshold = 60 * 60 * 1000; // 1 час
+    for (const [userId, lastActivity] of userLastActivity.entries()) {
+      if (now - lastActivity > inactiveThreshold) {
+        userCurrentBlock.delete(userId);
+        userNavigationHistory.delete(userId);
+        userLastActivity.delete(userId);
+        console.log(`🧹 Cleaned up inactive user ${userId}`);
+      }
+    }
+    
+    console.log(`🧹 Memory cleanup completed. Active users: ${userCurrentBlock.size}`);
+  }
+
+  // Карта для отслеживания последней активности пользователей
+  const userLastActivity = new Map();
+
+  // Запускаем очистку памяти каждые 30 минут
+  setInterval(cleanupOldUserData, 30 * 60 * 1000);
+
   // Функция для создания клавиатуры с кнопкой "Назад"
   function createKeyboardWithBack(buttons, userId, currentBlockId) {
     const keyboard = [];
@@ -351,6 +384,9 @@ function setupBotHandlers(bot, blocks, connections) {
       const messageText = ctx.message.text;
       const userId = ctx.from.id;
       let currentBlockId = userCurrentBlock.get(userId);
+      
+      // Отслеживаем активность пользователя
+      userLastActivity.set(userId, Date.now());
       
       console.log(`🔍 DEBUG: Received message: "${messageText}" from user ${userId} in block ${currentBlockId}`);
       console.log(`🔍 DEBUG: User quiz state exists: ${userQuizStates.has(userId)}`);

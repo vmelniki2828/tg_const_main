@@ -951,6 +951,21 @@ app.post('/api/export-quiz-stats', async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  const health = {
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    activeUsers: userCurrentBlock ? userCurrentBlock.size : 0
+  };
+  
+  res.json(health);
+});
+
+// API endpoint для получения статистики ботов
+
 // Обработка завершения сервера
 async function shutdownServer(signal) {
   console.log(`Received ${signal}, shutting down...`);
