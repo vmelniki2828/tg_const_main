@@ -50,9 +50,18 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
       }
       
       console.log(`🔍 DEBUG: Sending text message with reply markup:`, JSON.stringify(replyMarkup));
-      await ctx.reply(message, {
+      
+      // Добавляем timeout для отправки сообщения
+      const sendPromise = ctx.reply(message, {
         reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
       });
+      
+      // Timeout 10 секунд
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Message send timeout')), 10000);
+      });
+      
+      await Promise.race([sendPromise, timeoutPromise]);
       console.log(`🔍 DEBUG: Text message sent successfully`);
       return;
     }
@@ -79,9 +88,18 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
         }
         
         console.log(`🔍 DEBUG: Sending fallback text message`);
-        await ctx.reply(message, {
+        
+        // Добавляем timeout для отправки сообщения
+        const sendPromise = ctx.reply(message, {
           reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
         });
+        
+        // Timeout 10 секунд
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Message send timeout')), 10000);
+        });
+        
+        await Promise.race([sendPromise, timeoutPromise]);
         console.log(`🔍 DEBUG: Fallback text message sent successfully`);
         return;
       }
@@ -102,24 +120,33 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
 
       console.log(`🔍 DEBUG: Sending media with options:`, JSON.stringify(options));
 
-      // Определяем тип медиа и отправляем соответствующим методом
-      if (media.mimetype.startsWith('image/')) {
-        console.log(`🔍 DEBUG: Sending as photo`);
-        await ctx.replyWithPhoto({ source: filePath }, options);
-      } else if (media.mimetype.startsWith('video/')) {
-        console.log(`🔍 DEBUG: Sending as video`);
-        await ctx.replyWithVideo({ source: filePath }, options);
-      } else if (media.mimetype.startsWith('audio/')) {
-        console.log(`🔍 DEBUG: Sending as audio`);
-        await ctx.replyWithAudio({ source: filePath }, options);
-      } else if (media.mimetype.startsWith('application/')) {
-        console.log(`🔍 DEBUG: Sending as document`);
-        await ctx.replyWithDocument({ source: filePath }, options);
-      } else {
-        console.log(`🔍 DEBUG: Sending as document (fallback)`);
-        await ctx.replyWithDocument({ source: filePath }, options);
-      }
+      // Добавляем timeout для отправки медиа
+      const sendMediaPromise = (async () => {
+        // Определяем тип медиа и отправляем соответствующим методом
+        if (media.mimetype.startsWith('image/')) {
+          console.log(`🔍 DEBUG: Sending as photo`);
+          return await ctx.replyWithPhoto({ source: filePath }, options);
+        } else if (media.mimetype.startsWith('video/')) {
+          console.log(`🔍 DEBUG: Sending as video`);
+          return await ctx.replyWithVideo({ source: filePath }, options);
+        } else if (media.mimetype.startsWith('audio/')) {
+          console.log(`🔍 DEBUG: Sending as audio`);
+          return await ctx.replyWithAudio({ source: filePath }, options);
+        } else if (media.mimetype.startsWith('application/')) {
+          console.log(`🔍 DEBUG: Sending as document`);
+          return await ctx.replyWithDocument({ source: filePath }, options);
+        } else {
+          console.log(`🔍 DEBUG: Sending as document (fallback)`);
+          return await ctx.replyWithDocument({ source: filePath }, options);
+        }
+      })();
       
+      // Timeout 15 секунд для медиа
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Media send timeout')), 15000);
+      });
+      
+      await Promise.race([sendMediaPromise, timeoutPromise]);
       console.log(`🔍 DEBUG: Media message sent successfully`);
     } else {
       console.log(`🔍 DEBUG: Multiple media files detected`);
@@ -148,9 +175,17 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
           replyMarkup.inline_keyboard = inlineKeyboard;
         }
         
-        await ctx.reply(message, {
+        // Добавляем timeout для отправки сообщения
+        const sendPromise = ctx.reply(message, {
           reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
         });
+        
+        // Timeout 10 секунд
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Message send timeout')), 10000);
+        });
+        
+        await Promise.race([sendPromise, timeoutPromise]);
         console.log(`🔍 DEBUG: Fallback text message sent successfully`);
         return;
       }
@@ -180,10 +215,19 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
       }
       
       console.log(`🔍 DEBUG: Sending media group with ${mediaGroup.length} files`);
-      await ctx.replyWithMediaGroup(mediaGroup, {
+      
+      // Добавляем timeout для отправки медиагруппы
+      const sendGroupPromise = ctx.replyWithMediaGroup(mediaGroup, {
         caption: message,
         reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
       });
+      
+      // Timeout 20 секунд для медиагруппы
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Media group send timeout')), 20000);
+      });
+      
+      await Promise.race([sendGroupPromise, timeoutPromise]);
       console.log(`🔍 DEBUG: Media group sent successfully`);
     }
   } catch (error) {
@@ -192,6 +236,12 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
     // Обработка ошибки 403 (пользователь заблокировал бота)
     if (error.response && error.response.error_code === 403) {
       console.log(`⚠️ User blocked the bot (403 error), ignoring`);
+      return;
+    }
+    
+    // Обработка timeout ошибок
+    if (error.message && error.message.includes('timeout')) {
+      console.log(`⚠️ Message send timeout, skipping`);
       return;
     }
     
@@ -207,9 +257,16 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
         replyMarkup.inline_keyboard = inlineKeyboard;
       }
       
-      await ctx.reply(message, {
+      // Добавляем timeout для fallback
+      const sendPromise = ctx.reply(message, {
         reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
       });
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Fallback timeout')), 5000);
+      });
+      
+      await Promise.race([sendPromise, timeoutPromise]);
       console.log(`🔍 DEBUG: Fallback text message sent successfully`);
     } catch (fallbackError) {
       console.error('Error in fallback message sending:', fallbackError);
@@ -313,9 +370,28 @@ function setupBotHandlers(bot, blocks, connections) {
     const memUsage = process.memoryUsage();
     const memPercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
     
+    console.log(`📊 Memory usage: ${memPercent.toFixed(1)}% (${Math.round(memUsage.heapUsed / 1024 / 1024)}MB / ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB)`);
+    console.log(`📊 Active users: ${userCurrentBlock.size}, Quiz states: ${userQuizStates.size}, History: ${userNavigationHistory.size}`);
+    
     if (memPercent > 80) {
       console.log(`⚠️ High memory usage: ${memPercent.toFixed(1)}%, triggering cleanup`);
       cleanupOldUserData();
+    }
+    
+    // Проверка на утечку памяти
+    if (userCurrentBlock.size > 2000) {
+      console.log(`🚨 Too many users (${userCurrentBlock.size}), forcing aggressive cleanup`);
+      const userArray = Array.from(userCurrentBlock.entries());
+      const toRemove = userArray.slice(0, 1000); // Удаляем 1000 самых старых
+      
+      for (const [userId] of toRemove) {
+        userCurrentBlock.delete(userId);
+        userNavigationHistory.delete(userId);
+        userLastActivity.delete(userId);
+        completedQuizzes.delete(userId);
+        userQuizStates.delete(userId);
+      }
+      console.log(`🧹 Aggressive cleanup: removed ${toRemove.length} users`);
     }
   }, 5 * 60 * 1000); // Каждые 5 минут
 
