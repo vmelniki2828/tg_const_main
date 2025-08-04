@@ -1,6 +1,9 @@
 # Используем официальный образ Node.js
 FROM node:18-alpine
 
+# Устанавливаем wget и jq для health check и мониторинга
+RUN apk add --no-cache wget jq
+
 # Устанавливаем рабочую директорию
 WORKDIR /app
 

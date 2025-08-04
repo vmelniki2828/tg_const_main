@@ -15,17 +15,25 @@ docker-compose ps
 # Проверка логов backend
 echo ""
 echo "📝 Последние логи backend:"
-docker-compose logs --tail=20 backend
+docker-compose logs --tail=10 backend
 
 # Проверка health check
 echo ""
 echo "🏥 Health check:"
-curl -s http://localhost:3001/api/health | jq '.'
+if command -v jq &> /dev/null; then
+    curl -s http://localhost:3001/api/health | jq '.' 2>/dev/null || echo "Ошибка парсинга JSON"
+else
+    curl -s http://localhost:3001/api/health
+fi
 
 # Проверка активных пользователей
 echo ""
 echo "👥 Активные пользователи:"
-curl -s http://localhost:3001/api/health | jq '.activeUsers'
+if command -v jq &> /dev/null; then
+    curl -s http://localhost:3001/api/health | jq '.activeUsers' 2>/dev/null || echo "Ошибка получения данных"
+else
+    echo "jq не установлен, используйте: apt-get install jq"
+fi
 
 echo ""
 echo "✅ Мониторинг завершен" 

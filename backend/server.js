@@ -958,7 +958,7 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     memory: process.memoryUsage(),
-    activeUsers: userCurrentBlock ? userCurrentBlock.size : 0
+    activeUsers: 0 // Будем получать из botProcess.js позже
   };
   
   res.json(health);
