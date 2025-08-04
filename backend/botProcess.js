@@ -29,9 +29,16 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
   const fs = require('fs');
   const path = require('path');
   
+  console.log(`🔍 DEBUG: sendMediaMessage called with:`);
+  console.log(`  - message: ${message.substring(0, 50)}...`);
+  console.log(`  - mediaFiles: ${mediaFiles ? mediaFiles.length : 0} files`);
+  console.log(`  - keyboard: ${keyboard.length} rows`);
+  console.log(`  - inlineKeyboard: ${inlineKeyboard.length} rows`);
+  
   try {
     // Проверяем, что mediaFiles существует и не пустой
     if (!mediaFiles || !Array.isArray(mediaFiles) || mediaFiles.length === 0) {
+      console.log(`🔍 DEBUG: No media files, sending text only`);
       // Если нет медиафайлов, отправляем только текст
       const replyMarkup = {};
       if (keyboard.length > 0) {
@@ -42,19 +49,26 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
         replyMarkup.inline_keyboard = inlineKeyboard;
       }
       
+      console.log(`🔍 DEBUG: Sending text message with reply markup:`, JSON.stringify(replyMarkup));
       await ctx.reply(message, {
         reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
       });
+      console.log(`🔍 DEBUG: Text message sent successfully`);
       return;
     }
 
     // Если есть только один медиафайл
     if (mediaFiles.length === 1) {
+      console.log(`🔍 DEBUG: Single media file detected`);
       const media = mediaFiles[0];
       const filePath = path.join(__dirname, 'uploads', media.filename);
       
+      console.log(`🔍 DEBUG: Media file path: ${filePath}`);
+      console.log(`🔍 DEBUG: File exists: ${fs.existsSync(filePath)}`);
+      
       // Проверяем существование файла
       if (!fs.existsSync(filePath)) {
+        console.log(`🔍 DEBUG: Media file not found, sending text only`);
         const replyMarkup = {};
         if (keyboard.length > 0) {
           replyMarkup.keyboard = keyboard;
@@ -64,9 +78,11 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
           replyMarkup.inline_keyboard = inlineKeyboard;
         }
         
+        console.log(`🔍 DEBUG: Sending fallback text message`);
         await ctx.reply(message, {
           reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
         });
+        console.log(`🔍 DEBUG: Fallback text message sent successfully`);
         return;
       }
 
@@ -84,31 +100,45 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
         reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
       };
 
+      console.log(`🔍 DEBUG: Sending media with options:`, JSON.stringify(options));
+
       // Определяем тип медиа и отправляем соответствующим методом
       if (media.mimetype.startsWith('image/')) {
+        console.log(`🔍 DEBUG: Sending as photo`);
         await ctx.replyWithPhoto({ source: filePath }, options);
       } else if (media.mimetype.startsWith('video/')) {
+        console.log(`🔍 DEBUG: Sending as video`);
         await ctx.replyWithVideo({ source: filePath }, options);
       } else if (media.mimetype.startsWith('audio/')) {
+        console.log(`🔍 DEBUG: Sending as audio`);
         await ctx.replyWithAudio({ source: filePath }, options);
       } else if (media.mimetype.startsWith('application/')) {
+        console.log(`🔍 DEBUG: Sending as document`);
         await ctx.replyWithDocument({ source: filePath }, options);
       } else {
+        console.log(`🔍 DEBUG: Sending as document (fallback)`);
         await ctx.replyWithDocument({ source: filePath }, options);
       }
+      
+      console.log(`🔍 DEBUG: Media message sent successfully`);
     } else {
+      console.log(`🔍 DEBUG: Multiple media files detected`);
       // Множественные медиафайлы
       const mediaGroup = [];
       const validFiles = [];
       
       for (const media of mediaFiles) {
         const filePath = path.join(__dirname, 'uploads', media.filename);
+        console.log(`🔍 DEBUG: Checking media file: ${filePath} (exists: ${fs.existsSync(filePath)})`);
         if (fs.existsSync(filePath)) {
           validFiles.push({ ...media, filePath });
         }
       }
       
+      console.log(`🔍 DEBUG: Valid files found: ${validFiles.length}`);
+      
       if (validFiles.length === 0) {
+        console.log(`🔍 DEBUG: No valid media files, sending text only`);
         const replyMarkup = {};
         if (keyboard.length > 0) {
           replyMarkup.keyboard = keyboard;
@@ -121,43 +151,40 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
         await ctx.reply(message, {
           reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
         });
+        console.log(`🔍 DEBUG: Fallback text message sent successfully`);
         return;
       }
       
       // Добавляем медиафайлы в группу
-      for (let i = 0; i < validFiles.length; i++) {
-        const media = validFiles[i];
-        const mediaItem = {
-          type: media.mimetype.startsWith('image/') ? 'photo' : 
-                media.mimetype.startsWith('video/') ? 'video' : 
-                media.mimetype.startsWith('audio/') ? 'audio' : 'document',
-          media: { source: media.filePath }
-        };
+      for (const media of validFiles) {
+        const mediaInput = { source: media.filePath };
         
-        // Добавляем подпись только к первому элементу
-        if (i === 0) {
-          mediaItem.caption = message;
+        if (media.mimetype.startsWith('image/')) {
+          mediaGroup.push({ type: 'photo', media: mediaInput });
+        } else if (media.mimetype.startsWith('video/')) {
+          mediaGroup.push({ type: 'video', media: mediaInput });
+        } else if (media.mimetype.startsWith('audio/')) {
+          mediaGroup.push({ type: 'audio', media: mediaInput });
+        } else {
+          mediaGroup.push({ type: 'document', media: mediaInput });
         }
-        
-        mediaGroup.push(mediaItem);
       }
       
-      // Отправляем медиагруппу
-      await ctx.replyWithMediaGroup(mediaGroup);
-      
-      // Отправляем клавиатуру отдельно
-      if (keyboard.length > 0 || inlineKeyboard.length > 0) {
-        const replyMarkup = {};
-        if (keyboard.length > 0) {
-          replyMarkup.keyboard = keyboard;
-          replyMarkup.resize_keyboard = true;
-        }
-        if (inlineKeyboard.length > 0) {
-          replyMarkup.inline_keyboard = inlineKeyboard;
-        }
-        
-        await ctx.reply('Выберите действие:', { reply_markup: replyMarkup });
+      const replyMarkup = {};
+      if (keyboard.length > 0) {
+        replyMarkup.keyboard = keyboard;
+        replyMarkup.resize_keyboard = true;
       }
+      if (inlineKeyboard.length > 0) {
+        replyMarkup.inline_keyboard = inlineKeyboard;
+      }
+      
+      console.log(`🔍 DEBUG: Sending media group with ${mediaGroup.length} files`);
+      await ctx.replyWithMediaGroup(mediaGroup, {
+        caption: message,
+        reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
+      });
+      console.log(`🔍 DEBUG: Media group sent successfully`);
     }
   } catch (error) {
     console.error('Error sending media message:', error);
@@ -170,6 +197,7 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
     
     // Fallback к текстовому сообщению
     try {
+      console.log(`🔍 DEBUG: Attempting fallback to text message`);
       const replyMarkup = {};
       if (keyboard.length > 0) {
         replyMarkup.keyboard = keyboard;
@@ -182,6 +210,7 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
       await ctx.reply(message, {
         reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
       });
+      console.log(`🔍 DEBUG: Fallback text message sent successfully`);
     } catch (fallbackError) {
       console.error('Error in fallback message sending:', fallbackError);
       // Если и fallback не работает, просто игнорируем ошибку
