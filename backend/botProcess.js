@@ -342,6 +342,23 @@ function setupBotHandlers(bot, blocks, connections) {
       
       console.log(`🔍 DEBUG: Starting message processing for user ${userId}`);
       
+      // --- ВАЖНО: Автоматическая инициализация пользователя ---
+      if (!currentBlockId) {
+        console.log(`🔍 DEBUG: User ${userId} not initialized, setting to start block`);
+        userCurrentBlock.set(userId, 'start');
+        currentBlockId = 'start';
+        
+        // Отправляем приветственное сообщение
+        const startBlock = dialogMap.get('start');
+        if (startBlock) {
+          const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+          await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+          console.log(`🔍 DEBUG: Sent welcome message to user ${userId}`);
+          return;
+        }
+      }
+      // --- конец инициализации ---
+      
       // --- ВАЖНО: Проверка завершённости квиза в самом начале ---
       if (currentBlockId) {
         const currentBlock = blocks.find(b => b.id === currentBlockId);
