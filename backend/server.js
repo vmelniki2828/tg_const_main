@@ -7,7 +7,11 @@ const { spawn } = require('child_process');
 const multer = require('multer');
 
 // Загружаем переменные окружения
-require('dotenv').config();
+try {
+  require('dotenv').config();
+} catch (error) {
+  console.log('⚠️ dotenv not available, using default environment variables');
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
