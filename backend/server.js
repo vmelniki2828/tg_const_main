@@ -21,7 +21,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Настройка multer для загрузки файлов
 const storage = multer.diskStorage({
@@ -809,6 +810,8 @@ app.post('/api/export-quiz-stats', async (req, res) => {
   try {
     const { stats, promoCodesStats, blocks } = req.body;
     
+    console.log(`📊 Starting export with ${blocks.length} quizzes and ${Object.keys(stats).length} stats entries`);
+    
     // Функция для экранирования CSV значений
     const escapeCsvValue = (value) => {
       if (value === null || value === undefined) return '';
@@ -819,32 +822,34 @@ app.post('/api/export-quiz-stats', async (req, res) => {
       return stringValue;
     };
     
-    // Создаем CSV строки
-    const csvLines = [];
+    // Устанавливаем заголовки для скачивания CSV файла
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="quiz-stats-${new Date().toISOString().split('T')[0]}.csv"`);
+    
+    // Отправляем данные потоком для экономии памяти
+    let csvContent = '';
     
     // Таблица 1: Общая статистика
-    csvLines.push('ОБЩАЯ СТАТИСТИКА');
-    csvLines.push('Дата экспорта,Количество квизов,Всего попыток,Успешных попыток,Неудачных попыток,Общая успешность (%)');
+    csvContent += 'ОБЩАЯ СТАТИСТИКА\n';
+    csvContent += 'Дата экспорта,Количество квизов,Всего попыток,Успешных попыток,Неудачных попыток,Общая успешность (%)\n';
     
     const totalAttempts = Object.values(stats).reduce((sum, quiz) => sum + quiz.totalAttempts, 0);
     const totalSuccessful = Object.values(stats).reduce((sum, quiz) => sum + quiz.successfulCompletions, 0);
     const totalFailed = Object.values(stats).reduce((sum, quiz) => sum + quiz.failedAttempts, 0);
     const overallSuccessRate = totalAttempts > 0 ? ((totalSuccessful / totalAttempts) * 100).toFixed(1) : 0;
     
-    csvLines.push([
+    csvContent += [
       new Date().toLocaleString('ru-RU'),
       blocks.length,
       totalAttempts,
       totalSuccessful,
       totalFailed,
       overallSuccessRate
-    ].map(escapeCsvValue).join(','));
-    
-    csvLines.push(''); // Пустая строка для разделения таблиц
+    ].map(escapeCsvValue).join(',') + '\n\n';
     
     // Таблица 2: Статистика по квизам
-    csvLines.push('СТАТИСТИКА ПО КВИЗАМ');
-    csvLines.push('ID квиза,Название квиза,Количество вопросов,Всего попыток,Успешных попыток,Неудачных попыток,Успешность (%),Всего промокодов,Доступных промокодов,Выданных промокодов');
+    csvContent += 'СТАТИСТИКА ПО КВИЗАМ\n';
+    csvContent += 'ID квиза,Название квиза,Количество вопросов,Всего попыток,Успешных попыток,Неудачных попыток,Успешность (%),Всего промокодов,Доступных промокодов,Выданных промокодов\n';
     
     blocks.forEach(quiz => {
       const quizStats = stats[quiz.id] || {
@@ -866,7 +871,7 @@ app.post('/api/export-quiz-stats', async (req, res) => {
         ? ((quizStats.successfulCompletions / quizStats.totalAttempts) * 100).toFixed(1) 
         : 0;
       
-      csvLines.push([
+      csvContent += [
         quiz.id,
         quiz.message || `Квиз ${quiz.id}`,
         quiz.questions?.length || 0,
@@ -877,31 +882,37 @@ app.post('/api/export-quiz-stats', async (req, res) => {
         promoStats.totalPromoCodes,
         promoStats.availablePromoCodes,
         promoStats.usedPromoCodes
-      ].map(escapeCsvValue).join(','));
+      ].map(escapeCsvValue).join(',') + '\n';
     });
     
-    csvLines.push(''); // Пустая строка для разделения таблиц
+    csvContent += '\n'; // Пустая строка для разделения таблиц
     
-    // Таблица 3: Попытки пользователей
-    csvLines.push('ПОПЫТКИ ПОЛЬЗОВАТЕЛЕЙ');
-    csvLines.push('ID квиза,Название квиза,ID пользователя,Имя пользователя,Фамилия пользователя,Username,Дата попытки,Результат,Баллы,Процент успешности,Время прохождения (сек),Полученный промокод,Ответы пользователя');
+    // Таблица 3: Попытки пользователей (ограничиваем количество для больших данных)
+    csvContent += 'ПОПЫТКИ ПОЛЬЗОВАТЕЛЕЙ\n';
+    csvContent += 'ID квиза,Название квиза,ID пользователя,Имя пользователя,Фамилия пользователя,Username,Дата попытки,Результат,Баллы,Процент успешности,Время прохождения (сек),Полученный промокод,Ответы пользователя\n';
+    
+    let totalAttemptsProcessed = 0;
+    const maxAttemptsPerQuiz = 1000; // Ограничиваем количество попыток на квиз
     
     blocks.forEach(quiz => {
       const quizStats = stats[quiz.id] || { userAttempts: [] };
       
-      quizStats.userAttempts.forEach(attempt => {
-        // Формируем строку с ответами пользователя
+      // Ограничиваем количество попыток для больших данных
+      const attemptsToProcess = quizStats.userAttempts.slice(-maxAttemptsPerQuiz);
+      
+      attemptsToProcess.forEach(attempt => {
+        // Формируем строку с ответами пользователя (ограничиваем длину)
         const answersString = attempt.answers ? 
-          attempt.answers.map((answer, index) => 
-            `Вопрос ${index + 1}: ${answer.selectedAnswer} (${answer.isCorrect ? 'Правильно' : 'Неправильно'})`
+          attempt.answers.slice(0, 10).map((answer, index) => 
+            `Вопрос ${index + 1}: ${answer.selectedAnswer.substring(0, 50)} (${answer.isCorrect ? 'Правильно' : 'Неправильно'})`
           ).join('; ') : '';
         
-        csvLines.push([
+        csvContent += [
           quiz.id,
           quiz.message || `Квиз ${quiz.id}`,
           attempt.userId,
-          attempt.userName || `Пользователь ${attempt.userId}`,
-          attempt.userLastName || '',
+          (attempt.userName || `Пользователь ${attempt.userId}`).substring(0, 100),
+          (attempt.userLastName || '').substring(0, 100),
           attempt.username ? `@${attempt.username}` : '',
           new Date(attempt.timestamp).toLocaleString('ru-RU'),
           attempt.success ? 'Успешно' : 'Неудачно',
@@ -909,38 +920,46 @@ app.post('/api/export-quiz-stats', async (req, res) => {
           attempt.successRate ? `${attempt.successRate.toFixed(1)}%` : '',
           attempt.duration ? Math.round(attempt.duration / 1000) : '',
           attempt.promoCode || '',
-          answersString
-        ].map(escapeCsvValue).join(','));
+          answersString.substring(0, 500) // Ограничиваем длину ответов
+        ].map(escapeCsvValue).join(',') + '\n';
+        
+        totalAttemptsProcessed++;
       });
     });
     
-    csvLines.push(''); // Пустая строка для разделения таблиц
+    console.log(`📊 Processed ${totalAttemptsProcessed} attempts`);
     
-    // Таблица 4: Промокоды
-    csvLines.push('ПРОМОКОДЫ');
-    csvLines.push('ID квиза,Название квиза,Промокод,Статус,Выдан пользователю,Дата выдачи');
+    csvContent += '\n'; // Пустая строка для разделения таблиц
+    
+    // Таблица 4: Промокоды (только первые 1000)
+    csvContent += 'ПРОМОКОДЫ\n';
+    csvContent += 'ID квиза,Название квиза,Промокод,Статус,Выдан пользователю,Дата выдачи\n';
+    
+    let totalPromosProcessed = 0;
+    const maxPromosPerQuiz = 1000; // Ограничиваем количество промокодов
     
     blocks.forEach(quiz => {
       const promoStats = promoCodesStats[quiz.id] || { promoCodesList: [] };
       
-      promoStats.promoCodesList.forEach(promo => {
-        csvLines.push([
+      // Ограничиваем количество промокодов
+      const promosToProcess = promoStats.promoCodesList.slice(-maxPromosPerQuiz);
+      
+      promosToProcess.forEach(promo => {
+        csvContent += [
           quiz.id,
           quiz.message || `Квиз ${quiz.id}`,
           promo.code,
           promo.activated ? 'Использован' : 'Доступен',
           promo.activatedBy || '',
           promo.activatedAt ? new Date(promo.activatedAt).toLocaleString('ru-RU') : ''
-        ].map(escapeCsvValue).join(','));
+        ].map(escapeCsvValue).join(',') + '\n';
+        
+        totalPromosProcessed++;
       });
     });
     
-    // Объединяем все строки в CSV
-    const csvContent = csvLines.join('\n');
-    
-    // Устанавливаем заголовки для скачивания CSV файла
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="quiz-stats-${new Date().toISOString().split('T')[0]}.csv"`);
+    console.log(`📊 Processed ${totalPromosProcessed} promocodes`);
+    console.log(`📊 Total CSV size: ${Math.round(csvContent.length / 1024)}KB`);
     
     // Отправляем CSV данные
     res.send(csvContent);
