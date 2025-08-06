@@ -7,20 +7,22 @@ RUN apk add --no-cache wget jq
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копируем package.json и package-lock.json
-COPY package*.json ./
+# Копируем package.json и package-lock.json из backend
+COPY backend/package*.json ./backend/
 
-# Устанавливаем зависимости
+# Переходим в папку backend и устанавливаем зависимости
+WORKDIR /app/backend
 RUN npm install
 
-# Копируем исходный код
+# Возвращаемся в корень и копируем исходный код
+WORKDIR /app
 COPY . .
 
 # Создаем необходимые директории
-RUN mkdir -p backend/uploads backend/promocodes
+RUN mkdir -p backend/uploads backend/promocodes backend/backups
 
 # Устанавливаем права на директории
-RUN chmod 755 backend/uploads backend/promocodes
+RUN chmod 755 backend/uploads backend/promocodes backend/backups
 
 # Открываем порт
 EXPOSE 3001

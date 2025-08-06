@@ -849,8 +849,17 @@ app.post('/api/export-quiz-stats', async (req, res) => {
     
     console.log(`📊 Starting XLSX export with ${blocks.length} quizzes and ${Object.keys(stats).length} stats entries`);
     
+    // Проверяем наличие библиотеки ExcelJS
+    let ExcelJS;
+    try {
+      ExcelJS = require('exceljs');
+      console.log('✅ ExcelJS library loaded successfully');
+    } catch (excelError) {
+      console.error('❌ Error loading ExcelJS library:', excelError);
+      throw new Error(`ExcelJS library not available: ${excelError.message}`);
+    }
+    
     // Импортируем ExcelJS
-    const ExcelJS = require('exceljs');
     const workbook = new ExcelJS.Workbook();
     
     // Создаем лист "Общая статистика"
@@ -1048,7 +1057,59 @@ app.post('/api/export-quiz-stats', async (req, res) => {
     
   } catch (error) {
     console.error('Error exporting quiz stats to XLSX:', error);
-    res.status(500).json({ error: 'Ошибка при экспорте статистики' });
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code
+    });
+    res.status(500).json({ 
+      error: 'Ошибка при экспорте статистики',
+      details: error.message 
+    });
+  }
+});
+
+// Тестовый endpoint для проверки ExcelJS
+app.get('/api/test-excel', async (req, res) => {
+  try {
+    console.log('🧪 Testing ExcelJS library...');
+    
+    let ExcelJS;
+    try {
+      ExcelJS = require('exceljs');
+      console.log('✅ ExcelJS library loaded successfully');
+    } catch (excelError) {
+      console.error('❌ Error loading ExcelJS library:', excelError);
+      return res.status(500).json({ 
+        error: 'ExcelJS library not available',
+        details: excelError.message 
+      });
+    }
+    
+    // Создаем простой тестовый файл
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Test');
+    
+    worksheet.columns = [
+      { header: 'Test Column', key: 'test', width: 15 }
+    ];
+    
+    worksheet.addRow({ test: 'Test Data' });
+    
+    const buffer = await workbook.xlsx.writeBuffer();
+    console.log('✅ Test XLSX file generated successfully');
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="test.xlsx"');
+    res.send(buffer);
+    
+  } catch (error) {
+    console.error('❌ Error in test Excel endpoint:', error);
+    res.status(500).json({ 
+      error: 'Test failed',
+      details: error.message 
+    });
   }
 });
 
