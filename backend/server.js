@@ -202,29 +202,26 @@ app.post('/api/cleanup-unused-media', async (req, res) => {
 // Эндпоинт для получения статистики квизов
 app.get('/api/quiz-stats', async (req, res) => {
   try {
-    console.log('📊 Запрос статистики квизов...');
-    console.log('📁 Путь к файлу:', QUIZ_STATS_FILE);
-    console.log('📁 Файл существует:', fs.existsSync(QUIZ_STATS_FILE));
-    
     const stats = await readQuizStats();
-    console.log('📊 Статистика загружена:', Object.keys(stats).length, 'квизов');
-    console.log('📊 Ключи квизов:', Object.keys(stats));
-    
-    // Подробная информация о каждом квизе
-    Object.keys(stats).forEach(quizId => {
-      const quizStats = stats[quizId];
-      console.log(`📊 Квиз ${quizId}:`);
-      console.log(`   - Попыток: ${quizStats.totalAttempts}`);
-      console.log(`   - Успешных: ${quizStats.successfulCompletions}`);
-      console.log(`   - Неудачных: ${quizStats.failedAttempts}`);
-      console.log(`   - Попыток пользователей: ${quizStats.userAttempts.length}`);
-    });
-    
-    console.log('📤 Отправляем ответ:', JSON.stringify(stats));
     res.json(stats);
   } catch (error) {
-    console.error('❌ Error getting quiz stats:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Error getting quiz stats:', error);
+    res.status(500).json({ error: 'Failed to get quiz stats' });
+  }
+});
+
+// Эндпоинт для восстановления статистики из бэкапа
+app.post('/api/restore-stats', async (req, res) => {
+  try {
+    const restored = await restoreStatsFromBackup();
+    if (restored) {
+      res.json({ success: true, message: 'Статистика восстановлена из бэкапа' });
+    } else {
+      res.status(404).json({ error: 'Бэкап не найден' });
+    }
+  } catch (error) {
+    console.error('Error restoring stats:', error);
+    res.status(500).json({ error: 'Failed to restore stats' });
   }
 });
 
@@ -450,6 +447,46 @@ async function readQuizStats() {
     console.error('❌ Error reading quiz stats:', error);
     console.log('📊 Возвращаем пустую статистику');
     return {};
+  }
+}
+
+// Функция для восстановления статистики из бэкапа
+async function restoreStatsFromBackup() {
+  try {
+    const backupDir = path.join(__dirname, 'backups');
+    if (!fs.existsSync(backupDir)) {
+      console.log('📁 Папка бэкапов не существует');
+      return false;
+    }
+    
+    const backupFiles = fs.readdirSync(backupDir)
+      .filter(file => file.startsWith('quizStats-backup-') && file.endsWith('.json'))
+      .sort()
+      .reverse();
+    
+    if (backupFiles.length === 0) {
+      console.log('📁 Бэкапы не найдены');
+      return false;
+    }
+    
+    const latestBackup = backupFiles[0];
+    const backupPath = path.join(backupDir, latestBackup);
+    
+    console.log(`📁 Восстанавливаем из бэкапа: ${latestBackup}`);
+    
+    const backupData = await fsPromises.readFile(backupPath, 'utf8');
+    const backupStats = JSON.parse(backupData);
+    
+    // Восстанавливаем статистику
+    await fsPromises.writeFile(QUIZ_STATS_FILE, JSON.stringify(backupStats, null, 2));
+    
+    console.log(`✅ Статистика восстановлена из бэкапа: ${latestBackup}`);
+    console.log(`📊 Восстановлено квизов: ${Object.keys(backupStats).length}`);
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Error restoring from backup:', error);
+    return false;
   }
 }
 
@@ -1000,7 +1037,40 @@ async function shutdownServer(signal) {
 process.on('SIGINT', () => shutdownServer('SIGINT'));
 process.on('SIGTERM', () => shutdownServer('SIGTERM'));
 
-// Запуск сервера
-app.listen(PORT, HOST, () => {
-  console.log(`Server is running on port ${PORT}`);
+// Запускаем сервер
+app.listen(PORT, HOST, async () => {
+  console.log(`🚀 Server running on ${HOST}:${PORT}`);
+  
+  // Пытаемся восстановить статистику из бэкапа при запуске
+  try {
+    const stats = await readQuizStats();
+    if (Object.keys(stats).length === 0) {
+      console.log('📊 Статистика пустая, пытаемся восстановить из бэкапа...');
+      const restored = await restoreStatsFromBackup();
+      if (restored) {
+        console.log('✅ Статистика восстановлена из бэкапа при запуске');
+      } else {
+        console.log('📊 Бэкап не найден, начинаем с пустой статистики');
+      }
+    } else {
+      console.log(`📊 Загружена статистика: ${Object.keys(stats).length} квизов`);
+    }
+  } catch (error) {
+    console.error('❌ Error during startup stats check:', error);
+  }
+  
+  // Загружаем состояние ботов
+  try {
+    const state = await readState();
+    console.log(`🤖 Loaded ${state.bots.length} bots from state`);
+    
+    // Запускаем все боты
+    for (const bot of state.bots) {
+      if (bot.active) {
+        await startBot(bot);
+      }
+    }
+  } catch (error) {
+    console.error('Error loading state:', error);
+  }
 }); 

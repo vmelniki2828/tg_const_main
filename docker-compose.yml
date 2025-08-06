@@ -16,6 +16,8 @@ services:
       - ./backend/promocodes:/app/backend/promocodes
       - ./backend/state.json:/app/backend/state.json
       - ./backend/editorState.json:/app/backend/editorState.json
+      - ./backend/quizStats.json:/app/backend/quizStats.json
+      - ./backend/backups:/app/backend/backups
     restart: unless-stopped
     deploy:
       resources:

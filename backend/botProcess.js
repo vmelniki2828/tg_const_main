@@ -24,6 +24,44 @@ try {
 // Кэш для промокодов
 const promoCodeCache = new Map();
 
+// Функция для создания резервной копии статистики
+function createStatsBackup(stats, originalPath) {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Создаем папку для бэкапов если её нет
+    const backupDir = path.join(__dirname, 'backups');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+    
+    // Создаем имя файла с timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(backupDir, `quizStats-backup-${timestamp}.json`);
+    
+    // Сохраняем бэкап
+    fs.writeFileSync(backupPath, JSON.stringify(stats, null, 2));
+    console.log(`💾 Backup created: ${backupPath}`);
+    
+    // Удаляем старые бэкапы (оставляем только последние 5)
+    const backupFiles = fs.readdirSync(backupDir)
+      .filter(file => file.startsWith('quizStats-backup-'))
+      .sort()
+      .reverse();
+    
+    if (backupFiles.length > 5) {
+      backupFiles.slice(5).forEach(file => {
+        fs.unlinkSync(path.join(backupDir, file));
+        console.log(`🗑️ Removed old backup: ${file}`);
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Error creating backup:', error);
+  }
+}
+
 // Функция для отправки медиафайлов (оптимизированная)
 async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboard = []) {
   const fs = require('fs');
@@ -798,6 +836,9 @@ function setupBotHandlers(bot, blocks, connections) {
                   const statsJson = JSON.stringify(stats, null, 2);
                   console.log(`💾 Writing ${statsJson.length} characters to file`);
                   fs.writeFileSync(statsPath, statsJson);
+                  
+                  // Создаем резервную копию
+                  createStatsBackup(stats, statsPath);
                   
                   // Проверяем, что файл действительно записался
                   const verifyContent = fs.readFileSync(statsPath, 'utf8');
