@@ -853,6 +853,12 @@ app.post('/api/export-quiz-stats', async (req, res) => {
     
     console.log(`📊 Starting XLSX export with ${blocks.length} quizzes and ${Object.keys(stats).length} stats entries`);
     
+    // Подсчитываем общее количество записей для прогресс-бара
+    const totalAttempts = Object.values(stats).reduce((sum, quiz) => sum + (quiz.userAttempts?.length || 0), 0);
+    const totalPromos = Object.values(promoCodesStats).reduce((sum, quiz) => sum + (quiz.promoCodesList?.length || 0), 0);
+    
+    console.log(`📊 Total records to process: ${totalAttempts} attempts + ${totalPromos} promocodes`);
+    
     // Проверяем наличие библиотеки ExcelJS
     let ExcelJS;
     try {
@@ -963,19 +969,23 @@ app.post('/api/export-quiz-stats', async (req, res) => {
     ];
     
     let totalAttemptsProcessed = 0;
-    const maxAttemptsPerQuiz = 1000; // Ограничиваем количество попыток на квиз
     
     blocks.forEach(quiz => {
       const quizStats = stats[quiz.id] || { userAttempts: [] };
       
-      // Ограничиваем количество попыток для больших данных
-      const attemptsToProcess = quizStats.userAttempts.slice(-maxAttemptsPerQuiz);
+      console.log(`📊 Processing quiz ${quiz.id}: ${quizStats.userAttempts.length} attempts`);
       
-      attemptsToProcess.forEach(attempt => {
-        // Формируем строку с ответами пользователя (ограничиваем длину)
+      // Обрабатываем ВСЕ попытки без ограничений
+      quizStats.userAttempts.forEach((attempt, index) => {
+        // Показываем прогресс каждые 1000 записей
+        if (totalAttemptsProcessed > 0 && totalAttemptsProcessed % 1000 === 0) {
+          console.log(`📊 Progress: ${totalAttemptsProcessed}/${totalAttempts} attempts processed`);
+        }
+        
+        // Формируем строку с ответами пользователя (ограничиваем длину для производительности)
         const answersString = attempt.answers ? 
-          attempt.answers.slice(0, 10).map((answer, index) => 
-            `Вопрос ${index + 1}: ${answer.selectedAnswer.substring(0, 50)} (${answer.isCorrect ? 'Правильно' : 'Неправильно'})`
+          attempt.answers.slice(0, 20).map((answer, index) => 
+            `Вопрос ${index + 1}: ${answer.selectedAnswer.substring(0, 100)} (${answer.isCorrect ? 'Правильно' : 'Неправильно'})`
           ).join('; ') : '';
         
         userAttemptsSheet.addRow({
@@ -991,14 +1001,14 @@ app.post('/api/export-quiz-stats', async (req, res) => {
           successRate: attempt.successRate ? `${attempt.successRate.toFixed(1)}%` : '',
           duration: attempt.duration ? Math.round(attempt.duration / 1000) : '',
           promoCode: attempt.promoCode || '',
-          answers: answersString.substring(0, 500) // Ограничиваем длину ответов
+          answers: answersString.substring(0, 1000) // Увеличиваем лимит для ответов
         });
         
         totalAttemptsProcessed++;
       });
     });
     
-    console.log(`📊 Processed ${totalAttemptsProcessed} attempts`);
+    console.log(`📊 All attempts processed: ${totalAttemptsProcessed}/${totalAttempts}`);
     
     // Создаем лист "Промокоды"
     const promoCodesSheet = workbook.addWorksheet('Промокоды');
@@ -1013,15 +1023,19 @@ app.post('/api/export-quiz-stats', async (req, res) => {
     ];
     
     let totalPromosProcessed = 0;
-    const maxPromosPerQuiz = 1000; // Ограничиваем количество промокодов
     
     blocks.forEach(quiz => {
       const promoStats = promoCodesStats[quiz.id] || { promoCodesList: [] };
       
-      // Ограничиваем количество промокодов
-      const promosToProcess = promoStats.promoCodesList.slice(-maxPromosPerQuiz);
+      console.log(`📊 Processing promocodes for quiz ${quiz.id}: ${promoStats.promoCodesList.length} promocodes`);
       
-      promosToProcess.forEach(promo => {
+      // Обрабатываем ВСЕ промокоды без ограничений
+      promoStats.promoCodesList.forEach((promo, index) => {
+        // Показываем прогресс каждые 1000 записей
+        if (totalPromosProcessed > 0 && totalPromosProcessed % 1000 === 0) {
+          console.log(`📊 Progress: ${totalPromosProcessed}/${totalPromos} promocodes processed`);
+        }
+        
         promoCodesSheet.addRow({
           quizId: quiz.id,
           quizName: quiz.message || `Квиз ${quiz.id}`,
@@ -1035,7 +1049,7 @@ app.post('/api/export-quiz-stats', async (req, res) => {
       });
     });
     
-    console.log(`📊 Processed ${totalPromosProcessed} promocodes`);
+    console.log(`📊 All promocodes processed: ${totalPromosProcessed}/${totalPromos}`);
     
     // Применяем стили к заголовкам
     [overviewSheet, quizStatsSheet, userAttemptsSheet, promoCodesSheet].forEach(sheet => {
