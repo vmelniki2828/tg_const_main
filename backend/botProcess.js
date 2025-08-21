@@ -612,6 +612,7 @@ function setupBotHandlers(bot, blocks, connections) {
             const quizButtonLabels = currentQuestion.buttons.map(button => button.text);
             buttonLabels.push(...quizButtonLabels);
           }
+          
         }
         
         if (!buttonLabels.includes(messageText)) {
