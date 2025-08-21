@@ -534,6 +534,19 @@ function setupBotHandlers(bot, blocks, connections) {
 
   // Обработка текстовых сообщений
   bot.on('text', async (ctx) => {
+    const userId = ctx.from.id;
+    const currentBlockId = userCurrentBlock.get(userId);
+    const currentBlock = dialogMap.get(currentBlockId);
+
+    // Проверяем, совпадает ли текст сообщения с текстом на кнопке
+    const isButtonText = currentBlock.buttons.some(button => button.text === ctx.message.text);
+
+    if (!isButtonText) {
+      await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
+    }
+  });
+
+  bot.on('text', async (ctx) => {
     try {
       const messageText = ctx.message.text;
       const userId = ctx.from.id;
