@@ -601,26 +601,33 @@ function setupBotHandlers(bot, blocks, connections) {
 
       // --- Новая логика: Ответ на сообщения, не совпадающие с кнопками ---
       const currentBlock = dialogMap.get(currentBlockId);
-      let isQuizAnswer = false;
-      if (currentBlock && currentBlock.type === 'quiz') {
-        // Проверяем, является ли сообщение ответом на вопрос квиза
-        const userQuizState = userQuizStates.get(userId);
-        if (userQuizState && currentBlock.questions) {
-          const currentQuestion = currentBlock.questions[userQuizState.currentQuestionIndex];
-          if (currentQuestion) {
-            const quizButtonLabels = currentQuestion.buttons.map(btn => btn.text);
-            if (quizButtonLabels.includes(messageText)) {
-              isQuizAnswer = true;
-            }
-          }
-        }
-      }
       if (currentBlock) {
         const buttonLabels = currentBlock.buttons.map(button => button.text);
         buttonLabels.push('⬅️ Назад'); // Добавляем кнопку 'Назад' в список допустимых
-        if (!buttonLabels.includes(messageText) && !isQuizAnswer) {
-          await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
-          return;
+        // Если это не квизовый блок, проверяем только обычные кнопки
+        if (currentBlock.type !== 'quiz') {
+          if (!buttonLabels.includes(messageText)) {
+            await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
+            return;
+          }
+        }
+        // Если это квизовый блок, проверяем ответ только если он не совпадает с кнопками текущего вопроса
+        else {
+          const userQuizState = userQuizStates.get(userId);
+          let isQuizAnswer = false;
+          if (userQuizState && currentBlock.questions) {
+            const currentQuestion = currentBlock.questions[userQuizState.currentQuestionIndex];
+            if (currentQuestion) {
+              const quizButtonLabels = currentQuestion.buttons.map(btn => btn.text);
+              if (quizButtonLabels.includes(messageText)) {
+                isQuizAnswer = true;
+              }
+            }
+          }
+          if (!buttonLabels.includes(messageText) && !isQuizAnswer) {
+            await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
+            return;
+          }
         }
       }
       // --- конец новой логики ---
