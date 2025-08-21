@@ -601,20 +601,24 @@ function setupBotHandlers(bot, blocks, connections) {
 
       // --- Новая логика: Ответ на сообщения, не совпадающие с кнопками ---
       const currentBlock = dialogMap.get(currentBlockId);
+      let isQuizAnswer = false;
+      if (currentBlock && currentBlock.type === 'quiz') {
+        // Проверяем, является ли сообщение ответом на вопрос квиза
+        const userQuizState = userQuizStates.get(userId);
+        if (userQuizState && currentBlock.questions) {
+          const currentQuestion = currentBlock.questions[userQuizState.currentQuestionIndex];
+          if (currentQuestion) {
+            const quizButtonLabels = currentQuestion.buttons.map(btn => btn.text);
+            if (quizButtonLabels.includes(messageText)) {
+              isQuizAnswer = true;
+            }
+          }
+        }
+      }
       if (currentBlock) {
         const buttonLabels = currentBlock.buttons.map(button => button.text);
         buttonLabels.push('⬅️ Назад'); // Добавляем кнопку 'Назад' в список допустимых
-        
-        // Проверяем, является ли текущее сообщение ответом на вопрос квиза
-        if (currentBlock.type === 'quiz') {
-          const currentQuestion = currentBlock.questions[userQuizStates.get(userId)?.currentQuestionIndex];
-          if (currentQuestion) {
-            const quizButtonLabels = currentQuestion.buttons.map(button => button.text);
-            buttonLabels.push(...quizButtonLabels);
-          }
-        }
-        
-        if (!buttonLabels.includes(messageText)) {
+        if (!buttonLabels.includes(messageText) && !isQuizAnswer) {
           await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
           return;
         }
