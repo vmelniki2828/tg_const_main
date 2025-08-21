@@ -604,6 +604,16 @@ function setupBotHandlers(bot, blocks, connections) {
       if (currentBlock) {
         const buttonLabels = currentBlock.buttons.map(button => button.text);
         buttonLabels.push('⬅️ Назад'); // Добавляем кнопку 'Назад' в список допустимых
+        
+        // Проверяем, является ли текущее сообщение ответом на вопрос квиза
+        if (currentBlock.type === 'quiz') {
+          const currentQuestion = currentBlock.questions[userQuizStates.get(userId)?.currentQuestionIndex];
+          if (currentQuestion) {
+            const quizButtonLabels = currentQuestion.buttons.map(button => button.text);
+            buttonLabels.push(...quizButtonLabels);
+          }
+        }
+        
         if (!buttonLabels.includes(messageText)) {
           await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
           return;
