@@ -1206,6 +1206,16 @@ function setupBotHandlers(bot, blocks, connections) {
 async function startBot() {
   const bot = new Telegraf(token);
   
+  // Обработчик для сообщений, не совпадающих с текстом на кнопке
+  bot.on('text', (ctx) => {
+    const messageText = ctx.message.text;
+    const validButtons = state.blocks.flatMap(block => block.buttons.map(button => button.text));
+
+    if (!validButtons.includes(messageText)) {
+      ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками');
+    }
+  });
+
   // Счетчик ошибок для автоматического перезапуска
   let errorCount = 0;
   const maxErrors = 10;
