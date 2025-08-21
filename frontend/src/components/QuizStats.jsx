@@ -175,7 +175,7 @@ const QuizStats = ({ blocks, onClose }) => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `quiz-stats-${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.download = `quiz-stats-${new Date().toISOString().split('T')[0]}.gsheet`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
