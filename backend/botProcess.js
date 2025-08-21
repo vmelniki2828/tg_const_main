@@ -598,6 +598,17 @@ function setupBotHandlers(bot, blocks, connections) {
         }
       }
       // --- конец проверки ---
+
+      // --- Новая логика: Ответ на сообщения, не совпадающие с кнопками ---
+      const currentBlock = dialogMap.get(currentBlockId);
+      if (currentBlock) {
+        const buttonLabels = currentBlock.buttons.map(button => button.text);
+        if (!buttonLabels.includes(messageText)) {
+          await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
+          return;
+        }
+      }
+      // --- конец новой логики ---
       
       // Обработка кнопки "Назад"
       if (messageText === '⬅️ Назад') {
