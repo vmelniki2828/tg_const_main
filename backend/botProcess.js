@@ -603,6 +603,7 @@ function setupBotHandlers(bot, blocks, connections) {
       const currentBlock = dialogMap.get(currentBlockId);
       if (currentBlock) {
         const buttonLabels = currentBlock.buttons.map(button => button.text);
+        buttonLabels.push('⬅️ Назад'); // Добавляем кнопку 'Назад' в список допустимых
         if (!buttonLabels.includes(messageText)) {
           await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
           return;
