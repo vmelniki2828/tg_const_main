@@ -538,10 +538,14 @@ function setupBotHandlers(bot, blocks, connections) {
     const currentBlockId = userCurrentBlock.get(userId);
     const currentBlock = dialogMap.get(currentBlockId);
 
-    // Проверяем, совпадает ли текст сообщения с текстом на кнопке
-    const isButtonText = currentBlock.buttons.some(button => button.text === ctx.message.text);
+    // Проверяем, существует ли currentBlock и совпадает ли текст сообщения с текстом на кнопке
+    if (currentBlock && currentBlock.buttons) {
+      const isButtonText = currentBlock.buttons.some(button => button.text === ctx.message.text);
 
-    if (!isButtonText) {
+      if (!isButtonText) {
+        await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
+      }
+    } else {
       await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
     }
   });
