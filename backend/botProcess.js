@@ -611,24 +611,7 @@ function setupBotHandlers(bot, blocks, connections) {
             return;
           }
         }
-        // Если это квизовый блок, проверяем ответ только если он не совпадает с кнопками текущего вопроса
-        else {
-          const userQuizState = userQuizStates.get(userId);
-          let isQuizAnswer = false;
-          if (userQuizState && currentBlock.questions) {
-            const currentQuestion = currentBlock.questions[userQuizState.currentQuestionIndex];
-            if (currentQuestion) {
-              const quizButtonLabels = currentQuestion.buttons.map(btn => btn.text);
-              if (quizButtonLabels.includes(messageText)) {
-                isQuizAnswer = true;
-              }
-            }
-          }
-          if (!buttonLabels.includes(messageText) && !isQuizAnswer) {
-            await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
-            return;
-          }
-        }
+        // Если это квизовый блок, не делаем проверку на кнопки здесь
       }
       // --- конец новой логики ---
       
