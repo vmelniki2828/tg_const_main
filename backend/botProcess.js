@@ -1238,7 +1238,10 @@ async function updateBotCommands(bot, blocks) {
   }
 }
 
-async function startBot() {
+module.exports = { updateBotCommands };
+
+// --- Запускать основной код только если файл запущен как отдельный процесс ---
+if (require.main === module) {
   const bot = new Telegraf(token);
   
   // Счетчик ошибок для автоматического перезапуска
@@ -1299,5 +1302,3 @@ async function startBot() {
     handleCriticalError(reason);
   });
 }
-
-startBot();
