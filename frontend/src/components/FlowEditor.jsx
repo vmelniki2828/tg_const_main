@@ -741,6 +741,14 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
     }));
   };
 
+  // Добавить функции updateBlockCommand и updateBlockDescription
+  function updateBlockCommand(blockId, command) {
+    setBlocks(blocks => blocks.map(b => b.id === blockId ? { ...b, command } : b));
+  }
+  function updateBlockDescription(blockId, description) {
+    setBlocks(blocks => blocks.map(b => b.id === blockId ? { ...b, description } : b));
+  }
+
   return (
     <div className="flow-editor">
       <div className="editor-controls">
@@ -907,6 +915,30 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                       </button>
                     )}
                   </div>
+                </div>
+
+                {/* Новые поля для команды и описания */}
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <label>
+                    <span>Слеш-команда (например, start): </span>
+                    <input
+                      type="text"
+                      value={block.command || ''}
+                      onChange={e => updateBlockCommand(block.id, e.target.value)}
+                      placeholder="Введите команду без /"
+                      style={{ width: '120px', marginRight: '1rem' }}
+                      onClick={e => e.stopPropagation()}
+                    />
+                    <span>Описание: </span>
+                    <input
+                      type="text"
+                      value={block.description || ''}
+                      onChange={e => updateBlockDescription(block.id, e.target.value)}
+                      placeholder="Описание команды"
+                      style={{ width: '200px' }}
+                      onClick={e => e.stopPropagation()}
+                    />
+                  </label>
                 </div>
 
                 <textarea

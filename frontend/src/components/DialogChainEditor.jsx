@@ -71,6 +71,13 @@ const DialogChainEditor = () => {
     }));
   };
 
+  const updateChainCommand = (chainId, command) => {
+    setChains(chains.map(chain => chain.id === chainId ? { ...chain, command } : chain));
+  };
+  const updateChainDescription = (chainId, description) => {
+    setChains(chains.map(chain => chain.id === chainId ? { ...chain, description } : chain));
+  };
+
   const handleSave = async () => {
     try {
       const response = await fetch(`${config.API_BASE_URL}/api/update-dialog-chains`, {
@@ -122,6 +129,28 @@ const DialogChainEditor = () => {
                 onChange={(e) => updateChainMessage(chain.id, e.target.value)}
                 placeholder="Введите сообщение, которое бот отправит пользователю..."
               />
+            </div>
+
+            {/* Новые поля для команды и описания */}
+            <div style={{ marginBottom: '0.5rem' }}>
+              <label>
+                <span>Слеш-команда (например, start): </span>
+                <input
+                  type="text"
+                  value={chain.command || ''}
+                  onChange={e => updateChainCommand(chain.id, e.target.value)}
+                  placeholder="Введите команду без /"
+                  style={{ width: '120px', marginRight: '1rem' }}
+                />
+                <span>Описание: </span>
+                <input
+                  type="text"
+                  value={chain.description || ''}
+                  onChange={e => updateChainDescription(chain.id, e.target.value)}
+                  placeholder="Описание команды"
+                  style={{ width: '200px' }}
+                />
+              </label>
             </div>
 
             <div className="buttons-container">
