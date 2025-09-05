@@ -850,11 +850,81 @@ app.delete('/api/bots/:id', async (req, res) => {
 app.post('/api/export-quiz-stats', async (req, res) => {
   try {
     const { stats, promoCodesStats, blocks } = req.body;
+    const csvSections = [];
 
-    // Формируем массив строк для CSV (Попытки пользователей)
-    const csvRows = [];
-    // Заголовки
-    csvRows.push([
+    // 1. Общая статистика
+    csvSections.push('Общая статистика');
+    csvSections.push([
+      'Дата экспорта',
+      'Количество квизов',
+      'Всего попыток',
+      'Успешных попыток',
+      'Неудачных попыток',
+      'Общая успешность (%)'
+    ].join(','));
+    const totalAttempts = Object.values(stats).reduce((sum, quiz) => sum + quiz.totalAttempts, 0);
+    const totalSuccessful = Object.values(stats).reduce((sum, quiz) => sum + quiz.successfulCompletions, 0);
+    const totalFailed = Object.values(stats).reduce((sum, quiz) => sum + quiz.failedAttempts, 0);
+    const overallSuccessRate = totalAttempts > 0 ? ((totalSuccessful / totalAttempts) * 100).toFixed(1) : 0;
+    csvSections.push([
+      new Date().toLocaleString('ru-RU'),
+      blocks.length,
+      totalAttempts,
+      totalSuccessful,
+      totalFailed,
+      overallSuccessRate
+    ].join(','));
+    csvSections.push('');
+
+    // 2. Статистика по квизам
+    csvSections.push('Статистика по квизам');
+    csvSections.push([
+      'ID квиза',
+      'Название квиза',
+      'Количество вопросов',
+      'Всего попыток',
+      'Успешных попыток',
+      'Неудачных попыток',
+      'Успешность (%)',
+      'Всего промокодов',
+      'Доступных промокодов',
+      'Выданных промокодов'
+    ].join(','));
+    blocks.forEach(quiz => {
+      const quizStats = stats[quiz.id] || {
+        totalAttempts: 0,
+        successfulCompletions: 0,
+        failedAttempts: 0,
+        userAttempts: []
+      };
+      const promoStats = promoCodesStats[quiz.id] || {
+        hasPromoCodes: false,
+        totalPromoCodes: 0,
+        availablePromoCodes: 0,
+        usedPromoCodes: 0,
+        promoCodesList: []
+      };
+      const successRate = quizStats.totalAttempts > 0 
+        ? ((quizStats.successfulCompletions / quizStats.totalAttempts) * 100).toFixed(1) 
+        : 0;
+      csvSections.push([
+        quiz.id,
+        `"${(quiz.message || `Квиз ${quiz.id}`).replace(/"/g, '""')}"`,
+        quiz.questions?.length || 0,
+        quizStats.totalAttempts,
+        quizStats.successfulCompletions,
+        quizStats.failedAttempts,
+        successRate,
+        promoStats.totalPromoCodes,
+        promoStats.availablePromoCodes,
+        promoStats.usedPromoCodes
+      ].join(','));
+    });
+    csvSections.push('');
+
+    // 3. Попытки пользователей
+    csvSections.push('Попытки пользователей');
+    csvSections.push([
       'ID квиза',
       'Название квиза',
       'ID пользователя',
@@ -869,7 +939,6 @@ app.post('/api/export-quiz-stats', async (req, res) => {
       'Полученный промокод',
       'Ответы пользователя'
     ].join(','));
-
     blocks.forEach(quiz => {
       const quizStats = stats[quiz.id] || { userAttempts: [] };
       quizStats.userAttempts.forEach((attempt) => {
@@ -877,7 +946,7 @@ app.post('/api/export-quiz-stats', async (req, res) => {
           attempt.answers.slice(0, 20).map((answer, idx) => 
             `Вопрос ${idx + 1}: ${answer.selectedAnswer ? answer.selectedAnswer.replace(/"/g, '""').substring(0, 100) : ''} (${answer.isCorrect ? 'Правильно' : 'Неправильно'})`
           ).join('; ') : '';
-        csvRows.push([
+        csvSections.push([
           quiz.id,
           `"${(quiz.message || `Квиз ${quiz.id}`).replace(/"/g, '""')}"`,
           attempt.userId,
@@ -894,8 +963,33 @@ app.post('/api/export-quiz-stats', async (req, res) => {
         ].join(','));
       });
     });
+    csvSections.push('');
 
-    const csvContent = csvRows.join('\r\n');
+    // 4. Промокоды
+    csvSections.push('Промокоды');
+    csvSections.push([
+      'ID квиза',
+      'Название квиза',
+      'Промокод',
+      'Статус',
+      'Выдан пользователю',
+      'Дата выдачи'
+    ].join(','));
+    blocks.forEach(quiz => {
+      const promoStats = promoCodesStats[quiz.id] || { promoCodesList: [] };
+      promoStats.promoCodesList.forEach((promo) => {
+        csvSections.push([
+          quiz.id,
+          `"${(quiz.message || `Квиз ${quiz.id}`).replace(/"/g, '""')}"`,
+          promo.code,
+          promo.activated ? 'Использован' : 'Доступен',
+          promo.activatedBy || '',
+          promo.activatedAt ? new Date(promo.activatedAt).toLocaleString('ru-RU') : ''
+        ].join(','));
+      });
+    });
+
+    const csvContent = csvSections.join('\r\n');
     const fileName = `quiz-stats-${new Date().toISOString().split('T')[0]}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
