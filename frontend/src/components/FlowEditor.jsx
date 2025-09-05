@@ -909,6 +909,26 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                   </div>
                 </div>
 
+                {/* Новые поля для команды и описания */}
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <input
+                    type="text"
+                    value={block.command || ''}
+                    onChange={e => setBlocks(blocks.map(b => b.id === block.id ? { ...b, command: e.target.value } : b))}
+                    placeholder="Команда (например, start)"
+                    style={{ width: '48%', marginRight: '4%' }}
+                    onClick={e => e.stopPropagation()}
+                  />
+                  <input
+                    type="text"
+                    value={block.description || ''}
+                    onChange={e => setBlocks(blocks.map(b => b.id === block.id ? { ...b, description: e.target.value } : b))}
+                    placeholder="Описание команды (например, Запуск бота)"
+                    style={{ width: '48%' }}
+                    onClick={e => e.stopPropagation()}
+                  />
+                </div>
+
                 <textarea
                   value={block.message}
                   onChange={(e) => updateMessage(block.id, e.target.value)}

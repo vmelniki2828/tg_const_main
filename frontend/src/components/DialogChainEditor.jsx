@@ -112,6 +112,24 @@ const DialogChainEditor = () => {
               </button>
             </div>
             
+            {/* Новые поля для команды и описания */}
+            <div style={{ marginBottom: '0.5rem' }}>
+              <input
+                type="text"
+                value={chain.command || ''}
+                onChange={e => setChains(chains.map(c => c.id === chain.id ? { ...c, command: e.target.value } : c))}
+                placeholder="Команда (например, start)"
+                style={{ width: '48%', marginRight: '4%' }}
+              />
+              <input
+                type="text"
+                value={chain.description || ''}
+                onChange={e => setChains(chains.map(c => c.id === chain.id ? { ...c, description: e.target.value } : c))}
+                placeholder="Описание команды (например, Запуск бота)"
+                style={{ width: '48%' }}
+              />
+            </div>
+
             <div className="message-input">
               <label>
                 <span className="input-icon">💭</span>

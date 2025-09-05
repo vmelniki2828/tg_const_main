@@ -1219,6 +1219,25 @@ function setupBotHandlers(bot, blocks, connections) {
   });
 }
 
+// Функция для обновления меню команд Telegram
+async function updateBotCommands(bot, blocks) {
+  // Собираем команды из блоков, где есть поле command
+  const commands = blocks
+    .filter(block => block.command)
+    .map(block => ({
+      command: block.command.replace(/^\//, ''), // убираем слеш, если есть
+      description: block.description || ''
+    }));
+  if (commands.length > 0) {
+    await bot.telegram.setMyCommands(commands);
+    console.log('Меню команд Telegram обновлено:', commands);
+  } else {
+    // Если команд нет — очищаем меню
+    await bot.telegram.setMyCommands([]);
+    console.log('Меню команд Telegram очищено');
+  }
+}
+
 async function startBot() {
   const bot = new Telegraf(token);
   
