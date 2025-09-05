@@ -850,237 +850,58 @@ app.delete('/api/bots/:id', async (req, res) => {
 app.post('/api/export-quiz-stats', async (req, res) => {
   try {
     const { stats, promoCodesStats, blocks } = req.body;
-    
-    console.log(`📊 Starting XLSX export with ${blocks.length} quizzes and ${Object.keys(stats).length} stats entries`);
-    
-    // Подсчитываем общее количество записей для прогресс-бара
-    const totalAttemptsCount = Object.values(stats).reduce((sum, quiz) => sum + (quiz.userAttempts?.length || 0), 0);
-    const totalPromosCount = Object.values(promoCodesStats).reduce((sum, quiz) => sum + (quiz.promoCodesList?.length || 0), 0);
-    
-    console.log(`📊 Total records to process: ${totalAttemptsCount} attempts + ${totalPromosCount} promocodes`);
-    
-    // Проверяем наличие библиотеки ExcelJS
-    let ExcelJS;
-    try {
-      ExcelJS = require('exceljs');
-      console.log('✅ ExcelJS library loaded successfully');
-    } catch (excelError) {
-      console.error('❌ Error loading ExcelJS library:', excelError);
-      throw new Error(`ExcelJS library not available: ${excelError.message}`);
-    }
-    
-    // Импортируем ExcelJS
-    const workbook = new ExcelJS.Workbook();
-    
-    // Создаем лист "Общая статистика"
-    const overviewSheet = workbook.addWorksheet('Общая статистика');
-    
-    // Заголовки для общей статистики
-    overviewSheet.columns = [
-      { header: 'Дата экспорта', key: 'exportDate', width: 20 },
-      { header: 'Количество квизов', key: 'quizCount', width: 15 },
-      { header: 'Всего попыток', key: 'totalAttempts', width: 15 },
-      { header: 'Успешных попыток', key: 'successfulAttempts', width: 18 },
-      { header: 'Неудачных попыток', key: 'failedAttempts', width: 18 },
-      { header: 'Общая успешность (%)', key: 'overallSuccessRate', width: 20 }
-    ];
-    
-    const totalAttempts = Object.values(stats).reduce((sum, quiz) => sum + quiz.totalAttempts, 0);
-    const totalSuccessful = Object.values(stats).reduce((sum, quiz) => sum + quiz.successfulCompletions, 0);
-    const totalFailed = Object.values(stats).reduce((sum, quiz) => sum + quiz.failedAttempts, 0);
-    const overallSuccessRate = totalAttempts > 0 ? ((totalSuccessful / totalAttempts) * 100).toFixed(1) : 0;
-    
-    overviewSheet.addRow({
-      exportDate: new Date().toLocaleString('ru-RU'),
-      quizCount: blocks.length,
-      totalAttempts: totalAttempts,
-      successfulAttempts: totalSuccessful,
-      failedAttempts: totalFailed,
-      overallSuccessRate: overallSuccessRate
-    });
-    
-    // Создаем лист "Статистика по квизам"
-    const quizStatsSheet = workbook.addWorksheet('Статистика по квизам');
-    
-    quizStatsSheet.columns = [
-      { header: 'ID квиза', key: 'quizId', width: 15 },
-      { header: 'Название квиза', key: 'quizName', width: 30 },
-      { header: 'Количество вопросов', key: 'questionCount', width: 18 },
-      { header: 'Всего попыток', key: 'totalAttempts', width: 15 },
-      { header: 'Успешных попыток', key: 'successfulAttempts', width: 18 },
-      { header: 'Неудачных попыток', key: 'failedAttempts', width: 18 },
-      { header: 'Успешность (%)', key: 'successRate', width: 15 },
-      { header: 'Всего промокодов', key: 'totalPromoCodes', width: 18 },
-      { header: 'Доступных промокодов', key: 'availablePromoCodes', width: 20 },
-      { header: 'Выданных промокодов', key: 'usedPromoCodes', width: 20 }
-    ];
-    
-    blocks.forEach(quiz => {
-      const quizStats = stats[quiz.id] || {
-        totalAttempts: 0,
-        successfulCompletions: 0,
-        failedAttempts: 0,
-        userAttempts: []
-      };
-      
-      const promoStats = promoCodesStats[quiz.id] || {
-        hasPromoCodes: false,
-        totalPromoCodes: 0,
-        availablePromoCodes: 0,
-        usedPromoCodes: 0,
-        promoCodesList: []
-      };
-      
-      const successRate = quizStats.totalAttempts > 0 
-        ? ((quizStats.successfulCompletions / quizStats.totalAttempts) * 100).toFixed(1) 
-        : 0;
-      
-      quizStatsSheet.addRow({
-        quizId: quiz.id,
-        quizName: quiz.message || `Квиз ${quiz.id}`,
-        questionCount: quiz.questions?.length || 0,
-        totalAttempts: quizStats.totalAttempts,
-        successfulAttempts: quizStats.successfulCompletions,
-        failedAttempts: quizStats.failedAttempts,
-        successRate: successRate,
-        totalPromoCodes: promoStats.totalPromoCodes,
-        availablePromoCodes: promoStats.availablePromoCodes,
-        usedPromoCodes: promoStats.usedPromoCodes
-      });
-    });
-    
-    // Создаем лист "Попытки пользователей"
-    const userAttemptsSheet = workbook.addWorksheet('Попытки пользователей');
-    
-    userAttemptsSheet.columns = [
-      { header: 'ID квиза', key: 'quizId', width: 15 },
-      { header: 'Название квиза', key: 'quizName', width: 30 },
-      { header: 'ID пользователя', key: 'userId', width: 15 },
-      { header: 'Имя пользователя', key: 'userName', width: 20 },
-      { header: 'Фамилия пользователя', key: 'userLastName', width: 20 },
-      { header: 'Username', key: 'username', width: 15 },
-      { header: 'Дата попытки', key: 'attemptDate', width: 20 },
-      { header: 'Результат', key: 'result', width: 12 },
-      { header: 'Баллы', key: 'score', width: 10 },
-      { header: 'Процент успешности', key: 'successRate', width: 18 },
-      { header: 'Время прохождения (сек)', key: 'duration', width: 22 },
-      { header: 'Полученный промокод', key: 'promoCode', width: 20 },
-      { header: 'Ответы пользователя', key: 'answers', width: 50 }
-    ];
-    
-    let totalAttemptsProcessed = 0;
-    
+
+    // Формируем массив строк для CSV (Попытки пользователей)
+    const csvRows = [];
+    // Заголовки
+    csvRows.push([
+      'ID квиза',
+      'Название квиза',
+      'ID пользователя',
+      'Имя пользователя',
+      'Фамилия пользователя',
+      'Username',
+      'Дата попытки',
+      'Результат',
+      'Баллы',
+      'Процент успешности',
+      'Время прохождения (сек)',
+      'Полученный промокод',
+      'Ответы пользователя'
+    ].join(','));
+
     blocks.forEach(quiz => {
       const quizStats = stats[quiz.id] || { userAttempts: [] };
-      
-      console.log(`📊 Processing quiz ${quiz.id}: ${quizStats.userAttempts.length} attempts`);
-      
-      // Обрабатываем ВСЕ попытки без ограничений
-      quizStats.userAttempts.forEach((attempt, index) => {
-        // Показываем прогресс каждые 1000 записей
-        if (totalAttemptsProcessed > 0 && totalAttemptsProcessed % 1000 === 0) {
-          console.log(`📊 Progress: ${totalAttemptsProcessed}/${totalAttemptsCount} attempts processed`);
-        }
-        
-        // Формируем строку с ответами пользователя (ограничиваем длину для производительности)
+      quizStats.userAttempts.forEach((attempt) => {
         const answersString = attempt.answers ? 
-          attempt.answers.slice(0, 20).map((answer, index) => 
-            `Вопрос ${index + 1}: ${answer.selectedAnswer.substring(0, 100)} (${answer.isCorrect ? 'Правильно' : 'Неправильно'})`
+          attempt.answers.slice(0, 20).map((answer, idx) => 
+            `Вопрос ${idx + 1}: ${answer.selectedAnswer ? answer.selectedAnswer.replace(/"/g, '""').substring(0, 100) : ''} (${answer.isCorrect ? 'Правильно' : 'Неправильно'})`
           ).join('; ') : '';
-        
-        userAttemptsSheet.addRow({
-          quizId: quiz.id,
-          quizName: quiz.message || `Квиз ${quiz.id}`,
-          userId: attempt.userId,
-          userName: (attempt.userName || `Пользователь ${attempt.userId}`).substring(0, 100),
-          userLastName: (attempt.userLastName || '').substring(0, 100),
-          username: attempt.username ? `@${attempt.username}` : '',
-          attemptDate: new Date(attempt.timestamp).toLocaleString('ru-RU'),
-          result: attempt.success ? 'Успешно' : 'Неудачно',
-          score: attempt.score !== undefined ? `${attempt.score}/${quiz.questions?.length || 0}` : '',
-          successRate: attempt.successRate ? `${attempt.successRate.toFixed(1)}%` : '',
-          duration: attempt.duration ? Math.round(attempt.duration / 1000) : '',
-          promoCode: attempt.promoCode || '',
-          answers: answersString.substring(0, 1000) // Увеличиваем лимит для ответов
-        });
-        
-        totalAttemptsProcessed++;
+        csvRows.push([
+          quiz.id,
+          `"${(quiz.message || `Квиз ${quiz.id}`).replace(/"/g, '""')}"`,
+          attempt.userId,
+          `"${(attempt.userName || `Пользователь ${attempt.userId}`).replace(/"/g, '""').substring(0, 100)}"`,
+          `"${(attempt.userLastName || '').replace(/"/g, '""').substring(0, 100)}"`,
+          attempt.username ? `@${attempt.username}` : '',
+          new Date(attempt.timestamp).toLocaleString('ru-RU'),
+          attempt.success ? 'Успешно' : 'Неудачно',
+          attempt.score !== undefined ? `${attempt.score}/${quiz.questions?.length || 0}` : '',
+          attempt.successRate ? `${attempt.successRate.toFixed(1)}%` : '',
+          attempt.duration ? Math.round(attempt.duration / 1000) : '',
+          attempt.promoCode || '',
+          `"${answersString.replace(/"/g, '""').substring(0, 1000)}"`
+        ].join(','));
       });
     });
-    
-    console.log(`📊 All attempts processed: ${totalAttemptsProcessed}/${totalAttemptsCount}`);
-    
-    // Создаем лист "Промокоды"
-    const promoCodesSheet = workbook.addWorksheet('Промокоды');
-    
-    promoCodesSheet.columns = [
-      { header: 'ID квиза', key: 'quizId', width: 15 },
-      { header: 'Название квиза', key: 'quizName', width: 30 },
-      { header: 'Промокод', key: 'promoCode', width: 20 },
-      { header: 'Статус', key: 'status', width: 12 },
-      { header: 'Выдан пользователю', key: 'activatedBy', width: 20 },
-      { header: 'Дата выдачи', key: 'activatedAt', width: 20 }
-    ];
-    
-    let totalPromosProcessed = 0;
-    
-    blocks.forEach(quiz => {
-      const promoStats = promoCodesStats[quiz.id] || { promoCodesList: [] };
-      
-      console.log(`📊 Processing promocodes for quiz ${quiz.id}: ${promoStats.promoCodesList.length} promocodes`);
-      
-      // Обрабатываем ВСЕ промокоды без ограничений
-      promoStats.promoCodesList.forEach((promo, index) => {
-        // Показываем прогресс каждые 1000 записей
-        if (totalPromosProcessed > 0 && totalPromosProcessed % 1000 === 0) {
-          console.log(`📊 Progress: ${totalPromosProcessed}/${totalPromosCount} promocodes processed`);
-        }
-        
-        promoCodesSheet.addRow({
-          quizId: quiz.id,
-          quizName: quiz.message || `Квиз ${quiz.id}`,
-          promoCode: promo.code,
-          status: promo.activated ? 'Использован' : 'Доступен',
-          activatedBy: promo.activatedBy || '',
-          activatedAt: promo.activatedAt ? new Date(promo.activatedAt).toLocaleString('ru-RU') : ''
-        });
-        
-        totalPromosProcessed++;
-      });
-    });
-    
-    console.log(`📊 All promocodes processed: ${totalPromosProcessed}/${totalPromosCount}`);
-    
-    // Применяем стили к заголовкам
-    [overviewSheet, quizStatsSheet, userAttemptsSheet, promoCodesSheet].forEach(sheet => {
-      sheet.getRow(1).font = { bold: true };
-      sheet.getRow(1).fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE0E0E0' }
-      };
-    });
-    
-    // Генерируем XLSX файл
-    const buffer = await workbook.xlsx.writeBuffer();
-    
-    console.log(`📊 XLSX file generated, size: ${Math.round(buffer.length / 1024)}KB`);
-    
-    // Устанавливаем заголовки для скачивания XLSX файла
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="quiz-stats-${new Date().toISOString().split('T')[0]}.xlsx"`);
-    
-    // Отправляем XLSX данные
-    res.send(buffer);
-    
+
+    const csvContent = csvRows.join('\r\n');
+    const fileName = `quiz-stats-${new Date().toISOString().split('T')[0]}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(csvContent);
   } catch (error) {
-    console.error('Error exporting quiz stats to XLSX:', error);
-    console.error('Error stack:', error.stack);
-    console.error('Error details:', {
-      message: error.message,
-      name: error.name,
-      code: error.code
-    });
+    console.error('Error exporting quiz stats to CSV:', error);
     res.status(500).json({ 
       error: 'Ошибка при экспорте статистики',
       details: error.message 
