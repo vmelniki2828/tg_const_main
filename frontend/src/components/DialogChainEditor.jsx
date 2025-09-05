@@ -131,26 +131,65 @@ const DialogChainEditor = () => {
               />
             </div>
 
-            {/* Новые поля для команды и описания */}
-            <div style={{ marginBottom: '0.5rem' }}>
-              <label>
-                <span>Слеш-команда (например, start): </span>
-                <input
-                  type="text"
-                  value={chain.command || ''}
-                  onChange={e => updateChainCommand(chain.id, e.target.value)}
-                  placeholder="Введите команду без /"
-                  style={{ width: '120px', marginRight: '1rem' }}
-                />
-                <span>Описание: </span>
-                <input
-                  type="text"
-                  value={chain.description || ''}
-                  onChange={e => updateChainDescription(chain.id, e.target.value)}
-                  placeholder="Описание команды"
-                  style={{ width: '200px' }}
-                />
-              </label>
+            {/* Стилизованный блок для команды и описания */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1rem',
+              background: '#f6f8fa',
+              border: '1px solid #d1d5da',
+              borderRadius: '8px',
+              padding: '0.75rem 1rem',
+              marginBottom: '1rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+            }}>
+              <span style={{ fontSize: '1.5rem', marginRight: '0.5rem' }}>💡</span>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                <label style={{ fontWeight: 500, marginBottom: '0.25rem' }}>
+                  Слеш-команда
+                  <input
+                    type="text"
+                    value={chain.command || ''}
+                    onChange={e => updateChainCommand(chain.id, e.target.value)}
+                    placeholder="Например: start"
+                    style={{
+                      width: '100%',
+                      padding: '0.4rem',
+                      border: '1px solid #bdbdbd',
+                      borderRadius: '5px',
+                      marginTop: '0.2rem',
+                      fontSize: '1rem',
+                      background: '#fff'
+                    }}
+                    maxLength={32}
+                  />
+                  <span style={{ color: '#888', fontSize: '0.9em' }}>
+                    Команда появится в меню Telegram (без /)
+                  </span>
+                </label>
+                <label style={{ fontWeight: 500, marginTop: '0.5rem' }}>
+                  Описание команды
+                  <input
+                    type="text"
+                    value={chain.description || ''}
+                    onChange={e => updateChainDescription(chain.id, e.target.value)}
+                    placeholder="Кратко опишите, что делает команда"
+                    style={{
+                      width: '100%',
+                      padding: '0.4rem',
+                      border: '1px solid #bdbdbd',
+                      borderRadius: '5px',
+                      marginTop: '0.2rem',
+                      fontSize: '1rem',
+                      background: '#fff'
+                    }}
+                    maxLength={50}
+                  />
+                  <span style={{ color: '#888', fontSize: '0.9em' }}>
+                    Это описание увидит пользователь в меню Telegram
+                  </span>
+                </label>
+              </div>
             </div>
 
             <div className="buttons-container">

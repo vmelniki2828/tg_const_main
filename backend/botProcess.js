@@ -532,6 +532,19 @@ function setupBotHandlers(bot, blocks, connections) {
     await ctx.reply(helpMessage, { parse_mode: 'Markdown' });
   });
 
+  // Автоматическая регистрация обработчиков для всех команд из блоков
+  blocks.forEach(block => {
+    if (block.command) {
+      const commandName = block.command.replace(/^\//, '');
+      bot.command(commandName, async (ctx) => {
+        const userId = ctx.from.id;
+        userCurrentBlock.set(userId, block.id);
+        const { keyboard, inlineKeyboard } = createKeyboardWithBack(block.buttons, userId, block.id);
+        await sendMediaMessage(ctx, block.message, block.mediaFiles, keyboard, inlineKeyboard);
+      });
+    }
+  });
+
   // Обработка текстовых сообщений
   bot.on('text', async (ctx) => {
     try {
@@ -1225,13 +1238,13 @@ async function updateBotCommands(bot, blocks) {
     .filter(block => block.command)
     .map(block => ({
       command: block.command.replace(/^\//, ''),
-      description: block.description || ''
-    }));
+      description: (block.description || '').substring(0, 50)
+    }))
+    .sort((a, b) => a.command.localeCompare(b.command));
   if (commands.length > 0) {
     await bot.telegram.setMyCommands(commands);
     console.log('Меню команд Telegram обновлено:', commands);
   } else {
-    // Если нет команд — очищаем меню
     await bot.telegram.setMyCommands([]);
     console.log('Меню команд Telegram очищено');
   }
