@@ -175,7 +175,7 @@ const QuizStats = ({ blocks, onClose }) => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `quiz-stats-${new Date().toISOString().split('T')[0]}.gsheet`;
+      a.download = `quiz-stats-${new Date().toISOString().split('T')[0]}.csv`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -205,8 +205,8 @@ const QuizStats = ({ blocks, onClose }) => {
         <div className="quiz-stats-header">
           <h2>📊 Статистика квизов</h2>
           <div className="header-controls">
-            <button className="export-btn" onClick={exportStatsToFile} title="Сохранить статистику в Excel файл">
-              📊 Экспорт в Excel
+            <button className="export-btn" onClick={exportStatsToFile} title="Сохранить статистику в CSV файл">
+              📊 Экспорт в CSV
             </button>
             <button className="close-btn" onClick={onClose}>✕</button>
           </div>
