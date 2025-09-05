@@ -5,8 +5,6 @@ const fsPromises = require('fs').promises;
 const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
-const { Telegraf } = require('telegraf');
-const { updateBotCommands } = require('./botProcess');
 
 // Загружаем переменные окружения
 try {
@@ -637,18 +635,6 @@ app.put('/api/bots/:id', async (req, res) => {
 
     await writeState(state);
     console.log('State saved successfully');
-
-    // --- Обновляем меню команд Telegram ---
-    if (updatedBot.token && updatedBot.editorState && updatedBot.editorState.blocks) {
-      try {
-        const bot = new Telegraf(updatedBot.token);
-        await updateBotCommands(bot, updatedBot.editorState.blocks);
-      } catch (err) {
-        console.error('Ошибка при обновлении меню команд Telegram:', err);
-      }
-    }
-    // --- конец блока обновления меню команд ---
-
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating bot:', error);
