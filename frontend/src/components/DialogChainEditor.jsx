@@ -131,7 +131,7 @@ const DialogChainEditor = () => {
               />
             </div>
 
-            {/* Стилизованный блок для команды и описания */}
+            {/* Стилизованный блок для команды и описания (без иконки) */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -143,7 +143,6 @@ const DialogChainEditor = () => {
               marginBottom: '1rem',
               boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
             }}>
-              <span style={{ fontSize: '1.5rem', marginRight: '0.5rem' }}>💡</span>
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                 <label style={{ fontWeight: 500, marginBottom: '0.25rem' }}>
                   Слеш-команда
