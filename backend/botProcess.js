@@ -10,19 +10,11 @@ mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
     process.exit(1);
   });
 
-const botId = process.argv[3];
-console.log('botId:', botId);
-if (!botId) {
-  console.error('Missing required argument: botId');
-  process.exit(1);
-}
-
 // Получаем параметры из аргументов командной строки
-const [token, stateJson] = process.argv.slice(2);
+const [token, botId, stateJson] = process.argv.slice(2);
 
-// Проверяем аргументы
-if (!token || !stateJson) {
-  console.error('Missing required arguments: token and state');
+if (!token || !botId || !stateJson) {
+  console.error('Missing required arguments: token, botId, stateJson');
   process.exit(1);
 }
 
