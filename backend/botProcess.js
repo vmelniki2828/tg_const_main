@@ -11,6 +11,7 @@ mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   });
 
 const botId = process.argv[3];
+console.log('botId:', botId);
 if (!botId) {
   console.error('Missing required argument: botId');
   process.exit(1);
