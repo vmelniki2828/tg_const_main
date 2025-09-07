@@ -1,6 +1,14 @@
 const { Telegraf } = require('telegraf');
 const { User } = require('./models');
 const { Loyalty } = require('./models');
+const mongoose = require('mongoose');
+const MONGO_URI = 'mongodb://157.230.20.252:27017/tg_const_main';
+mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('✅ MongoDB connected (botProcess.js)'))
+  .catch(err => {
+    console.error('❌ MongoDB connection error (botProcess.js):', err);
+    process.exit(1);
+  });
 
 // Получаем параметры из аргументов командной строки
 const [token, stateJson] = process.argv.slice(2);
