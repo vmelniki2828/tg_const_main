@@ -20,7 +20,7 @@ const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Подключение к MongoDB
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/tg_const_main';
+const MONGO_URI = 'mongodb://157.230.20.252:27017/tg_const_main';
 mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => {
