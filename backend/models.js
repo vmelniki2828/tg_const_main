@@ -1,5 +1,14 @@
 const mongoose = require('mongoose');
 
+const BotSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  name: String,
+  token: String,
+  isActive: Boolean,
+  editorState: Object,
+  createdAt: { type: Date, default: Date.now }
+});
+
 const UserSchema = new mongoose.Schema({
   botId: { type: String, required: true },
   userId: { type: Number, required: true },
@@ -64,6 +73,7 @@ const LoyaltySchema = new mongoose.Schema({
 });
 
 module.exports = {
+  Bot: mongoose.model('Bot', BotSchema),
   User: mongoose.model('User', UserSchema),
   QuizStats: mongoose.model('QuizStats', QuizStatsSchema),
   PromoCode: mongoose.model('PromoCode', PromoCodeSchema),

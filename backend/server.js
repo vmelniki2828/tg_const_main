@@ -6,7 +6,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
 const mongoose = require('mongoose');
-const { QuizStats } = require('./models');
+const { QuizStats, Bot } = require('./models');
 
 // Загружаем переменные окружения
 try {
@@ -792,6 +792,14 @@ app.post('/api/bots', async (req, res) => {
 
     state.bots.push(newBot);
     await writeState(state);
+    // Сохраняем в MongoDB
+    await Bot.create({
+      id: newBot.id,
+      name: newBot.name,
+      token: newBot.token,
+      isActive: newBot.isActive,
+      editorState: newBot.editorState
+    });
     
     res.json({ id: newBot.id, name: newBot.name, isActive: newBot.isActive });
   } catch (error) {
