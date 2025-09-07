@@ -5,6 +5,8 @@ const fsPromises = require('fs').promises;
 const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
+const mongoose = require('mongoose');
+const { QuizStats } = require('./models');
 
 // Загружаем переменные окружения
 try {
@@ -16,6 +18,15 @@ try {
 const app = express();
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
+
+// Подключение к MongoDB
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/tg_const_main';
+mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(err => {
+    console.error('❌ MongoDB connection error:', err);
+    process.exit(1);
+  });
 
 // Настройка CORS
 const corsOptions = {
@@ -423,33 +434,22 @@ async function readState() {
   }
 }
 
-// Функции для работы со статистикой квизов
+// Заменить функции readQuizStats и writeQuizStats на работу с MongoDB
 async function readQuizStats() {
   try {
-    console.log('📊 Читаем файл статистики:', QUIZ_STATS_FILE);
-    
-    // Проверяем существование файла
-    if (!fs.existsSync(QUIZ_STATS_FILE)) {
-      console.log('❌ Файл статистики не существует, создаем пустой');
-      await fsPromises.writeFile(QUIZ_STATS_FILE, '{}');
-      return {};
-    }
-    
-    const data = await fsPromises.readFile(QUIZ_STATS_FILE, 'utf8');
-    console.log('📄 Содержимое файла:', data);
-    
-    if (!data || data.trim() === '') {
-      console.log('❌ Файл статистики пустой, возвращаем пустой объект');
-      return {};
-    }
-    
-    const stats = JSON.parse(data);
-    console.log('📊 Статистика прочитана успешно, квизов:', Object.keys(stats).length);
-    console.log('📊 Ключи квизов:', Object.keys(stats));
+    const statsArr = await QuizStats.find({});
+    const stats = {};
+    statsArr.forEach(qs => {
+      stats[qs.quizId] = {
+        userAttempts: qs.attempts,
+        totalAttempts: qs.attempts.length,
+        successfulCompletions: qs.attempts.filter(a => a.success).length,
+        failedAttempts: qs.attempts.filter(a => !a.success).length
+      };
+    });
     return stats;
   } catch (error) {
-    console.error('❌ Error reading quiz stats:', error);
-    console.log('📊 Возвращаем пустую статистику');
+    console.error('❌ Error reading quiz stats from MongoDB:', error);
     return {};
   }
 }
@@ -496,21 +496,17 @@ async function restoreStatsFromBackup() {
 
 async function writeQuizStats(stats) {
   try {
-    console.log('📝 Записываем статистику в файл:', QUIZ_STATS_FILE);
-    console.log('📊 Данные для записи:', JSON.stringify(stats, null, 2));
-    
-    await fsPromises.writeFile(QUIZ_STATS_FILE, JSON.stringify(stats, null, 2));
-    
-    // Проверяем, что файл записался
-    if (fs.existsSync(QUIZ_STATS_FILE)) {
-      const savedData = await fsPromises.readFile(QUIZ_STATS_FILE, 'utf8');
-      console.log('✅ Файл записан успешно, размер:', savedData.length, 'символов');
-    } else {
-      console.log('❌ Файл не был создан!');
+    for (const quizId in stats) {
+      const quizStats = stats[quizId];
+      await QuizStats.updateOne(
+        { quizId },
+        { $set: { quizId, attempts: quizStats.userAttempts } },
+        { upsert: true }
+      );
     }
+    console.log('📝 Статистика квизов сохранена в MongoDB');
   } catch (error) {
-    console.error('❌ Error writing quiz stats:', error);
-    console.error('❌ Stack trace:', error.stack);
+    console.error('❌ Error writing quiz stats to MongoDB:', error);
   }
 }
 

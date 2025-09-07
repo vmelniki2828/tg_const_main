@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { PromoCode } = require('./models');
 
 // Базовая папка для промокодов квизов
 const PROMOCODES_DIR = path.join(__dirname, 'promocodes');
@@ -167,11 +168,32 @@ function updatePromoCodeFile(code, activated, quizId) {
   }
 }
 
+// Пример функции активации промокода через MongoDB
+async function activatePromoCode(code, userId) {
+  const promo = await PromoCode.findOne({ code });
+  if (!promo) return { success: false, error: 'Промокод не найден' };
+  if (promo.activated) return { success: false, error: 'Промокод уже использован' };
+  promo.activated = true;
+  promo.activatedBy = userId;
+  promo.activatedAt = new Date();
+  await promo.save();
+  return { success: true, promo };
+}
+
+// Пример функции генерации промокода
+async function createPromoCode(code, quizId) {
+  const promo = new PromoCode({ code, quizId, activated: false });
+  await promo.save();
+  return promo;
+}
+
 module.exports = {
   loadPromoCodesFromFile,
   getRandomPromoCode,
   updatePromoCodeFile,
   hasPromoCodes,
   getAvailablePromoCodesCount,
-  deleteQuizPromoCodes
+  deleteQuizPromoCodes,
+  activatePromoCode,
+  createPromoCode
 }; 

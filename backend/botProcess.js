@@ -1,4 +1,6 @@
 const { Telegraf } = require('telegraf');
+const { User } = require('./models');
+const { Loyalty } = require('./models');
 
 // Получаем параметры из аргументов командной строки
 const [token, stateJson] = process.argv.slice(2);
@@ -1248,6 +1250,22 @@ async function updateBotCommands(bot, blocks) {
     await bot.telegram.setMyCommands([]);
     console.log('Меню команд Telegram очищено');
   }
+}
+
+// Пример функции проверки и выдачи бонуса за лояльность
+async function checkAndRewardLoyalty(userId, thresholdKey) {
+  let loyalty = await Loyalty.findOne({ userId });
+  if (!loyalty) {
+    loyalty = new Loyalty({ userId, rewards: {} });
+  }
+  if (!loyalty.rewards[thresholdKey]) {
+    // Выдаём бонус (отправка сообщения, промокода и т.д.)
+    // ... твоя логика выдачи ...
+    loyalty.rewards[thresholdKey] = true;
+    await loyalty.save();
+    return true; // Бонус выдан
+  }
+  return false; // Уже получал
 }
 
 async function startBot() {
