@@ -554,7 +554,8 @@ async function startBot(bot) {
   const botProcess = spawn('node', [
     path.join(__dirname, 'botProcess.js'),
     bot.token,
-    JSON.stringify(bot.editorState)
+    JSON.stringify(bot.editorState),
+    bot.id
   ]);
 
   return new Promise((resolve, reject) => {

@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 
 const UserSchema = new mongoose.Schema({
-  userId: { type: Number, required: true, unique: true },
+  botId: { type: String, required: true },
+  userId: { type: Number, required: true },
   username: String,
   firstName: String,
   lastName: String,
@@ -25,6 +26,7 @@ const UserSchema = new mongoose.Schema({
 });
 
 const QuizStatsSchema = new mongoose.Schema({
+  botId: { type: String, required: true },
   userId: { type: Number, required: true },
   quizId: { type: String, required: true },
   attempts: [
@@ -40,7 +42,8 @@ const QuizStatsSchema = new mongoose.Schema({
 });
 
 const PromoCodeSchema = new mongoose.Schema({
-  code: { type: String, required: true, unique: true },
+  botId: { type: String, required: true },
+  code: { type: String, required: true },
   quizId: String,
   activated: { type: Boolean, default: false },
   activatedBy: Number,
@@ -48,7 +51,8 @@ const PromoCodeSchema = new mongoose.Schema({
 });
 
 const LoyaltySchema = new mongoose.Schema({
-  userId: { type: Number, required: true, unique: true },
+  botId: { type: String, required: true },
+  userId: { type: Number, required: true },
   rewards: {
     '24h': { type: Boolean, default: false },
     '7d': { type: Boolean, default: false },
