@@ -841,6 +841,33 @@ function setupBotHandlers(bot, blocks, connections) {
       
       const button = currentBlock.buttons?.find(btn => btn.text === messageText);
       
+      // Если это кнопка перехода к квизу, проверяем, не прошел ли пользователь уже квест
+      if (button) {
+        const connectionKey = `${String(currentBlockId)}_${String(button.id)}`;
+        const nextBlockId = connectionMap.get(connectionKey);
+        const nextBlock = dialogMap.get(nextBlockId);
+        
+        if (nextBlock && nextBlock.type === 'quiz') {
+          console.log(`🔍 DEBUG: Button leads to quiz, checking if already completed`);
+          
+          try {
+            const existingQuizStats = await QuizStats.findOne({
+              botId: botId,
+              userId: userId,
+              blockId: nextBlockId
+            });
+            
+            if (existingQuizStats) {
+              console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId}`);
+              await ctx.reply('Вы уже прошли этот квест!');
+              return;
+            }
+          } catch (error) {
+            console.error('❌ Error checking existing quiz stats:', error);
+          }
+        }
+      }
+      
       if (!button) {
         console.log(`❌ Button "${messageText}" not found in current block`);
         console.log(`❌ Available buttons:`, currentBlock.buttons?.map(b => b.text));
@@ -892,34 +919,9 @@ function setupBotHandlers(bot, blocks, connections) {
       userCurrentBlock.set(userId, nextBlockId);
       console.log(`🔍 DEBUG: Updated user current block to: ${nextBlockId}`);
       
-      // Если следующий блок - квиз, проверяем, не прошел ли пользователь уже квест
+      // Если следующий блок - квиз, инициализируем состояние квиза и показываем первый вопрос
       if (nextBlock.type === 'quiz') {
         console.log(`🔍 DEBUG: Starting quiz for user ${userId}`);
-        
-        // Проверяем, не прошел ли пользователь уже этот квест
-        try {
-          const existingQuizStats = await QuizStats.findOne({
-            botId: botId,
-            userId: userId,
-            blockId: nextBlockId
-          });
-          
-          if (existingQuizStats) {
-            console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId}`);
-            await ctx.reply('Вы уже прошли этот квест!');
-            
-            // Возвращаем в главное меню
-            userCurrentBlock.set(userId, 'start');
-            const startBlock = dialogMap.get('start');
-            if (startBlock) {
-              const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-              await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-            }
-            return;
-          }
-        } catch (error) {
-          console.error('❌ Error checking existing quiz stats:', error);
-        }
         
         // Инициализируем состояние квиза
         const quizState = {
