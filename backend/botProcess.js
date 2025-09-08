@@ -661,20 +661,29 @@ function setupBotHandlers(bot, blocks, connections) {
       const currentBlock = dialogMap.get(currentBlockId);
       if (!currentBlock) {
         console.log(`❌ Current block ${currentBlockId} not found, resetting to start`);
-        userCurrentBlock.set(userId, 'start');
-        const startBlock = dialogMap.get('start');
-        if (startBlock) {
-          const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-          await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-        }
-        return;
-      }
+            userCurrentBlock.set(userId, 'start');
+            const startBlock = dialogMap.get('start');
+            if (startBlock) {
+              const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+              await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+            }
+            return;
+          }
       
       console.log(`🔍 DEBUG: Processing in block ${currentBlockId} (type: ${currentBlock.type})`);
       
       // Обработка квизов - проверяем, находится ли пользователь в квизе
       if (currentBlock.type === 'quiz') {
         console.log(`🔍 DEBUG: Processing quiz block`);
+        console.log(`🔍 DEBUG: Current block ID: ${currentBlockId}`);
+        console.log(`🔍 DEBUG: User current block: ${userCurrentBlock.get(userId)}`);
+        console.log(`🔍 DEBUG: Message text: "${messageText}"`);
+        
+        // Проверяем, что пользователь действительно находится в блоке квиза
+        if (userCurrentBlock.get(userId) !== currentBlockId) {
+          console.log(`🔍 DEBUG: User not in quiz block, current block: ${userCurrentBlock.get(userId)}, expected: ${currentBlockId}`);
+          return;
+        }
         
         // Получаем состояние квиза пользователя
         let quizState = userQuizStates.get(userId);
@@ -711,9 +720,12 @@ function setupBotHandlers(bot, blocks, connections) {
         // Если квиз уже начат, обрабатываем ответ
         if (quizState && !quizState.isCompleted) {
           console.log(`🔍 DEBUG: Processing quiz answer for question ${quizState.currentQuestionIndex}`);
+          console.log(`🔍 DEBUG: Quiz state:`, quizState);
           
           const questions = currentBlock.questions || [];
           const currentQuestion = questions[quizState.currentQuestionIndex];
+          
+          console.log(`🔍 DEBUG: Current question:`, currentQuestion);
           
           if (!currentQuestion) {
             console.log(`❌ Question ${quizState.currentQuestionIndex} not found`);
@@ -727,7 +739,7 @@ function setupBotHandlers(bot, blocks, connections) {
           
           if (alreadyAnswered) {
             console.log(`⚠️ User already answered question ${quizState.currentQuestionIndex}, ignoring duplicate`);
-            return;
+              return;
           }
           
           // Ищем кнопку с ответом
@@ -740,7 +752,7 @@ function setupBotHandlers(bot, blocks, connections) {
           
           console.log(`🔍 DEBUG: Answer button found:`, answerButton);
           
-          // Сохраняем ответ
+              // Сохраняем ответ
           quizState.answers.push({
             questionIndex: quizState.currentQuestionIndex,
             answer: messageText,
@@ -811,7 +823,7 @@ function setupBotHandlers(bot, blocks, connections) {
             }
             
             return;
-          } else {
+                } else {
             // Следующий вопрос
             const nextQuestion = questions[quizState.currentQuestionIndex];
             const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextQuestion.buttons, userId, currentBlockId);
@@ -936,12 +948,12 @@ function setupBotHandlers(bot, blocks, connections) {
           await ctx.reply('Вы уже прошли этот квиз! Возвращаемся в главное меню.');
           
           // Возвращаем в главное меню
-          userCurrentBlock.set(userId, 'start');
+                  userCurrentBlock.set(userId, 'start');
           userQuizStates.delete(userId);
-          
-          const startBlock = dialogMap.get('start');
-          if (startBlock) {
-            const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+                  
+                  const startBlock = dialogMap.get('start');
+                  if (startBlock) {
+                    const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
             await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
           }
           return;
@@ -963,7 +975,7 @@ function setupBotHandlers(bot, blocks, connections) {
         if (!currentQuestion) {
           console.log(`❌ Question ${quizState.currentQuestionIndex} not found`);
           await ctx.reply('Ошибка в квизе');
-          return;
+                  return;
         }
         
         // Обрабатываем ответ пользователя
@@ -971,8 +983,8 @@ function setupBotHandlers(bot, blocks, connections) {
         if (!userAnswer) {
           console.log(`❌ Answer "${messageText}" not found in question`);
           await ctx.reply('Выберите один из предложенных вариантов');
-          return;
-        }
+                  return;
+                }
         
         // Проверяем, не отвечал ли пользователь уже на этот вопрос
         const alreadyAnswered = quizState.answers.some(a => a.questionIndex === quizState.currentQuestionIndex);
@@ -1048,16 +1060,16 @@ function setupBotHandlers(bot, blocks, connections) {
             // Если настроено возвращение в начало
             if (currentBlock.returnToStartOnComplete) {
               console.log(`🔍 DEBUG: Returning to start after quiz completion`);
-              userCurrentBlock.set(userId, 'start');
+                userCurrentBlock.set(userId, 'start');
               userQuizStates.delete(userId);
               
               // Очищаем историю навигации
               userNavigationHistory.delete(userId);
               
-              const startBlock = dialogMap.get('start');
-              if (startBlock) {
-                const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
-                await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+                const startBlock = dialogMap.get('start');
+                if (startBlock) {
+                  const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+                  await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
                 console.log(`✅ Returned to start block after quiz completion`);
               }
             }
@@ -1080,10 +1092,10 @@ function setupBotHandlers(bot, blocks, connections) {
           // Показываем тот же вопрос снова
           const { keyboard, inlineKeyboard } = createKeyboardWithBack(currentQuestion.buttons, userId, currentBlockId);
           await sendMediaMessage(ctx, currentQuestion.message, currentQuestion.mediaFiles, keyboard, inlineKeyboard);
-          return;
-        }
-      }
-      
+                  return;
+                }
+              }
+              
       // Обработка обычных блоков с кнопками
       console.log(`🔍 DEBUG: Processing regular block with buttons`);
       console.log(`🔍 DEBUG: Current block buttons:`, currentBlock.buttons?.map(b => ({ id: b.id, text: b.text })));
@@ -1095,22 +1107,22 @@ function setupBotHandlers(bot, blocks, connections) {
         console.log(`❌ Button "${messageText}" not found in current block`);
         console.log(`❌ Available buttons:`, currentBlock.buttons?.map(b => b.text));
         await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
-        return;
+              return;
       }
       
       console.log(`✅ Button "${messageText}" found, processing...`);
-      
-      // Проверяем, является ли кнопка ссылкой
-      if (button.url && button.url.trim() !== '') {
+            
+            // Проверяем, является ли кнопка ссылкой
+            if (button.url && button.url.trim() !== '') {
         console.log(`🔗 Link button: ${button.url}`);
-        await ctx.reply(`🔗 ${button.text}`, {
-          reply_markup: {
-            inline_keyboard: [[{ text: button.text, url: button.url.trim() }]]
-          }
-        });
-        return;
-      }
-      
+              await ctx.reply(`🔗 ${button.text}`, {
+                reply_markup: {
+                  inline_keyboard: [[{ text: button.text, url: button.url.trim() }]]
+                }
+              });
+              return;
+            }
+            
       // Обычная кнопка - переход к следующему блоку
       const connectionKey = `${String(currentBlockId)}_${String(button.id)}`;
       const nextBlockId = connectionMap.get(connectionKey);
@@ -1125,27 +1137,27 @@ function setupBotHandlers(bot, blocks, connections) {
         console.log(`❌ Connection key "${connectionKey}" not found in connectionMap`);
         console.log(`❌ Next block ID "${nextBlockId}" not found in dialogMap`);
         await ctx.reply('Ошибка маршрутизации: не найден следующий блок.');
-        return;
-      }
-      
+                return;
+              }
+            
       // Переходим к следующему блоку
-      const nextBlock = dialogMap.get(nextBlockId);
-      
+              const nextBlock = dialogMap.get(nextBlockId);
+              
       // Добавляем текущий блок в историю (только если следующий блок не квиз)
       if (nextBlock.type !== 'quiz') {
-        let userHistory = userNavigationHistory.get(userId) || [];
+              let userHistory = userNavigationHistory.get(userId) || [];
         userHistory.push(currentBlockId);
-        userNavigationHistory.set(userId, userHistory);
+              userNavigationHistory.set(userId, userHistory);
       }
+      
+      // Обновляем текущий блок пользователя
+      userCurrentBlock.set(userId, nextBlockId);
+      console.log(`🔍 DEBUG: Updated user current block to: ${nextBlockId}`);
       
       // Если следующий блок - квиз, очищаем состояние квиза и показываем первый вопрос
       if (nextBlock.type === 'quiz') {
         userQuizStates.delete(userId);
         console.log(`🔍 DEBUG: Skipping quiz block message, will show first question instead`);
-        
-        // ВАЖНО: Обновляем текущий блок пользователя на квиз
-        userCurrentBlock.set(userId, nextBlockId);
-        console.log(`🔍 DEBUG: Updated user current block to quiz: ${nextBlockId}`);
         
         // Показываем первый вопрос квиза
         const questions = nextBlock.questions || [];
@@ -1159,9 +1171,6 @@ function setupBotHandlers(bot, blocks, connections) {
           await ctx.reply('Квиз не настроен');
         }
       } else {
-        // Обновляем текущий блок для не-квизов
-        userCurrentBlock.set(userId, nextBlockId);
-        
         // Отправляем следующий блок (только для не-квизов)
         const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
         await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
@@ -1291,7 +1300,7 @@ async function startBot() {
     console.log('[EVENT] User ID:', ctx.from?.id);
     return next();
   });
-
+  
   // Обработчик ошибок бота
   bot.catch((err, ctx) => {
     console.error('❌ Bot error:', err);
@@ -1336,22 +1345,27 @@ async function startBot() {
   // Запускаем бота в polling режиме
   console.log('=== [BOOT] Запускаем bot.launch() в polling режиме... ===');
   
-  // Запускаем бота без await - пусть работает в фоне
-  console.log('=== [BOOT] Запускаем bot.launch() без await... ===');
+  // Запускаем бота синхронно
+  console.log('=== [BOOT] Запускаем bot.launch() синхронно... ===');
   
-  bot.launch().then(() => {
+  try {
+    await bot.launch();
     console.log('=== [BOOT] Bot started successfully in polling mode ===');
     console.log('Bot started successfully');
-  }).catch((launchError) => {
+  } catch (launchError) {
     console.error('=== [BOOT] Bot launch failed:', launchError);
-  });
-  
-  // Даем время на запуск
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  console.log('=== [BOOT] Bot launch initiated, continuing... ===');
-  
-  // Сброс счетчика ошибок при успешном запуске
-  errorCount = 0;
+    console.error('=== [BOOT] Пробуем запуск без await...');
+    
+    // Альтернативный запуск
+    bot.launch().then(() => {
+      console.log('=== [BOOT] Bot started successfully (alternative) ===');
+    }).catch((altError) => {
+      console.error('=== [BOOT] Alternative launch failed:', altError);
+    });
+  }
+    
+    // Сброс счетчика ошибок при успешном запуске
+    errorCount = 0;
   
   // Graceful shutdown
   process.once('SIGINT', async () => {
@@ -1360,10 +1374,10 @@ async function startBot() {
       await bot.stop('SIGINT');
       console.log('=== [SHUTDOWN] Bot stopped successfully ===');
       process.exit(0);
-    } catch (error) {
+  } catch (error) {
       console.error('=== [SHUTDOWN] Error stopping bot:', error);
-      process.exit(1);
-    }
+    process.exit(1);
+  }
   });
   
   process.once('SIGTERM', async () => {
