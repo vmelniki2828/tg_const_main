@@ -288,6 +288,38 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
   }
 }
 
+// Универсальная функция для сохранения пользователя в MongoDB
+async function saveUserToMongo(ctx) {
+  if (!ctx.from) return;
+  const userId = ctx.from.id;
+  try {
+    console.log(`[MongoDB] saveUserToMongo: попытка сохранить пользователя:`, { botId, userId, from: ctx.from });
+    const updateResult = await User.updateOne(
+      { botId, userId },
+      {
+        $setOnInsert: {
+          botId,
+          userId,
+          username: ctx.from.username,
+          firstName: ctx.from.first_name,
+          lastName: ctx.from.last_name,
+          firstSubscribedAt: new Date(),
+          isSubscribed: true,
+          subscriptionHistory: [{ subscribedAt: new Date() }],
+        },
+        $set: {
+          lastSubscribedAt: new Date(),
+          isSubscribed: true
+        }
+      },
+      { upsert: true }
+    );
+    console.log('[MongoDB] saveUserToMongo: результат updateOne:', updateResult);
+  } catch (err) {
+    console.error('[MongoDB] saveUserToMongo: ошибка при сохранении пользователя:', err);
+  }
+}
+
 // Глобальные переменные для состояния пользователей
 const userCurrentBlock = new Map();
 const userNavigationHistory = new Map();
@@ -452,47 +484,20 @@ function setupBotHandlers(bot, blocks, connections) {
 
   // Обработка команды /start
   bot.command('start', async (ctx) => {
-    const userId = ctx.from.id;
-    // Сохраняем пользователя в MongoDB при запуске /start
-    try {
-      console.log(`[MongoDB] /start: попытка сохранить пользователя:`, { botId, userId, from: ctx.from });
-      const updateResult = await User.updateOne(
-        { botId, userId },
-        {
-          $setOnInsert: {
-            botId,
-            userId,
-            username: ctx.from.username,
-            firstName: ctx.from.first_name,
-            lastName: ctx.from.last_name,
-            firstSubscribedAt: new Date(),
-            isSubscribed: true,
-            subscriptionHistory: [{ subscribedAt: new Date() }],
-          },
-          $set: {
-            lastSubscribedAt: new Date(),
-            isSubscribed: true
-          }
-        },
-        { upsert: true }
-      );
-      console.log('[MongoDB] /start: результат updateOne:', updateResult);
-    } catch (err) {
-      console.error('[MongoDB] /start: ошибка при сохранении пользователя:', err);
-    }
+    await saveUserToMongo(ctx);
     
     // Очищаем историю навигации пользователя
-    userNavigationHistory.delete(userId);
+    userNavigationHistory.delete(ctx.from.id);
     
     // Очищаем состояние квиза пользователя
-    userQuizStates.delete(userId);
+    userQuizStates.delete(ctx.from.id);
     
     // Устанавливаем текущий блок как стартовый
-    userCurrentBlock.set(userId, 'start');
+    userCurrentBlock.set(ctx.from.id, 'start');
     
     const startBlock = dialogMap.get('start');
     if (startBlock) {
-      const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+      const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, ctx.from.id, 'start');
       await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
     } else {
       await ctx.reply('Бот не настроен');
@@ -501,6 +506,7 @@ function setupBotHandlers(bot, blocks, connections) {
 
   // Обработка команды /help
   bot.command('help', async (ctx) => {
+    await saveUserToMongo(ctx);
     const userId = ctx.from.id;
     let currentBlockId = userCurrentBlock.get(userId);
     
@@ -542,6 +548,7 @@ function setupBotHandlers(bot, blocks, connections) {
     if (block.command) {
       const commandName = block.command.replace(/^\//, '');
       bot.command(commandName, async (ctx) => {
+        await saveUserToMongo(ctx);
         const userId = ctx.from.id;
         userCurrentBlock.set(userId, block.id);
         const { keyboard, inlineKeyboard } = createKeyboardWithBack(block.buttons, userId, block.id);
@@ -552,6 +559,7 @@ function setupBotHandlers(bot, blocks, connections) {
 
   // Обработка текстовых сообщений
   bot.on('text', async (ctx) => {
+    await saveUserToMongo(ctx);
     try {
       const userId = ctx.from.id;
       console.log(`[MongoDB] Попытка сохранить пользователя:`, { botId, userId, from: ctx.from });
@@ -1260,6 +1268,12 @@ function setupBotHandlers(bot, blocks, connections) {
         console.error('❌ Error during cleanup:', cleanupError);
       }
     }
+  });
+
+  // Обработка любых callback_query (нажатий на inline-кнопки)
+  bot.on('callback_query', async (ctx) => {
+    await saveUserToMongo(ctx);
+    // ... твоя логика обработки callback
   });
 }
 
