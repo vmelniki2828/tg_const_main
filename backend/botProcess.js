@@ -665,6 +665,13 @@ function setupBotHandlers(bot, blocks, connections) {
       // Обработка кнопки "Назад"
       if (messageText === '⬅️ Назад') {
         console.log(`🔍 DEBUG: Processing "Назад" button`);
+        
+        // Если пользователь в квизе, очищаем состояние квиза
+        if (currentBlock.type === 'quiz') {
+          console.log(`🔍 DEBUG: Exiting quiz, clearing quiz state`);
+          userQuizStates.delete(userId);
+        }
+        
         const userHistory = userNavigationHistory.get(userId);
         
         if (userHistory && userHistory.length > 0) {
@@ -689,9 +696,144 @@ function setupBotHandlers(bot, blocks, connections) {
       // Обработка квизов
       if (currentBlock.type === 'quiz') {
         console.log(`🔍 DEBUG: Processing quiz block`);
-        // Здесь будет логика квизов (пока пропускаем)
-        await ctx.reply('Квизы пока не поддерживаются');
-        return;
+        
+        // Получаем состояние квиза пользователя
+        let quizState = userQuizStates.get(userId);
+        
+        // Если квиз не начат, инициализируем его и показываем первый вопрос
+        if (!quizState) {
+          console.log(`🔍 DEBUG: Initializing quiz for user ${userId}`);
+          quizState = {
+            blockId: currentBlockId,
+            currentQuestionIndex: 0,
+            startTime: Date.now(),
+            answers: [],
+            isCompleted: false
+          };
+          userQuizStates.set(userId, quizState);
+          
+          // Показываем первый вопрос
+          const questions = currentBlock.questions || [];
+          if (questions.length > 0) {
+            const firstQuestion = questions[0];
+            const { keyboard, inlineKeyboard } = createKeyboardWithBack(firstQuestion.buttons, userId, currentBlockId);
+            await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles, keyboard, inlineKeyboard);
+            return;
+          } else {
+            await ctx.reply('Квиз не настроен');
+            return;
+          }
+        }
+        
+        // Проверяем, завершен ли квиз
+        if (quizState.isCompleted) {
+          console.log(`🔍 DEBUG: Quiz already completed for user ${userId}`);
+          await ctx.reply('Вы уже прошли этот квиз!');
+          return;
+        }
+        
+        // Получаем текущий вопрос
+        const questions = currentBlock.questions || [];
+        if (questions.length === 0) {
+          console.log(`❌ No questions found in quiz block`);
+          await ctx.reply('Квиз не настроен');
+          return;
+        }
+        
+        const currentQuestion = questions[quizState.currentQuestionIndex];
+        if (!currentQuestion) {
+          console.log(`❌ Question ${quizState.currentQuestionIndex} not found`);
+          await ctx.reply('Ошибка в квизе');
+          return;
+        }
+        
+        // Обрабатываем ответ пользователя
+        const userAnswer = currentQuestion.buttons?.find(btn => btn.text === messageText);
+        if (!userAnswer) {
+          console.log(`❌ Answer "${messageText}" not found in question`);
+          await ctx.reply('Выберите один из предложенных вариантов');
+          return;
+        }
+        
+        // Сохраняем ответ
+        quizState.answers.push({
+          questionIndex: quizState.currentQuestionIndex,
+          answer: messageText,
+          isCorrect: userAnswer.isCorrect || false,
+          timestamp: Date.now()
+        });
+        
+        console.log(`🔍 DEBUG: User answered: "${messageText}", correct: ${userAnswer.isCorrect}`);
+        
+        // Проверяем правильность ответа
+        if (userAnswer.isCorrect) {
+          console.log(`✅ Correct answer for question ${quizState.currentQuestionIndex}`);
+          
+          // Переходим к следующему вопросу
+          quizState.currentQuestionIndex++;
+          
+          if (quizState.currentQuestionIndex >= questions.length) {
+            // Квиз завершен
+            console.log(`🎉 Quiz completed for user ${userId}`);
+            quizState.isCompleted = true;
+            quizState.completionTime = Date.now();
+            
+            // Сохраняем результат в MongoDB
+            try {
+              const { QuizStats } = require('./models');
+              const quizStats = new QuizStats({
+                botId,
+                userId,
+                quizBlockId: currentBlockId,
+                answers: quizState.answers,
+                score: quizState.answers.filter(a => a.isCorrect).length,
+                totalQuestions: questions.length,
+                completionTime: quizState.completionTime - quizState.startTime,
+                completedAt: new Date()
+              });
+              
+              await quizStats.save();
+              console.log(`✅ Quiz stats saved to MongoDB for user ${userId}`);
+            } catch (error) {
+              console.error('❌ Error saving quiz stats:', error);
+            }
+            
+            // Отправляем финальное сообщение
+            const finalMessage = currentBlock.finalSuccessMessage || 'Поздравляем! Вы успешно прошли квиз!';
+            await ctx.reply(finalMessage);
+            
+            // Если настроено возвращение в начало
+            if (currentBlock.returnToStartOnComplete) {
+              userCurrentBlock.set(userId, 'start');
+              userQuizStates.delete(userId);
+              
+              const startBlock = dialogMap.get('start');
+              if (startBlock) {
+                const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+                await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+              }
+            }
+            
+            return;
+          } else {
+            // Следующий вопрос
+            const nextQuestion = questions[quizState.currentQuestionIndex];
+            const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextQuestion.buttons, userId, currentBlockId);
+            await sendMediaMessage(ctx, nextQuestion.message, nextQuestion.mediaFiles, keyboard, inlineKeyboard);
+            return;
+          }
+        } else {
+          // Неправильный ответ
+          console.log(`❌ Wrong answer for question ${quizState.currentQuestionIndex}`);
+          
+          const failureMessage = currentQuestion.failureMessage || 'Неправильно. Попробуйте еще раз.';
+          await ctx.reply(failureMessage);
+          
+          // Показываем тот же вопрос снова
+          const { keyboard, inlineKeyboard } = createKeyboardWithBack(currentQuestion.buttons, userId, currentBlockId);
+          await sendMediaMessage(ctx, currentQuestion.message, currentQuestion.mediaFiles, keyboard, inlineKeyboard);
+          return;
+        }
       }
       
       // Обработка обычных блоков с кнопками
@@ -733,13 +875,20 @@ function setupBotHandlers(bot, blocks, connections) {
       // Переходим к следующему блоку
       const nextBlock = dialogMap.get(nextBlockId);
       
-      // Добавляем текущий блок в историю
-      let userHistory = userNavigationHistory.get(userId) || [];
-      userHistory.push(currentBlockId);
-      userNavigationHistory.set(userId, userHistory);
+      // Добавляем текущий блок в историю (только если следующий блок не квиз)
+      if (nextBlock.type !== 'quiz') {
+        let userHistory = userNavigationHistory.get(userId) || [];
+        userHistory.push(currentBlockId);
+        userNavigationHistory.set(userId, userHistory);
+      }
       
       // Обновляем текущий блок
       userCurrentBlock.set(userId, nextBlockId);
+      
+      // Если следующий блок - квиз, очищаем состояние квиза
+      if (nextBlock.type === 'quiz') {
+        userQuizStates.delete(userId);
+      }
       
       // Отправляем следующий блок
       const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
