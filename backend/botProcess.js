@@ -714,12 +714,17 @@ function setupBotHandlers(bot, blocks, connections) {
           
           // Показываем первый вопрос
           const questions = currentBlock.questions || [];
+          console.log(`🔍 DEBUG: First quiz entry - questions count: ${questions.length}`);
+          console.log(`🔍 DEBUG: First quiz entry - questions:`, JSON.stringify(questions, null, 2));
+          
           if (questions.length > 0) {
             const firstQuestion = questions[0];
+            console.log(`🔍 DEBUG: First question:`, JSON.stringify(firstQuestion, null, 2));
             const { keyboard, inlineKeyboard } = createKeyboardWithBack(firstQuestion.buttons, userId, currentBlockId);
             await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles, keyboard, inlineKeyboard);
             return;
           } else {
+            console.log(`❌ No questions found in quiz block on first entry`);
             await ctx.reply('Квиз не настроен');
             return;
           }
@@ -734,6 +739,9 @@ function setupBotHandlers(bot, blocks, connections) {
         
         // Получаем текущий вопрос
         const questions = currentBlock.questions || [];
+        console.log(`🔍 DEBUG: Quiz questions count: ${questions.length}`);
+        console.log(`🔍 DEBUG: Quiz questions:`, JSON.stringify(questions, null, 2));
+        
         if (questions.length === 0) {
           console.log(`❌ No questions found in quiz block`);
           await ctx.reply('Квиз не настроен');
@@ -1058,77 +1066,50 @@ async function startBot() {
     console.error('=== [BOOT] Ошибка очистки webhook:', webhookError);
   }
 
-  // Запускаем бота в polling режиме с таймаутом
-  try {
-    console.log('=== [BOOT] Запускаем bot.launch() в polling режиме... ===');
-    
-    // Попробуем запустить без дополнительной конфигурации
-    const launchPromise = bot.launch();
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
-        console.error('=== [BOOT] bot.launch() timeout after 15 seconds ===');
-        console.error('=== [BOOT] Возможные причины:');
-        console.error('=== [BOOT] 1. Проблемы с сетью в Docker контейнере');
-        console.error('=== [BOOT] 2. Блокировка портов');
-        console.error('=== [BOOT] 3. Проблемы с Telegram API');
-        reject(new Error('bot.launch() timeout after 15 seconds'));
-      }, 15000);
-    });
-    
-    await Promise.race([launchPromise, timeoutPromise]);
+  // Запускаем бота в polling режиме
+  console.log('=== [BOOT] Запускаем bot.launch() в polling режиме... ===');
+  
+  // Запускаем бота без await - пусть работает в фоне
+  bot.launch().then(() => {
     console.log('=== [BOOT] Bot started successfully in polling mode ===');
     console.log('Bot started successfully');
-    
-    // Принудительно запускаем polling
-    try {
-      console.log('=== [BOOT] Запускаем polling вручную... ===');
-      await bot.telegram.deleteWebhook();
-      console.log('=== [BOOT] Webhook очищен для polling ===');
-    } catch (pollingError) {
-      console.error('=== [BOOT] Ошибка при запуске polling:', pollingError);
-    }
-    
-    // Проверяем статус бота
-    try {
-      const botInfo = await bot.telegram.getMe();
-      console.log('=== [BOOT] Bot info:', botInfo);
-    } catch (infoError) {
-      console.error('=== [BOOT] Error getting bot info:', infoError);
-    }
-    
-    // Проверяем webhook info
-    try {
-      const webhookInfo = await bot.telegram.getWebhookInfo();
-      console.log('=== [BOOT] Webhook info:', webhookInfo);
-    } catch (webhookError) {
-      console.error('=== [BOOT] Error getting webhook info:', webhookError);
-    }
-    
-    // Сброс счетчика ошибок при успешном запуске
-    errorCount = 0;
-  } catch (error) {
-    console.error('=== [BOOT] Ошибка запуска бота:', error);
-    console.error('=== [BOOT] Пробуем альтернативный способ запуска...');
-    
-    try {
-      // Альтернативный способ - запуск без await
-      console.log('=== [BOOT] Запускаем bot.launch() без await... ===');
-      bot.launch().then(() => {
-        console.log('=== [BOOT] Bot started successfully (alternative method) ===');
-      }).catch((altError) => {
-        console.error('=== [BOOT] Alternative launch failed:', altError);
-        process.exit(1);
-      });
-      
-      // Даем время на запуск
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      console.log('=== [BOOT] Bot launch initiated, continuing... ===');
-    } catch (altError) {
-      console.error('=== [BOOT] Alternative launch method failed:', altError);
-      console.error('=== [BOOT] Принудительно завершаем процесс...');
-      process.exit(1);
-    }
+  }).catch((launchError) => {
+    console.error('=== [BOOT] Bot launch failed:', launchError);
+    console.error('=== [BOOT] Принудительно завершаем процесс...');
+    process.exit(1);
+  });
+  
+  // Даем время на запуск
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  console.log('=== [BOOT] Bot launch initiated, continuing... ===');
+  
+  // Принудительно запускаем polling
+  try {
+    console.log('=== [BOOT] Запускаем polling вручную... ===');
+    await bot.telegram.deleteWebhook();
+    console.log('=== [BOOT] Webhook очищен для polling ===');
+  } catch (pollingError) {
+    console.error('=== [BOOT] Ошибка при запуске polling:', pollingError);
   }
+  
+  // Проверяем статус бота
+  try {
+    const botInfo = await bot.telegram.getMe();
+    console.log('=== [BOOT] Bot info:', botInfo);
+  } catch (infoError) {
+    console.error('=== [BOOT] Error getting bot info:', infoError);
+  }
+  
+  // Проверяем webhook info
+  try {
+    const webhookInfo = await bot.telegram.getWebhookInfo();
+    console.log('=== [BOOT] Webhook info:', webhookInfo);
+  } catch (webhookError) {
+    console.error('=== [BOOT] Error getting webhook info:', webhookError);
+  }
+  
+  // Сброс счетчика ошибок при успешном запуске
+  errorCount = 0;
   
   // Graceful shutdown
   process.once('SIGINT', async () => {
