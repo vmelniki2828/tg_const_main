@@ -581,33 +581,13 @@ app.post('/api/bots/:id/activate', async (req, res) => {
       return res.status(400).json({ error: 'Invalid editor state' });
     }
     console.log('All validations passed, starting bot activation for:', req.params.id);
-
-    // Останавливаем текущий бот, если он запущен
-    if (activeProcesses.has(bot.id)) {
-      console.log(`Bot ${bot.id} is already running, stopping it first...`);
-      await stopBot(bot.id);
-      await wait(3000); // Увеличиваем время ожидания
-    }
-
-    // Запускаем новый процесс бота
     try {
-      console.log(`Starting new bot process for ${bot.id}...`);
-      const botProcess = await startBot(bot);
-      
-      // Сохраняем процесс и обновляем состояние
-      activeProcesses.set(bot.id, botProcess);
-      state.activeBot = bot.id;
-      state.bots = state.bots.map(b => ({
-        ...b,
-        isActive: b.id === bot.id
-      }));
-      
-      await writeState(state);
-      console.log(`Bot ${bot.id} activated successfully`);
+      await startBot(bot);
+      console.log('Bot process started successfully for:', req.params.id);
       res.json({ success: true });
     } catch (error) {
-      console.error(`Error starting bot ${bot.id}:`, error);
-      res.status(500).json({ error: error.message });
+      console.error('Error starting bot process:', error);
+      res.status(500).json({ error: 'Failed to start bot process', details: error.message });
     }
   } catch (error) {
     console.error('Error in activate endpoint:', error);
@@ -725,17 +705,32 @@ app.get('/api/bots/:id', async (req, res) => {
 app.delete('/api/bots/:id', async (req, res) => {
   try {
     const botId = req.params.id;
-    // Остановить процесс бота, если он запущен
-    await stopBot(botId);
-    // Удалить бота из MongoDB
-    await Bot.deleteOne({ id: botId });
-    // Удалить все связанные данные
-    await User.deleteMany({ botId });
-    await QuizStats.deleteMany({ botId });
-    await PromoCode.deleteMany({ botId });
-    await Loyalty.deleteMany({ botId });
-    res.json({ success: true });
+    const bot = await Bot.findOne({ id: botId });
+    if (!bot) {
+      console.error('Bot not found for deletion:', botId);
+      return res.status(404).json({ error: 'Bot not found' });
+    }
+    console.log('Deleting bot:', botId);
+    try {
+      await stopBot(botId);
+      console.log('Bot process stopped (if was running):', botId);
+    } catch (stopError) {
+      console.error('Error stopping bot process:', stopError);
+    }
+    try {
+      await Bot.deleteOne({ id: botId });
+      await User.deleteMany({ botId });
+      await QuizStats.deleteMany({ botId });
+      await PromoCode.deleteMany({ botId });
+      await Loyalty.deleteMany({ botId });
+      console.log('Bot and all related data deleted from MongoDB:', botId);
+      res.json({ success: true });
+    } catch (deleteError) {
+      console.error('Error deleting bot or related data:', deleteError);
+      res.status(500).json({ error: 'Failed to delete bot or related data', details: deleteError.message });
+    }
   } catch (error) {
+    console.error('Error in delete endpoint:', error);
     res.status(500).json({ error: 'Failed to delete bot', details: error.message });
   }
 });
