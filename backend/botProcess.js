@@ -520,8 +520,9 @@ function setupBotHandlers(bot, blocks, connections) {
   bot.on('text', async (ctx) => {
     try {
       const userId = ctx.from.id;
+      console.log(`[MongoDB] Попытка сохранить пользователя:`, { botId, userId, from: ctx.from });
       // Сохраняем пользователя в MongoDB при любом сообщении
-      await User.updateOne(
+      const updateResult = await User.updateOne(
         { botId, userId },
         {
           $setOnInsert: {
@@ -541,6 +542,7 @@ function setupBotHandlers(bot, blocks, connections) {
         },
         { upsert: true }
       );
+      console.log('[MongoDB] Результат updateOne:', updateResult);
       // ВАЖНО: isSubscribed не должен быть вложенным объектом нигде в схеме или данных!
       console.log('[MongoDB] Пользователь сохранён:', { botId, userId });
       const messageText = ctx.message.text;
@@ -1325,6 +1327,17 @@ async function startBot() {
     handleCriticalError(reason);
   });
 }
+
+// Проверка наличия пользователей при запуске
+User.countDocuments({ botId }).then(count => {
+  if (count === 0) {
+    console.log(`[MongoDB] Коллекция users пуста для botId=${botId}`);
+  } else {
+    console.log(`[MongoDB] В коллекции users уже есть ${count} пользователей для botId=${botId}`);
+  }
+}).catch(err => {
+  console.error('[MongoDB] Ошибка при подсчёте пользователей:', err);
+});
 
 // Логируем editorState при запуске
 console.log('=== editorState при запуске ===');
