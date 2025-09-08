@@ -271,6 +271,24 @@ app.get('/api/quiz-stats', async (req, res) => {
         console.error('❌ Error fetching user info:', error);
       }
       
+      // Получаем промокод, если он был выдан
+      let promoCode = '';
+      if (record.percentage === 100) {
+        try {
+          const promo = await PromoCode.findOne({
+            botId: record.botId,
+            quizId: record.blockId,
+            activatedBy: record.userId,
+            activated: true
+          });
+          if (promo) {
+            promoCode = promo.code;
+          }
+        } catch (error) {
+          console.error('❌ Error fetching promo code:', error);
+        }
+      }
+      
       // Добавляем попытку пользователя
       stats[quizId].userAttempts.push({
         userId: record.userId,
@@ -286,7 +304,7 @@ app.get('/api/quiz-stats', async (req, res) => {
           selectedAnswer: answer.answer,
           isCorrect: answer.isCorrect
         })),
-        promoCode: '' // Можно получить из PromoCode коллекции
+        promoCode: promoCode
       });
     }
     

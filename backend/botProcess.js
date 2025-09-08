@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const { User, QuizStats } = require('./models');
+const { User, QuizStats, PromoCode } = require('./models');
 const { Loyalty } = require('./models');
 const mongoose = require('mongoose');
 const MONGO_URI = 'mongodb://157.230.20.252:27017/tg_const_main';
@@ -816,11 +816,47 @@ function setupBotHandlers(bot, blocks, connections) {
             console.error('❌ Error details:', error.message);
           }
           
+           // Получаем промокод для успешного прохождения
+           let promoCode = '';
+           if (correctAnswers === totalQuestions) {
+             try {
+               // Ищем доступный промокод для этого квиза
+               const availablePromo = await PromoCode.findOne({
+                 botId: botId,
+                 quizId: quizState.blockId,
+                 activated: false
+               });
+               
+               if (availablePromo) {
+                 // Активируем промокод
+                 await PromoCode.updateOne(
+                   { _id: availablePromo._id },
+                   {
+                     activated: true,
+                     activatedBy: userId,
+                     activatedAt: new Date()
+                   }
+                 );
+                 
+                 promoCode = availablePromo.code;
+                 console.log(`🎁 Выдан промокод ${promoCode} пользователю ${userId} за квиз ${quizState.blockId}`);
+               } else {
+                 console.log(`🎁 Нет доступных промокодов для квиза ${quizState.blockId}`);
+               }
+             } catch (error) {
+               console.error('❌ Ошибка при выдаче промокода:', error);
+             }
+           }
+           
            // Отправляем финальное сообщение
            let finalMessage;
            if (correctAnswers === totalQuestions) {
              // Все ответы правильные - показываем сообщение об успехе
-             finalMessage = `${quizBlock.finalSuccessMessage || '🏆 Поздравляем! Вы успешно прошли квиз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+             const successMessage = quizBlock.finalSuccessMessage || '🏆 Поздравляем! Вы успешно прошли квиз!';
+             const statsMessage = `\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+             const promoMessage = promoCode ? `\n\n🎁 **Ваш промокод:** \`${promoCode}\`` : '';
+             
+             finalMessage = successMessage + statsMessage + promoMessage;
            } else {
              // Не все ответы правильные - показываем сообщение о неудаче
              finalMessage = `${quizBlock.finalFailureMessage || '❌ Квест завершен. Попробуйте еще раз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
