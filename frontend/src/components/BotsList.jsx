@@ -13,11 +13,6 @@ function BotsList({ onSelectBot }) {
   // Загрузка списка ботов
   useEffect(() => {
     loadBots();
-    
-    // Автоматическое обновление списка ботов каждые 10 секунд
-    const interval = setInterval(loadBots, 10000);
-    
-    return () => clearInterval(interval);
   }, []);
 
   const loadBots = async () => {

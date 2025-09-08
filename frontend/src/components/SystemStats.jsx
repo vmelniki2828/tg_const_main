@@ -8,11 +8,6 @@ function SystemStats({ onClose }) {
 
   useEffect(() => {
     loadStats();
-    
-    // Автоматическое обновление статистики каждые 30 секунд
-    const interval = setInterval(loadStats, 30000);
-    
-    return () => clearInterval(interval);
   }, []);
 
   const loadStats = async () => {

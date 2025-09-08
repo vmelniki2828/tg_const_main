@@ -28,17 +28,10 @@ function App() {
     }
   };
 
-  // Автоматическое обновление статуса бота каждые 5 секунд
+  // Получаем статус бота при выборе
   useEffect(() => {
     if (!selectedBotId) return;
-
-    // Получаем статус сразу при выборе бота
     fetchBotStatus();
-
-    // Устанавливаем интервал для обновления статуса
-    const interval = setInterval(fetchBotStatus, 5000);
-
-    return () => clearInterval(interval);
   }, [selectedBotId]);
 
   // Обработчик выбора бота для редактирования
