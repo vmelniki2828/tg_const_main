@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import FlowEditor from './FlowEditor';
 import BotsList from './BotsList';
 import QuizStats from './QuizStats';
+import SystemStats from './SystemStats';
 import config from '../config';
 
 function App() {
@@ -10,6 +11,7 @@ function App() {
   const [error, setError] = useState(null);
   const [botStatus, setBotStatus] = useState(null);
   const [showStats, setShowStats] = useState(false);
+  const [showSystemStats, setShowSystemStats] = useState(false);
   const flowEditorRef = useRef();
 
   // Функция для получения статуса бота
@@ -17,18 +19,29 @@ function App() {
     if (!selectedBotId) return;
 
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/bots/${selectedBotId}`);
+      const response = await fetch(`${config.API_BASE_URL}/api/bots/${selectedBotId}/status`);
       if (!response.ok) {
         throw new Error('Failed to fetch bot status');
       }
       const data = await response.json();
-      setBotStatus(data.isActive);
+      setBotStatus(data.isRunning);
     } catch (err) {
       console.error('Error fetching bot status:', err);
     }
   };
 
-  // Удалён useEffect с setInterval для fetchBotStatus. Запрос статуса делается только при выборе бота, запуске/остановке или явном действии пользователя.
+  // Автоматическое обновление статуса бота каждые 5 секунд
+  useEffect(() => {
+    if (!selectedBotId) return;
+
+    // Получаем статус сразу при выборе бота
+    fetchBotStatus();
+
+    // Устанавливаем интервал для обновления статуса
+    const interval = setInterval(fetchBotStatus, 5000);
+
+    return () => clearInterval(interval);
+  }, [selectedBotId]);
 
   // Обработчик выбора бота для редактирования
   const handleSelectBot = (botId) => {
@@ -155,6 +168,12 @@ function App() {
           >
             📊 Статистика квизов
           </button>
+          <button 
+            onClick={() => setShowSystemStats(true)}
+            className="editor-button system-stats-button"
+          >
+            🖥️ Статистика системы
+          </button>
           <div className="bot-status">
             Статус бота: {botStatus ? '🟢 Запущен' : '🔴 Остановлен'}
           </div>
@@ -189,6 +208,12 @@ function App() {
           <QuizStats 
             blocks={flowEditorRef.current?.getState()?.blocks || []}
             onClose={() => setShowStats(false)}
+          />
+        )}
+        
+        {showSystemStats && (
+          <SystemStats 
+            onClose={() => setShowSystemStats(false)}
           />
         )}
       </div>

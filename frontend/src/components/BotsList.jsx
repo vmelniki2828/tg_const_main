@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SystemStats from './SystemStats';
 import config from '../config';
 
 function BotsList({ onSelectBot }) {
@@ -7,10 +8,16 @@ function BotsList({ onSelectBot }) {
   const [newBotToken, setNewBotToken] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showSystemStats, setShowSystemStats] = useState(false);
 
   // Загрузка списка ботов
   useEffect(() => {
     loadBots();
+    
+    // Автоматическое обновление списка ботов каждые 10 секунд
+    const interval = setInterval(loadBots, 10000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const loadBots = async () => {
@@ -116,7 +123,15 @@ function BotsList({ onSelectBot }) {
 
   return (
     <div className="bots-page">
-      <h1>Мои боты</h1>
+      <div className="page-header">
+        <h1>Мои боты</h1>
+        <button 
+          onClick={() => setShowSystemStats(true)}
+          className="system-stats-button"
+        >
+          🖥️ Статистика системы
+        </button>
+      </div>
       
       <form className="create-bot-form" onSubmit={handleCreateBot}>
         <h2>Создать нового бота</h2>
@@ -155,6 +170,9 @@ function BotsList({ onSelectBot }) {
         {bots.map(bot => (
           <div key={bot.id} className="bot-card">
             <h3>{bot.name}</h3>
+            <div className="bot-status">
+              Статус: {bot.isRunning ? '🟢 Запущен' : '🔴 Остановлен'}
+            </div>
             <div className="bot-controls">
               <button
                 onClick={() => onSelectBot(bot.id)}
@@ -172,6 +190,12 @@ function BotsList({ onSelectBot }) {
           </div>
         ))}
       </div>
+      
+      {showSystemStats && (
+        <SystemStats 
+          onClose={() => setShowSystemStats(false)}
+        />
+      )}
     </div>
   );
 }

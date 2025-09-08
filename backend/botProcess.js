@@ -1406,6 +1406,21 @@ async function startBot() {
     process.exit(1);
   }
 
+  // Проверяем сетевые настройки
+  try {
+    console.log('=== [BOOT] Проверяем сетевые настройки... ===');
+    const { exec } = require('child_process');
+    exec('ping -c 1 api.telegram.org', (error, stdout, stderr) => {
+      if (error) {
+        console.error('=== [BOOT] Проблемы с сетью:', error);
+      } else {
+        console.log('=== [BOOT] Сеть работает, ping успешен');
+      }
+    });
+  } catch (networkError) {
+    console.error('=== [BOOT] Ошибка проверки сети:', networkError);
+  }
+
   // Очищаем webhook перед запуском
   try {
     console.log('=== [BOOT] Очищаем webhook... ===');
@@ -1427,11 +1442,19 @@ async function startBot() {
       }
     });
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('bot.launch() timeout after 30 seconds')), 30000);
+      setTimeout(() => {
+        console.error('=== [BOOT] bot.launch() timeout after 30 seconds ===');
+        console.error('=== [BOOT] Возможные причины:');
+        console.error('=== [BOOT] 1. Проблемы с сетью в Docker контейнере');
+        console.error('=== [BOOT] 2. Блокировка портов');
+        console.error('=== [BOOT] 3. Проблемы с Telegram API');
+        reject(new Error('bot.launch() timeout after 30 seconds'));
+      }, 30000);
     });
     
     await Promise.race([launchPromise, timeoutPromise]);
     console.log('=== [BOOT] Bot started successfully in polling mode ===');
+    console.log('Bot started successfully');
     
     // Проверяем статус бота
     try {
@@ -1453,13 +1476,34 @@ async function startBot() {
     errorCount = 0;
   } catch (error) {
     console.error('=== [BOOT] Ошибка запуска бота:', error);
-    handleCriticalError(error);
+    console.error('=== [BOOT] Принудительно завершаем процесс...');
     process.exit(1);
   }
   
   // Graceful shutdown
-  process.once('SIGINT', () => bot.stop('SIGINT'));
-  process.once('SIGTERM', () => bot.stop('SIGTERM'));
+  process.once('SIGINT', async () => {
+    console.log('=== [SHUTDOWN] Received SIGINT, stopping bot gracefully ===');
+    try {
+      await bot.stop('SIGINT');
+      console.log('=== [SHUTDOWN] Bot stopped successfully ===');
+      process.exit(0);
+    } catch (error) {
+      console.error('=== [SHUTDOWN] Error stopping bot:', error);
+      process.exit(1);
+    }
+  });
+  
+  process.once('SIGTERM', async () => {
+    console.log('=== [SHUTDOWN] Received SIGTERM, stopping bot gracefully ===');
+    try {
+      await bot.stop('SIGTERM');
+      console.log('=== [SHUTDOWN] Bot stopped successfully ===');
+      process.exit(0);
+    } catch (error) {
+      console.error('=== [SHUTDOWN] Error stopping bot:', error);
+      process.exit(1);
+    }
+  });
   
   // Обработчик необработанных ошибок
   process.on('uncaughtException', (error) => {

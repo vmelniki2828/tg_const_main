@@ -488,18 +488,32 @@ async function writeQuizStats(stats) {
   }
 }
 
+// Глобальная карта активных процессов ботов
+const activeProcesses = new Map();
+
 // Получение editorState из MongoDB для запуска botProcess.js
 async function startBot(bot) {
   console.log(`Starting bot ${bot.id}...`);
+  
+  // Проверяем, не запущен ли уже бот
+  if (activeProcesses.has(bot.id)) {
+    console.log(`Bot ${bot.id} is already running`);
+    return activeProcesses.get(bot.id);
+  }
+  
   // Получаем editorState из MongoDB
   const botDoc = await Bot.findOne({ id: bot.id });
   if (!botDoc) throw new Error('Bot not found in MongoDB');
+  
   const botProcess = spawn('node', [
     path.join(__dirname, 'botProcess.js'),
     bot.token,
     bot.id,
     JSON.stringify(botDoc.editorState)
   ]);
+
+  // Сохраняем процесс в карте
+  activeProcesses.set(bot.id, botProcess);
 
   return new Promise((resolve, reject) => {
     let isResolved = false;
@@ -529,6 +543,8 @@ async function startBot(bot) {
     });
 
     botProcess.on('exit', (code) => {
+      console.log(`Bot ${bot.id} process exited with code ${code}`);
+      activeProcesses.delete(bot.id);
       if (!isResolved) {
         cleanup();
         reject(new Error(`Bot process exited with code ${code}`));
@@ -543,6 +559,51 @@ async function startBot(bot) {
       }
     }, 20000); // Увеличиваем таймаут до 20 секунд
   });
+}
+
+// Функция для остановки бота
+async function stopBot(botId) {
+  console.log(`Stopping bot ${botId}...`);
+  
+  const botProcess = activeProcesses.get(botId);
+  if (!botProcess) {
+    console.log(`Bot ${botId} is not running`);
+    return true;
+  }
+
+  return new Promise((resolve) => {
+    // Обновляем статус в базе данных
+    Bot.updateOne({ id: botId }, { $set: { isActive: false } })
+      .then(() => {
+        console.log(`Bot ${botId} status updated to inactive`);
+      })
+      .catch(err => {
+        console.error(`Error updating bot ${botId} status:`, err);
+      });
+
+    // Останавливаем процесс
+    botProcess.kill('SIGTERM');
+    
+    // Ждем завершения процесса
+    const timeout = setTimeout(() => {
+      console.log(`Bot ${botId} didn't stop gracefully, force killing`);
+      botProcess.kill('SIGKILL');
+      activeProcesses.delete(botId);
+      resolve(true);
+    }, 10000);
+
+    botProcess.on('exit', (code) => {
+      clearTimeout(timeout);
+      activeProcesses.delete(botId);
+      console.log(`Bot ${botId} stopped with code ${code}`);
+      resolve(true);
+    });
+  });
+}
+
+// Функция для ожидания
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // Обновление editorState только в MongoDB
@@ -616,17 +677,9 @@ app.post('/api/bots/:id/deactivate', async (req, res) => {
     await stopBot(bot.id);
     await wait(1000); // Даем время на остановку
 
-    // Обновляем состояние
-    // state.bots = state.bots.map(b => ({
-    //   ...b,
-    //   isActive: b.id === bot.id ? false : b.isActive
-    // }));
-
-    // if (state.activeBot === bot.id) {
-    //   state.activeBot = null;
-    // }
-
-    // await writeState(state);
+    // Обновляем статус в базе данных
+    await Bot.updateOne({ id: bot.id }, { $set: { isActive: false } });
+    
     console.log(`Bot ${bot.id} deactivated successfully`);
     res.json({ success: true });
   } catch (error) {
@@ -639,9 +692,34 @@ app.post('/api/bots/:id/deactivate', async (req, res) => {
 app.get('/api/bots', async (req, res) => {
   try {
     const bots = await Bot.find({});
-    res.json({ bots, activeBot: null });
+    // Добавляем информацию о том, какие боты реально запущены
+    const botsWithStatus = bots.map(bot => ({
+      ...bot.toObject(),
+      isRunning: activeProcesses.has(bot.id)
+    }));
+    res.json({ bots: botsWithStatus, activeBot: null });
   } catch (error) {
     res.status(500).json({ error: 'Failed to load bots', details: error.message });
+  }
+});
+
+// Получение статуса конкретного бота
+app.get('/api/bots/:id/status', async (req, res) => {
+  try {
+    const bot = await Bot.findOne({ id: req.params.id });
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot not found' });
+    }
+    
+    const isRunning = activeProcesses.has(bot.id);
+    res.json({ 
+      id: bot.id, 
+      isActive: bot.isActive, 
+      isRunning: isRunning,
+      status: isRunning ? 'running' : 'stopped'
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get bot status', details: error.message });
   }
 });
 
@@ -933,10 +1011,49 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     memory: process.memoryUsage(),
-    activeUsers: 0 // Будем получать из botProcess.js позже
+    activeBots: activeProcesses.size,
+    totalBots: 0 // Будем получать из MongoDB
   };
   
-  res.json(health);
+  // Получаем общее количество ботов
+  Bot.countDocuments({})
+    .then(count => {
+      health.totalBots = count;
+      res.json(health);
+    })
+    .catch(err => {
+      console.error('Error getting bot count:', err);
+      res.json(health);
+    });
+});
+
+// Эндпоинт для получения общей статистики системы
+app.get('/api/system-stats', async (req, res) => {
+  try {
+    const totalBots = await Bot.countDocuments({});
+    const activeBots = await Bot.countDocuments({ isActive: true });
+    const runningBots = activeProcesses.size;
+    const totalUsers = await User.countDocuments({});
+    const totalQuizStats = await QuizStats.countDocuments({});
+    
+    res.json({
+      bots: {
+        total: totalBots,
+        active: activeBots,
+        running: runningBots
+      },
+      users: {
+        total: totalUsers
+      },
+      quizzes: {
+        total: totalQuizStats
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error getting system stats:', error);
+    res.status(500).json({ error: 'Failed to get system stats' });
+  }
 });
 
 // API endpoint для получения статистики ботов
@@ -988,19 +1105,24 @@ app.listen(PORT, HOST, async () => {
     console.error('❌ Error during startup stats check:', error);
   }
   
-  // Загружаем состояние ботов
+  // Загружаем активные боты из MongoDB
   try {
-    const state = await readState();
-    console.log(`🤖 Loaded ${state.bots.length} bots from state`);
+    const activeBots = await Bot.find({ isActive: true });
+    console.log(`🤖 Loaded ${activeBots.length} active bots from MongoDB`);
     
-    // Запускаем все боты
-    for (const bot of state.bots) {
-      if (bot.active) {
+    // Запускаем все активные боты
+    for (const bot of activeBots) {
+      try {
         await startBot(bot);
+        console.log(`✅ Bot ${bot.id} started successfully`);
+      } catch (error) {
+        console.error(`❌ Failed to start bot ${bot.id}:`, error);
+        // Обновляем статус бота на неактивный в случае ошибки
+        await Bot.updateOne({ id: bot.id }, { $set: { isActive: false } });
       }
     }
   } catch (error) {
-    console.error('Error loading state:', error);
+    console.error('Error loading active bots:', error);
   }
 }); 
 
