@@ -66,6 +66,7 @@ const LoyaltySchema = new mongoose.Schema({
   botId: { type: String, required: true },
   userId: { type: Number, required: true },
   rewards: {
+    '1m': { type: Boolean, default: false },
     '24h': { type: Boolean, default: false },
     '7d': { type: Boolean, default: false },
     '30d': { type: Boolean, default: false },
@@ -75,10 +76,56 @@ const LoyaltySchema = new mongoose.Schema({
   }
 });
 
+// Схема для конфигурации программы лояльности
+const LoyaltyConfigSchema = new mongoose.Schema({
+  botId: { type: String, required: true, unique: true },
+  isEnabled: { type: Boolean, default: false },
+  messages: {
+    '1m': {
+      enabled: { type: Boolean, default: false },
+      message: { type: String, default: '' },
+      promoCode: { type: String, default: '' }
+    },
+    '24h': {
+      enabled: { type: Boolean, default: false },
+      message: { type: String, default: '' },
+      promoCode: { type: String, default: '' }
+    },
+    '7d': {
+      enabled: { type: Boolean, default: false },
+      message: { type: String, default: '' },
+      promoCode: { type: String, default: '' }
+    },
+    '30d': {
+      enabled: { type: Boolean, default: false },
+      message: { type: String, default: '' },
+      promoCode: { type: String, default: '' }
+    },
+    '90d': {
+      enabled: { type: Boolean, default: false },
+      message: { type: String, default: '' },
+      promoCode: { type: String, default: '' }
+    },
+    '180d': {
+      enabled: { type: Boolean, default: false },
+      message: { type: String, default: '' },
+      promoCode: { type: String, default: '' }
+    },
+    '360d': {
+      enabled: { type: Boolean, default: false },
+      message: { type: String, default: '' },
+      promoCode: { type: String, default: '' }
+    }
+  },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
 module.exports = {
   Bot: mongoose.model('Bot', BotSchema),
   User: mongoose.model('User', UserSchema),
   QuizStats: mongoose.model('QuizStats', QuizStatsSchema),
   PromoCode: mongoose.model('PromoCode', PromoCodeSchema),
-  Loyalty: mongoose.model('Loyalty', LoyaltySchema)
+  Loyalty: mongoose.model('Loyalty', LoyaltySchema),
+  LoyaltyConfig: mongoose.model('LoyaltyConfig', LoyaltyConfigSchema)
 };

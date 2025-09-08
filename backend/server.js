@@ -6,7 +6,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
 const mongoose = require('mongoose');
-const { QuizStats, Bot, User, PromoCode, Loyalty } = require('./models');
+const { QuizStats, Bot, User, PromoCode, Loyalty, LoyaltyConfig } = require('./models');
 
 // Загружаем переменные окружения
 try {
@@ -536,6 +536,74 @@ app.delete('/api/quiz-promocodes/:quizId', async (req, res) => {
 
 // Удалены все функции и вызовы, связанные с файлами (writeState, readState, restoreStatsFromBackup, state.json, editorState.json, бэкапы)
 // Весь backend теперь работает только с MongoDB
+
+// API для программы лояльности
+app.get('/api/loyalty-config/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    
+    // Ищем конфигурацию программы лояльности
+    const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+    
+    if (loyaltyConfig) {
+      res.json(loyaltyConfig);
+    } else {
+      // Возвращаем дефолтную конфигурацию
+      res.json({
+        isEnabled: false,
+        messages: {
+          '1m': { enabled: false, message: '', promoCode: '' },
+          '24h': { enabled: false, message: '', promoCode: '' },
+          '7d': { enabled: false, message: '', promoCode: '' },
+          '30d': { enabled: false, message: '', promoCode: '' },
+          '90d': { enabled: false, message: '', promoCode: '' },
+          '180d': { enabled: false, message: '', promoCode: '' },
+          '360d': { enabled: false, message: '', promoCode: '' }
+        }
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error fetching loyalty config:', error);
+    res.status(500).json({ error: 'Failed to fetch loyalty config' });
+  }
+});
+
+app.put('/api/loyalty-config/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const config = req.body;
+    
+    // Сохраняем или обновляем конфигурацию
+    await LoyaltyConfig.updateOne(
+      { botId },
+      { 
+        botId,
+        ...config,
+        updatedAt: new Date()
+      },
+      { upsert: true }
+    );
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ Error saving loyalty config:', error);
+    res.status(500).json({ error: 'Failed to save loyalty config' });
+  }
+});
+
+app.get('/api/available-promocodes/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    
+    // Получаем все промокоды для бота
+    const promoCodes = await PromoCode.find({ botId });
+    
+    res.json(promoCodes);
+  } catch (error) {
+    console.error('❌ Error fetching promocodes:', error);
+    res.status(500).json({ error: 'Failed to fetch promocodes' });
+  }
+});
 
 // Старые функции удалены - теперь используется MongoDB напрямую
 

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import FlowEditor from './FlowEditor';
 import BotsList from './BotsList';
 import QuizStats from './QuizStats';
+import LoyaltyProgram from './LoyaltyProgram';
 import config from '../config';
 
 function App() {
@@ -10,6 +11,7 @@ function App() {
   const [error, setError] = useState(null);
   const [botStatus, setBotStatus] = useState(null);
   const [showStats, setShowStats] = useState(false);
+  const [showLoyalty, setShowLoyalty] = useState(false);
   const flowEditorRef = useRef();
 
   // Функция для получения статуса бота
@@ -159,6 +161,12 @@ function App() {
           >
             📊 Статистика квизов
           </button>
+          <button 
+            onClick={() => setShowLoyalty(true)}
+            className="editor-button loyalty-button"
+          >
+            🎁 Программа лояльности
+          </button>
           <div className="bot-status">
             Статус бота: {botStatus ? '🟢 Запущен' : '🔴 Остановлен'}
           </div>
@@ -194,6 +202,13 @@ function App() {
             blocks={flowEditorRef.current?.getState()?.blocks || []}
             botId={selectedBotId}
             onClose={() => setShowStats(false)}
+          />
+        )}
+        
+        {showLoyalty && (
+          <LoyaltyProgram 
+            botId={selectedBotId}
+            onClose={() => setShowLoyalty(false)}
           />
         )}
       </div>

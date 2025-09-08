@@ -1001,6 +1001,16 @@ body {
   cursor: not-allowed;
 }
 
+.loyalty-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.loyalty-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  transform: translateY(-2px);
+}
+
 .cleanup-button {
   background: #dc3545;
   color: white;
