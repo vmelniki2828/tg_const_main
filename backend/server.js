@@ -409,30 +409,8 @@ app.delete('/api/quiz-promocodes/:quizId', async (req, res) => {
   }
 });
 
-// Храним активные процессы ботов
-const activeProcesses = new Map();
-
-// Файл для хранения статистики квизов
-const QUIZ_STATS_FILE = path.join(__dirname, 'quizStats.json');
-
-const STATE_FILE = path.join(__dirname, 'editorState.json');
-
-// Функция для ожидания
-const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Вспомогательная функция для чтения состояния
-async function readState() {
-  try {
-    const data = await fsPromises.readFile(STATE_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error reading state:', error);
-    return {
-      bots: [],
-      activeBot: null
-    };
-  }
-}
+// Удалены все функции и вызовы, связанные с файлами (writeState, readState, restoreStatsFromBackup, state.json, editorState.json, бэкапы)
+// Весь backend теперь работает только с MongoDB
 
 // Заменить функции readQuizStats и writeQuizStats на работу с MongoDB
 async function readQuizStats() {
@@ -508,43 +486,6 @@ async function writeQuizStats(stats) {
   } catch (error) {
     console.error('❌ Error writing quiz stats to MongoDB:', error);
   }
-}
-
-// Вспомогательная функция для сохранения состояния
-async function writeState(state) {
-  try {
-    await fsPromises.writeFile(STATE_FILE, JSON.stringify(state, null, 2));
-  } catch (error) {
-    console.error('Error writing state:', error);
-    throw new Error('Failed to save state');
-  }
-}
-
-// Функция для остановки конкретного бота
-async function stopBot(botId) {
-  if (activeProcesses.has(botId)) {
-    const process = activeProcesses.get(botId);
-    console.log(`Stopping bot ${botId}...`);
-    
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        console.log(`Force killing bot ${botId}...`);
-        process.kill('SIGKILL');
-        activeProcesses.delete(botId);
-        resolve();
-      }, 5000);
-
-      process.once('exit', () => {
-        clearTimeout(timeout);
-        activeProcesses.delete(botId);
-        console.log(`Bot ${botId} stopped`);
-        resolve();
-      });
-
-      process.kill('SIGTERM');
-    });
-  }
-  return Promise.resolve();
 }
 
 // Получение editorState из MongoDB для запуска botProcess.js
@@ -628,8 +569,7 @@ app.post('/api/bots/:id/activate', async (req, res) => {
   try {
     console.log('POST /api/bots/:id/activate - Bot ID:', req.params.id);
     
-    const state = await readState();
-    const bot = state.bots.find(b => b.id === req.params.id);
+    const bot = await Bot.findOne({ id: req.params.id });
     
     if (!bot) {
       console.log('Bot not found for activation:', req.params.id);
@@ -701,8 +641,7 @@ app.post('/api/bots/:id/deactivate', async (req, res) => {
   try {
     console.log('POST /api/bots/:id/deactivate - Bot ID:', req.params.id);
     
-    const state = await readState();
-    const bot = state.bots.find(b => b.id === req.params.id);
+    const bot = await Bot.findOne({ id: req.params.id });
     
     if (!bot) {
       console.log('Bot not found for deactivation:', req.params.id);
