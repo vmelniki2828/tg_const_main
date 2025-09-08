@@ -1320,6 +1320,15 @@ async function startBot() {
   // Обновляем меню команд Telegram
   await updateBotCommands(bot, state.blocks);
   
+  // Глобальный логгер для всех апдейтов Telegram
+  if (process.env.DEBUG_ALL_UPDATES === '1') {
+    bot.use((ctx, next) => {
+      console.log('=== [DEBUG] Incoming update ===');
+      console.dir(ctx.update, { depth: 5 });
+      return next();
+    });
+  }
+
   // Обработчик ошибок бота
   bot.catch((err, ctx) => {
     console.error('❌ Bot error:', err);
