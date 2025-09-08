@@ -328,6 +328,7 @@ const userLastActivity = new Map();
 const completedQuizzes = new Map();
 
 function setupBotHandlers(bot, blocks, connections) {
+  console.log('=== [BOOT] setupBotHandlers вызван ===');
   // Создаем карту диалогов для быстрого доступа
   const dialogMap = new Map();
   blocks.forEach(block => {
@@ -480,6 +481,7 @@ function setupBotHandlers(bot, blocks, connections) {
   connections.forEach(conn => {
     const key = `${String(conn.from.blockId)}_${String(conn.from.buttonId)}`;
     connectionMap.set(key, conn.to);
+    console.log(`[BOOT] connectionMap: ${key} -> ${conn.to}`);
   });
 
   // Обработка команды /start
@@ -564,8 +566,9 @@ function setupBotHandlers(bot, blocks, connections) {
 
   // Обработка текстовых сообщений
   bot.on('text', async (ctx) => {
-    console.log('[DEBUG] on text ctx:', JSON.stringify(ctx, null, 2));
-    console.log('[DEBUG] on text ctx.from:', ctx.from);
+    console.log('=== [EVENT] Получено текстовое сообщение ===');
+    console.log('[EVENT] ctx:', JSON.stringify(ctx, null, 2));
+    console.log('[EVENT] ctx.from:', ctx.from);
     await saveUserToMongo(ctx);
     try {
       const userId = ctx.from?.id;
@@ -1348,6 +1351,7 @@ async function checkAndRewardLoyalty(userId, thresholdKey) {
 }
 
 async function startBot() {
+  console.log('=== [BOOT] startBot вызван ===');
   const bot = new Telegraf(token);
   
   // Счетчик ошибок для автоматического перезапуска
@@ -1395,12 +1399,12 @@ async function startBot() {
   // Запускаем бота
   try {
     await bot.launch();
-    console.log('Bot started successfully');
+    console.log('=== [BOOT] Bot started successfully ===');
     
     // Сброс счетчика ошибок при успешном запуске
     errorCount = 0;
   } catch (error) {
-    console.error('Failed to start bot:', error);
+    console.error('=== [BOOT] Ошибка запуска бота:', error);
     handleCriticalError(error);
     process.exit(1);
   }
@@ -1436,5 +1440,26 @@ User.countDocuments({ botId }).then(count => {
 console.log('=== editorState при запуске ===');
 console.dir(state, { depth: 5 });
 console.log('==============================');
+
+console.log('=== [BOOT] botProcess.js запускается ===');
+
+mongoose.connection.on('connected', () => {
+  console.log('=== [BOOT] Mongoose connected ===');
+});
+mongoose.connection.on('error', (err) => {
+  console.error('=== [BOOT] Mongoose connection error ===', err);
+});
+
+console.log('=== [BOOT] Аргументы запуска:', { token, botId, stateJsonLength: stateJson.length });
+
+try {
+  state = JSON.parse(stateJson);
+  console.log('=== [BOOT] editorState успешно распарсен ===');
+  console.log('=== [BOOT] blocks:', Array.isArray(state.blocks) ? state.blocks.length : 'нет');
+  console.log('=== [BOOT] connections:', Array.isArray(state.connections) ? state.connections.length : 'нет');
+} catch (error) {
+  console.error('=== [BOOT] Ошибка парсинга editorState:', error);
+  process.exit(1);
+}
 
 startBot();
