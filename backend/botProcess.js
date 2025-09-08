@@ -352,9 +352,19 @@ function setupBotHandlers(bot, blocks, connections) {
       message: block.message,
       buttons: block.buttons || [],
       mediaFiles: block.mediaFiles || [],
-      type: block.type
+      type: block.type,
+      questions: block.questions || [],
+      currentQuestionIndex: block.currentQuestionIndex || 0,
+      finalSuccessMessage: block.finalSuccessMessage,
+      returnToStartOnComplete: block.returnToStartOnComplete
     });
     console.log(`[BOOT] dialogMap: ${block.id} -> ${block.type} (${(block.buttons || []).length} buttons)`);
+    
+    // Диагностика квизов
+    if (block.type === 'quiz') {
+      console.log(`[BOOT] Quiz block ${block.id} questions:`, (block.questions || []).length);
+      console.log(`[BOOT] Quiz block ${block.id} questions data:`, JSON.stringify(block.questions, null, 2));
+    }
   });
   console.log(`[BOOT] Final dialogMap size: ${dialogMap.size}`);
 
@@ -1022,6 +1032,8 @@ async function startBot() {
     console.log('=== [EVENT] Incoming update ===');
     console.log('[EVENT] Update type:', ctx.updateType);
     console.log('[EVENT] Update:', JSON.stringify(ctx.update, null, 2));
+    console.log('[EVENT] Message text:', ctx.message?.text);
+    console.log('[EVENT] User ID:', ctx.from?.id);
     return next();
   });
 
@@ -1069,19 +1081,26 @@ async function startBot() {
   // Запускаем бота в polling режиме
   console.log('=== [BOOT] Запускаем bot.launch() в polling режиме... ===');
   
-  // Запускаем бота без await - пусть работает в фоне
-  bot.launch().then(() => {
+  try {
+    // Запускаем бота синхронно
+    await bot.launch();
     console.log('=== [BOOT] Bot started successfully in polling mode ===');
     console.log('Bot started successfully');
-  }).catch((launchError) => {
+  } catch (launchError) {
     console.error('=== [BOOT] Bot launch failed:', launchError);
-    console.error('=== [BOOT] Принудительно завершаем процесс...');
-    process.exit(1);
-  });
-  
-  // Даем время на запуск
-  await new Promise(resolve => setTimeout(resolve, 3000));
-  console.log('=== [BOOT] Bot launch initiated, continuing... ===');
+    console.error('=== [BOOT] Пробуем запуск без await...');
+    
+    // Альтернативный способ - запуск без await
+    bot.launch().then(() => {
+      console.log('=== [BOOT] Bot started successfully (alternative method) ===');
+    }).catch((altError) => {
+      console.error('=== [BOOT] Alternative launch failed:', altError);
+    });
+    
+    // Даем время на запуск
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log('=== [BOOT] Bot launch initiated, continuing... ===');
+  }
   
   // Принудительно запускаем polling
   try {
