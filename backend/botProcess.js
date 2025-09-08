@@ -1128,12 +1128,21 @@ function startLoyaltyChecker() {
   
   // Проверяем каждую минуту
   setInterval(async () => {
+    // Проверяем, что бот инициализирован
+    if (!bot) {
+      console.log('[LOYALTY] Бот еще не инициализирован, пропускаем проверку');
+      return;
+    }
     try {
       console.log('[LOYALTY] Периодическая проверка программы лояльности');
       
       // Получаем конфигурацию программы лояльности
       const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
-      if (!loyaltyConfig || !loyaltyConfig.isEnabled) {
+      if (!loyaltyConfig) {
+        console.log('[LOYALTY] Конфигурация программы лояльности не найдена для бота', botId);
+        return;
+      }
+      if (!loyaltyConfig.isEnabled) {
         console.log('[LOYALTY] Программа лояльности отключена');
         return;
       }
@@ -1257,12 +1266,15 @@ function startLoyaltyChecker() {
     } catch (error) {
       console.error('[LOYALTY] Ошибка при периодической проверке программы лояльности:', error);
     }
-  }, 60000); // Проверяем каждую минуту
+  }, 10000); // Проверяем каждые 10 секунд для тестирования
 }
+
+// Глобальная переменная для бота
+let bot;
 
 async function startBot() {
   console.log('=== [BOOT] startBot вызван ===');
-  const bot = new Telegraf(token);
+  bot = new Telegraf(token);
   
   // Счетчик ошибок для автоматического перезапуска
   let errorCount = 0;
@@ -1349,13 +1361,13 @@ async function startBot() {
   // Запускаем бота синхронно
   console.log('=== [BOOT] Запускаем bot.launch() синхронно... ===');
   
+  // Запускаем периодическую проверку программы лояльности сразу
+  startLoyaltyChecker();
+  
   try {
     await bot.launch();
     console.log('=== [BOOT] Bot started successfully in polling mode ===');
     console.log('Bot started successfully');
-    
-    // Запускаем периодическую проверку программы лояльности
-    startLoyaltyChecker();
   } catch (launchError) {
     console.error('=== [BOOT] Bot launch failed:', launchError);
     console.error('=== [BOOT] Пробуем запуск без await...');
@@ -1363,8 +1375,6 @@ async function startBot() {
     // Альтернативный запуск
     bot.launch().then(() => {
       console.log('=== [BOOT] Bot started successfully (alternative) ===');
-      // Запускаем периодическую проверку программы лояльности
-      startLoyaltyChecker();
     }).catch((altError) => {
       console.error('=== [BOOT] Alternative launch failed:', altError);
     });
