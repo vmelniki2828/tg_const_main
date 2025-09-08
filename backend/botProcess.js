@@ -477,7 +477,7 @@ function setupBotHandlers(bot, blocks, connections) {
   // Создаем карту соединений для быстрого доступа
   const connectionMap = new Map();
   connections.forEach(conn => {
-    const key = `${conn.from.blockId}_${conn.from.buttonId}`;
+    const key = `${String(conn.from.blockId)}_${String(conn.from.buttonId)}`;
     connectionMap.set(key, conn.to);
   });
 
@@ -1034,7 +1034,7 @@ function setupBotHandlers(bot, blocks, connections) {
             }
             
             // Если это обычная кнопка (не ссылка), переходим к следующему блоку
-            const nextBlockId = connectionMap.get(`${currentBlockId}_${button.id}`);
+            const nextBlockId = connectionMap.get(`${String(currentBlockId)}_${String(button.id)}`);
             console.log(`🔍 DEBUG: Next block ID for button ${button.id}: ${nextBlockId}`);
             
             const nextBlockData = blocks.find(b => b.id === nextBlockId);
@@ -1149,7 +1149,7 @@ function setupBotHandlers(bot, blocks, connections) {
             }
             
             // Если это обычная кнопка (не ссылка), переходим к следующему блоку
-            const nextBlockId = connectionMap.get(`${block.id}_${button.id}`);
+            const nextBlockId = connectionMap.get(`${String(block.id)}_${String(button.id)}`);
             const nextBlockData = blocks.find(b => b.id === nextBlockId);
             
             // --- ВАЖНО: Проверка завершённости квиза ДО изменения состояния ---
