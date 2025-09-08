@@ -778,22 +778,42 @@ function setupBotHandlers(bot, blocks, connections) {
           const completionTime = Math.round((quizState.endTime - quizState.startTime) / 1000);
           
           try {
-            const quizStats = new QuizStats({
-              botId: botId,
-              userId: userId,
+            console.log(`💾 Saving quiz stats to MongoDB:`, {
+              botId,
+              userId,
               blockId: quizState.blockId,
-              correctAnswers: correctAnswers,
-              totalQuestions: totalQuestions,
-              percentage: percentage,
-              completionTime: completionTime,
-              answers: quizState.answers,
-              completedAt: new Date()
+              correctAnswers,
+              totalQuestions,
+              percentage,
+              completionTime,
+              answersCount: quizState.answers.length
             });
             
-            await quizStats.save();
+            // Используем upsert для обновления существующей записи или создания новой
+            await QuizStats.updateOne(
+              { 
+                botId: botId, 
+                userId: userId, 
+                blockId: quizState.blockId 
+              },
+              {
+                botId: botId,
+                userId: userId,
+                blockId: quizState.blockId,
+                correctAnswers: correctAnswers,
+                totalQuestions: totalQuestions,
+                percentage: percentage,
+                completionTime: completionTime,
+                answers: quizState.answers,
+                completedAt: new Date()
+              },
+              { upsert: true }
+            );
+            
             console.log(`✅ Quiz stats saved to MongoDB for user ${userId}`);
           } catch (error) {
             console.error('❌ Error saving quiz stats:', error);
+            console.error('❌ Error details:', error.message);
           }
           
            // Отправляем финальное сообщение

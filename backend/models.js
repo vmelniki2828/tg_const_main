@@ -37,18 +37,21 @@ const UserSchema = new mongoose.Schema({
 const QuizStatsSchema = new mongoose.Schema({
   botId: { type: String, required: true },
   userId: { type: Number, required: true },
-  quizId: { type: String, required: true },
-  attempts: [
-    {
-      timestamp: Date,
-      success: Boolean,
-      score: Number,
-      duration: Number,
-      answers: Array,
-      promoCode: String
-    }
-  ]
+  blockId: { type: String, required: true },
+  correctAnswers: { type: Number, required: true },
+  totalQuestions: { type: Number, required: true },
+  percentage: { type: Number, required: true },
+  completionTime: { type: Number, required: true },
+  answers: [{
+    questionIndex: Number,
+    answer: String,
+    isCorrect: Boolean
+  }],
+  completedAt: { type: Date, default: Date.now }
 });
+
+// Создаем индекс для быстрого поиска
+QuizStatsSchema.index({ botId: 1, userId: 1, blockId: 1 }, { unique: true });
 
 const PromoCodeSchema = new mongoose.Schema({
   botId: { type: String, required: true },
