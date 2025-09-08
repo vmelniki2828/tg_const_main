@@ -615,16 +615,16 @@ app.post('/api/bots/:id/deactivate', async (req, res) => {
     await wait(1000); // Даем время на остановку
 
     // Обновляем состояние
-    state.bots = state.bots.map(b => ({
-      ...b,
-      isActive: b.id === bot.id ? false : b.isActive
-    }));
+    // state.bots = state.bots.map(b => ({
+    //   ...b,
+    //   isActive: b.id === bot.id ? false : b.isActive
+    // }));
 
-    if (state.activeBot === bot.id) {
-      state.activeBot = null;
-    }
+    // if (state.activeBot === bot.id) {
+    //   state.activeBot = null;
+    // }
 
-    await writeState(state);
+    // await writeState(state);
     console.log(`Bot ${bot.id} deactivated successfully`);
     res.json({ success: true });
   } catch (error) {
@@ -647,8 +647,6 @@ app.get('/api/bots', async (req, res) => {
 app.post('/api/bots', async (req, res) => {
   try {
     const { name, token } = req.body;
-    const state = await readState();
-    
     const newBot = {
       id: Date.now().toString(),
       name,
@@ -670,21 +668,12 @@ app.post('/api/bots', async (req, res) => {
         scale: 1
       }
     };
-
-    state.bots.push(newBot);
-    await writeState(state);
-    // Сохраняем в MongoDB
-    await Bot.create({
-      id: newBot.id,
-      name: newBot.name,
-      token: newBot.token,
-      isActive: newBot.isActive,
-      editorState: newBot.editorState
-    });
-    
+    // Сохраняем только в MongoDB
+    await Bot.create(newBot);
     res.json({ id: newBot.id, name: newBot.name, isActive: newBot.isActive });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create bot' });
+    console.error('Failed to create bot:', error);
+    res.status(500).json({ error: 'Failed to create bot', details: error.message });
   }
 });
 
