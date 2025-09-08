@@ -192,6 +192,7 @@ function App() {
         {showStats && (
           <QuizStats 
             blocks={flowEditorRef.current?.getState()?.blocks || []}
+            botId={selectedBotId}
             onClose={() => setShowStats(false)}
           />
         )}

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './QuizStats.css';
 import config from '../config';
 
-const QuizStats = ({ blocks, onClose }) => {
+const QuizStats = ({ blocks, botId, onClose }) => {
   const [stats, setStats] = useState({});
   const [promoCodesStats, setPromoCodesStats] = useState({});
   const [loading, setLoading] = useState(true);
@@ -52,13 +52,22 @@ const QuizStats = ({ blocks, onClose }) => {
       
       for (const quiz of quizBlocks) {
         try {
-          const promoResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${quiz.id}`);
+          const promoResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${quiz.id}?botId=${botId}`);
           if (promoResponse.ok) {
             const promoData = await promoResponse.json();
             promoCodesData[quiz.id] = promoData;
+          } else {
+            console.error(`❌ Ошибка загрузки промокодов для квиза ${quiz.id}: ${promoResponse.status}`);
+            promoCodesData[quiz.id] = {
+              hasPromoCodes: false,
+              totalPromoCodes: 0,
+              availablePromoCodes: 0,
+              usedPromoCodes: 0,
+              promoCodesList: []
+            };
           }
         } catch (error) {
-          console.error(`Ошибка загрузки промокодов для квиза ${quiz.id}:`, error);
+          console.error(`❌ Ошибка загрузки промокодов для квиза ${quiz.id}:`, error);
           promoCodesData[quiz.id] = {
             hasPromoCodes: false,
             totalPromoCodes: 0,

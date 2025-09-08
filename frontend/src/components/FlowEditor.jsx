@@ -859,6 +859,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                 >
                   <QuizBlock
                     block={block}
+                    botId={botId}
                     onMessageChange={(message) => updateMessage(block.id, message)}
                     onButtonAdd={() => addButton(block.id)}
                     onButtonRemove={(buttonId) => removeButton(block.id, buttonId)}

@@ -3,6 +3,7 @@ import config from '../config';
 
 const QuizBlock = ({
   block,
+  botId,
   onMessageChange,
   onButtonAdd,
   onButtonRemove,
@@ -38,7 +39,7 @@ const QuizBlock = ({
     try {
       // Сначала удаляем старые промокоды
       try {
-        const deleteResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${block.id}`, {
+        const deleteResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${block.id}?botId=${botId}`, {
           method: 'DELETE'
         });
         
@@ -48,6 +49,9 @@ const QuizBlock = ({
       } catch (deleteError) {
         console.warn('Не удалось удалить старые промокоды:', deleteError);
       }
+
+      // Добавляем botId в formData
+      formData.append('botId', botId);
 
       // Затем загружаем новые промокоды
       const response = await fetch(`${config.API_BASE_URL}/api/upload-promocodes`, {

@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const { User, QuizStats, PromoCode } = require('./models');
+const { User, QuizStats } = require('./models');
 const { Loyalty } = require('./models');
 const mongoose = require('mongoose');
 const MONGO_URI = 'mongodb://157.230.20.252:27017/tg_const_main';
@@ -32,50 +32,6 @@ try {
 
 // Кэш для промокодов
 const promoCodeCache = new Map();
-
-// Функция для получения доступного промокода для квиза
-async function getAvailablePromoCode(botId, quizId) {
-  try {
-    console.log(`🎁 Ищем доступный промокод для квиза ${quizId} бота ${botId}`);
-    
-    // Ищем неактивированный промокод для этого квиза
-    const promoCode = await PromoCode.findOne({
-      botId: botId,
-      quizId: quizId,
-      activated: false
-    });
-    
-    if (promoCode) {
-      console.log(`🎁 Найден промокод: ${promoCode.code}`);
-      return promoCode;
-    } else {
-      console.log(`🎁 Нет доступных промокодов для квиза ${quizId}`);
-      return null;
-    }
-  } catch (error) {
-    console.error('❌ Ошибка при поиске промокода:', error);
-    return null;
-  }
-}
-
-// Функция для активации промокода
-async function activatePromoCode(promoCode, userId) {
-  try {
-    console.log(`🎁 Активируем промокод ${promoCode.code} для пользователя ${userId}`);
-    
-    promoCode.activated = true;
-    promoCode.activatedBy = userId;
-    promoCode.activatedAt = new Date();
-    
-    await promoCode.save();
-    console.log(`✅ Промокод ${promoCode.code} успешно активирован`);
-    
-    return promoCode;
-  } catch (error) {
-    console.error('❌ Ошибка при активации промокода:', error);
-    return null;
-  }
-}
 
 // Функция для отправки медиафайлов (оптимизированная)
 async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboard = []) {
@@ -849,8 +805,7 @@ function setupBotHandlers(bot, blocks, connections) {
                 percentage: percentage,
                 completionTime: completionTime,
                 answers: quizState.answers,
-                completedAt: new Date(),
-                promoCode: promoCode ? promoCode.code : null
+                completedAt: new Date()
               },
               { upsert: true }
             );
@@ -861,32 +816,15 @@ function setupBotHandlers(bot, blocks, connections) {
             console.error('❌ Error details:', error.message);
           }
           
-          // Проверяем, нужно ли выдать промокод
-          let promoCode = null;
-          if (correctAnswers === totalQuestions) {
-            // Все ответы правильные - ищем доступный промокод
-            promoCode = await getAvailablePromoCode(botId, quizState.blockId);
-            if (promoCode) {
-              // Активируем промокод
-              await activatePromoCode(promoCode, userId);
-            }
-          }
-          
-          // Отправляем финальное сообщение
-          let finalMessage;
-          if (correctAnswers === totalQuestions) {
-            // Все ответы правильные - показываем сообщение об успехе
-            let successMessage = quizBlock.finalSuccessMessage || '🏆 Поздравляем! Вы успешно прошли квиз!';
-            
-            if (promoCode) {
-              successMessage += `\n\n🎁 **Ваш промокод:** \`${promoCode.code}\``;
-            }
-            
-            finalMessage = `${successMessage}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
-          } else {
-            // Не все ответы правильные - показываем сообщение о неудаче
-            finalMessage = `${quizBlock.finalFailureMessage || '❌ Квест завершен. Попробуйте еще раз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
-          }
+           // Отправляем финальное сообщение
+           let finalMessage;
+           if (correctAnswers === totalQuestions) {
+             // Все ответы правильные - показываем сообщение об успехе
+             finalMessage = `${quizBlock.finalSuccessMessage || '🏆 Поздравляем! Вы успешно прошли квиз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+           } else {
+             // Не все ответы правильные - показываем сообщение о неудаче
+             finalMessage = `${quizBlock.finalFailureMessage || '❌ Квест завершен. Попробуйте еще раз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+           }
           
           await ctx.reply(finalMessage, { parse_mode: 'Markdown' });
           

@@ -286,7 +286,7 @@ app.get('/api/quiz-stats', async (req, res) => {
           selectedAnswer: answer.answer,
           isCorrect: answer.isCorrect
         })),
-        promoCode: record.promoCode || ''
+        promoCode: '' // Можно получить из PromoCode коллекции
       });
     }
     
@@ -371,43 +371,39 @@ app.post('/api/quiz-stats', async (req, res) => {
 app.get('/api/quiz-promocodes/:quizId', async (req, res) => {
   try {
     const { quizId } = req.params;
+    console.log(`🎁 Загружаем промокоды для квиза ${quizId} из MongoDB...`);
     
-    // Путь к файлу промокодов квиза
-    const promoCodesPath = path.join(__dirname, 'promocodes', `quiz_${quizId}.csv`);
-    
-    if (!fs.existsSync(promoCodesPath)) {
-      return res.json({
-        quizId: quizId,
-        hasPromoCodes: false,
-        totalPromoCodes: 0,
-        availablePromoCodes: 0,
-        usedPromoCodes: 0,
-        promoCodesList: []
-      });
+    // Получаем botId из параметров запроса или из активного бота
+    const botId = req.query.botId;
+    if (!botId) {
+      return res.status(400).json({ error: 'botId не указан' });
     }
     
-    // Читаем файл промокодов
-    const fileContent = fs.readFileSync(promoCodesPath, 'utf8');
-    const lines = fileContent.split('\n').filter(line => line.trim());
-    const dataLines = lines.slice(1); // Пропускаем заголовок
+    // Ищем промокоды для данного квиза и бота
+    const promoCodes = await PromoCode.find({ 
+      botId: botId,
+      quizId: quizId 
+    });
     
-    const promoCodesList = dataLines.map(line => {
-      const [code, user, activated] = line.split(',').map(field => field.trim());
-      return {
-        code: code,
-        user: user || '',
-        activated: activated === '1' || activated === 'true',
-        activatedBy: activated === '1' || activated === 'true' ? user : null
-      };
-    }).filter(item => item.code); // Фильтруем пустые строки
+    console.log(`🎁 Найдено ${promoCodes.length} промокодов для квиза ${quizId}`);
+    
+    const promoCodesList = promoCodes.map(promo => ({
+      code: promo.code,
+      user: promo.activatedBy ? promo.activatedBy.toString() : '',
+      activated: promo.activated,
+      activatedBy: promo.activatedBy || null,
+      activatedAt: promo.activatedAt
+    }));
     
     const totalPromoCodes = promoCodesList.length;
-    const usedPromoCodes = promoCodesList.filter(pc => pc.activated).length;
+    const usedPromoCodes = promoCodesList.filter(promo => promo.activated).length;
     const availablePromoCodes = totalPromoCodes - usedPromoCodes;
+    
+    console.log(`🎁 Статистика промокодов: всего ${totalPromoCodes}, использовано ${usedPromoCodes}, доступно ${availablePromoCodes}`);
     
     res.json({
       quizId: quizId,
-      hasPromoCodes: true,
+      hasPromoCodes: totalPromoCodes > 0,
       totalPromoCodes: totalPromoCodes,
       availablePromoCodes: availablePromoCodes,
       usedPromoCodes: usedPromoCodes,
@@ -415,8 +411,8 @@ app.get('/api/quiz-promocodes/:quizId', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error reading promo codes stats:', error);
-    res.status(500).json({ error: 'Ошибка чтения статистики промокодов' });
+    console.error('❌ Promo codes error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -427,35 +423,56 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
       return res.status(400).json({ error: 'Файл не был загружен' });
     }
 
-    const { quizId } = req.body; // Получаем ID квиза из тела запроса
+    const { quizId, botId } = req.body; // Получаем ID квиза и бота из тела запроса
     if (!quizId) {
       return res.status(400).json({ error: 'ID квиза не указан' });
     }
+    if (!botId) {
+      return res.status(400).json({ error: 'ID бота не указан' });
+    }
 
     const filePath = req.file.path;
-    console.log(`Promo codes file uploaded for quiz ${quizId}:`, filePath);
+    console.log(`🎁 Загружаем промокоды для квиза ${quizId} и бота ${botId}:`, filePath);
 
-    // Импортируем функции для работы с промокодами
-    const { loadPromoCodesFromFile } = require('./promoCodeManager');
+    // Читаем файл и парсим промокоды
+    const fs = require('fs');
+    const fileContent = fs.readFileSync(filePath, 'utf8');
+    const lines = fileContent.split('\n').filter(line => line.trim());
+    const dataLines = lines.slice(1); // Пропускаем заголовок
     
-    // Загружаем промокоды из файла для конкретного квиза
-    const success = loadPromoCodesFromFile(filePath, quizId);
-    
-    if (success) {
-      res.json({ 
-        success: true, 
-        message: `Файл с промокодами успешно загружен для квиза ${quizId}`,
-        filename: req.file.originalname,
-        path: filePath,
-        quizId: quizId
-      });
-    } else {
-      res.status(400).json({ 
-        error: 'Ошибка при загрузке промокодов из файла' 
-      });
-    }
+    const promoCodes = dataLines.map(line => {
+      const [code] = line.split(',').map(field => field.trim());
+      return {
+        botId: botId,
+        code: code,
+        quizId: quizId,
+        activated: false
+      };
+    }).filter(item => item.code); // Фильтруем пустые строки
+
+    console.log(`🎁 Найдено ${promoCodes.length} промокодов в файле`);
+
+    // Удаляем старые промокоды для этого квиза и бота
+    await PromoCode.deleteMany({ botId: botId, quizId: quizId });
+    console.log(`🎁 Удалены старые промокоды для квиза ${quizId}`);
+
+    // Сохраняем новые промокоды в MongoDB
+    await PromoCode.insertMany(promoCodes);
+    console.log(`🎁 Сохранено ${promoCodes.length} промокодов в MongoDB`);
+
+    // Удаляем временный файл
+    fs.unlinkSync(filePath);
+
+    res.json({ 
+      success: true, 
+      message: `Файл с промокодами успешно загружен для квиза ${quizId}`,
+      filename: req.file.originalname,
+      quizId: quizId,
+      botId: botId,
+      count: promoCodes.length
+    });
   } catch (error) {
-    console.error('Promo codes upload error:', error);
+    console.error('❌ Promo codes upload error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -464,29 +481,34 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
 app.delete('/api/quiz-promocodes/:quizId', async (req, res) => {
   try {
     const { quizId } = req.params;
+    const { botId } = req.query;
     
     if (!quizId) {
       return res.status(400).json({ error: 'ID квиза не указан' });
     }
-
-    // Импортируем функцию для удаления промокодов
-    const { deleteQuizPromoCodes } = require('./promoCodeManager');
-    
-    const success = deleteQuizPromoCodes(quizId);
-    
-    if (success) {
-      res.json({ 
-        success: true, 
-        message: `Промокоды для квиза ${quizId} успешно удалены`,
-        quizId: quizId
-      });
-    } else {
-      res.status(500).json({ 
-        error: 'Ошибка при удалении промокодов квиза' 
-      });
+    if (!botId) {
+      return res.status(400).json({ error: 'ID бота не указан' });
     }
+
+    console.log(`🎁 Удаляем промокоды для квиза ${quizId} и бота ${botId}`);
+    
+    // Удаляем промокоды из MongoDB
+    const result = await PromoCode.deleteMany({ 
+      botId: botId, 
+      quizId: quizId 
+    });
+    
+    console.log(`🎁 Удалено ${result.deletedCount} промокодов`);
+    
+    res.json({ 
+      success: true, 
+      message: `Промокоды для квиза ${quizId} успешно удалены`,
+      quizId: quizId,
+      botId: botId,
+      deletedCount: result.deletedCount
+    });
   } catch (error) {
-    console.error('Promo codes deletion error:', error);
+    console.error('❌ Promo codes deletion error:', error);
     res.status(500).json({ error: error.message });
   }
 });
