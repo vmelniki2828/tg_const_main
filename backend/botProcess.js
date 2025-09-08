@@ -761,12 +761,23 @@ function setupBotHandlers(bot, blocks, connections) {
           }
         }
         
-        // Проверяем, завершен ли квиз
-        if (quizState.isCompleted) {
-          console.log(`🔍 DEBUG: Quiz already completed for user ${userId}`);
-          await ctx.reply('Вы уже прошли этот квиз!');
+        // Если квиз завершен, показываем сообщение и возвращаем в главное меню
+        if (quizState && quizState.isCompleted) {
+          console.log(`🔍 DEBUG: Quiz already completed, returning to start`);
+          await ctx.reply('Вы уже прошли этот квиз! Возвращаемся в главное меню.');
+          
+          // Возвращаем в главное меню
+          userCurrentBlock.set(userId, 'start');
+          userQuizStates.delete(userId);
+          
+          const startBlock = dialogMap.get('start');
+          if (startBlock) {
+            const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+            await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+          }
           return;
         }
+        
         
         // Получаем текущий вопрос
         const questions = currentBlock.questions || [];
@@ -867,13 +878,18 @@ function setupBotHandlers(bot, blocks, connections) {
             
             // Если настроено возвращение в начало
             if (currentBlock.returnToStartOnComplete) {
+              console.log(`🔍 DEBUG: Returning to start after quiz completion`);
               userCurrentBlock.set(userId, 'start');
               userQuizStates.delete(userId);
+              
+              // Очищаем историю навигации
+              userNavigationHistory.delete(userId);
               
               const startBlock = dialogMap.get('start');
               if (startBlock) {
                 const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
                 await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+                console.log(`✅ Returned to start block after quiz completion`);
               }
             }
             
@@ -1136,31 +1152,21 @@ async function startBot() {
   // Запускаем бота в polling режиме
   console.log('=== [BOOT] Запускаем bot.launch() в polling режиме... ===');
   
-  try {
-    // Запускаем бота синхронно с таймаутом
-    const launchPromise = bot.launch();
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Launch timeout')), 5000);
-    });
-    
-    await Promise.race([launchPromise, timeoutPromise]);
+  // Запускаем бота без await - пусть работает в фоне
+  console.log('=== [BOOT] Запускаем bot.launch() без await... ===');
+  
+  bot.launch().then(() => {
     console.log('=== [BOOT] Bot started successfully in polling mode ===');
     console.log('Bot started successfully');
-  } catch (launchError) {
+  }).catch((launchError) => {
     console.error('=== [BOOT] Bot launch failed:', launchError);
-    console.error('=== [BOOT] Пробуем запуск без await...');
-    
-    // Альтернативный способ - запуск без await
-    bot.launch().then(() => {
-      console.log('=== [BOOT] Bot started successfully (alternative method) ===');
-    }).catch((altError) => {
-      console.error('=== [BOOT] Alternative launch failed:', altError);
-    });
-    
-    // Даем время на запуск
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    console.log('=== [BOOT] Bot launch initiated, continuing... ===');
-  }
+    console.error('=== [BOOT] Принудительно завершаем процесс...');
+    process.exit(1);
+  });
+  
+  // Даем время на запуск
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  console.log('=== [BOOT] Bot launch initiated, continuing... ===');
   
   // Принудительно запускаем polling
   try {
