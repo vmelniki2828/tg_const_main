@@ -1,6 +1,5 @@
 const { Telegraf } = require('telegraf');
-const { User, QuizStats, PromoCode } = require('./models');
-const { Loyalty } = require('./models');
+const { User, QuizStats, PromoCode, Loyalty, LoyaltyConfig } = require('./models');
 const mongoose = require('mongoose');
 const MONGO_URI = 'mongodb://157.230.20.252:27017/tg_const_main';
 mongoose.connect(MONGO_URI, { 
@@ -346,8 +345,132 @@ async function saveUserToMongo(ctx) {
       const saveResult = await newUser.save();
       console.log('[MongoDB] saveUserToMongo: новый пользователь создан:', saveResult._id);
     }
+    
+    // Проверяем программу лояльности после сохранения пользователя
+    await checkLoyaltyProgram(ctx);
   } catch (err) {
     console.error('[MongoDB] saveUserToMongo: ошибка при сохранении пользователя:', err);
+  }
+}
+
+// Функция для проверки программы лояльности
+async function checkLoyaltyProgram(ctx) {
+  if (!ctx.from) return;
+  const userId = ctx.from.id;
+  
+  try {
+    console.log(`[LOYALTY] Проверка программы лояльности для пользователя ${userId}`);
+    
+    // Получаем конфигурацию программы лояльности
+    const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+    if (!loyaltyConfig || !loyaltyConfig.isEnabled) {
+      console.log('[LOYALTY] Программа лояльности отключена');
+      return;
+    }
+    
+    // Получаем информацию о пользователе
+    const user = await User.findOne({ botId, userId });
+    if (!user) {
+      console.log('[LOYALTY] Пользователь не найден');
+      return;
+    }
+    
+    // Получаем или создаем запись лояльности
+    let loyaltyRecord = await Loyalty.findOne({ botId, userId });
+    if (!loyaltyRecord) {
+      loyaltyRecord = new Loyalty({
+        botId,
+        userId,
+        rewards: {
+          '1m': false,
+          '24h': false,
+          '7d': false,
+          '30d': false,
+          '90d': false,
+          '180d': false,
+          '360d': false
+        }
+      });
+      await loyaltyRecord.save();
+    }
+    
+    // Вычисляем время подписки
+    const subscriptionTime = Date.now() - user.firstSubscribedAt.getTime();
+    const minutes = Math.floor(subscriptionTime / (1000 * 60));
+    const hours = Math.floor(subscriptionTime / (1000 * 60 * 60));
+    const days = Math.floor(subscriptionTime / (1000 * 60 * 60 * 24));
+    
+    console.log(`[LOYALTY] Время подписки: ${minutes} минут, ${hours} часов, ${days} дней`);
+    
+    // Проверяем каждый период
+    const periods = [
+      { key: '1m', minutes: 1 },
+      { key: '24h', hours: 24 },
+      { key: '7d', days: 7 },
+      { key: '30d', days: 30 },
+      { key: '90d', days: 90 },
+      { key: '180d', days: 180 },
+      { key: '360d', days: 360 }
+    ];
+    
+    for (const period of periods) {
+      const config = loyaltyConfig.messages[period.key];
+      if (!config || !config.enabled) continue;
+      
+      // Проверяем, достиг ли пользователь этого периода
+      let hasReachedPeriod = false;
+      if (period.minutes && minutes >= period.minutes) hasReachedPeriod = true;
+      if (period.hours && hours >= period.hours) hasReachedPeriod = true;
+      if (period.days && days >= period.days) hasReachedPeriod = true;
+      
+      // Проверяем, не получал ли уже награду за этот период
+      if (hasReachedPeriod && !loyaltyRecord.rewards[period.key]) {
+        console.log(`[LOYALTY] Пользователь ${userId} достиг периода ${period.key}, отправляем сообщение`);
+        
+        // Отправляем сообщение
+        let message = config.message;
+        if (!message) {
+          const periodLabels = {
+            '1m': '1 минуту',
+            '24h': '24 часа',
+            '7d': '7 дней',
+            '30d': '30 дней',
+            '90d': '90 дней',
+            '180d': '180 дней',
+            '360d': '360 дней'
+          };
+          message = `Поздравляем! Вы с нами уже ${periodLabels[period.key]}! 🎉`;
+        }
+        
+        // Добавляем промокод если есть
+        if (config.promoCode) {
+          message += `\n\n🎁 Ваш промокод: \`${config.promoCode}\``;
+          
+          // Помечаем промокод как использованный
+          await PromoCode.updateOne(
+            { botId, code: config.promoCode },
+            { 
+              activated: true, 
+              activatedBy: userId, 
+              activatedAt: new Date() 
+            }
+          );
+        }
+        
+        await ctx.reply(message, { parse_mode: 'Markdown' });
+        
+        // Отмечаем, что награда выдана
+        await Loyalty.updateOne(
+          { botId, userId },
+          { [`rewards.${period.key}`]: true }
+        );
+        
+        console.log(`[LOYALTY] Награда за период ${period.key} выдана пользователю ${userId}`);
+      }
+    }
+    
+  } catch (error) {
+    console.error('[LOYALTY] Ошибка при проверке программы лояльности:', error);
   }
 }
 
@@ -1120,6 +1243,130 @@ async function checkAndRewardLoyalty(userId, thresholdKey) {
   return false; // Уже получал
 }
 
+// Функция для периодической проверки программы лояльности
+function startLoyaltyChecker() {
+  console.log('[LOYALTY] Запуск периодической проверки программы лояльности');
+  
+  // Проверяем каждую минуту
+  setInterval(async () => {
+    try {
+      console.log('[LOYALTY] Периодическая проверка программы лояльности');
+      
+      // Получаем конфигурацию программы лояльности
+      const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+      if (!loyaltyConfig || !loyaltyConfig.isEnabled) {
+        return; // Программа лояльности отключена
+      }
+      
+      // Получаем всех пользователей бота
+      const users = await User.find({ botId, isSubscribed: true });
+      
+      for (const user of users) {
+        try {
+          // Получаем или создаем запись лояльности
+          let loyaltyRecord = await Loyalty.findOne({ botId, userId: user.userId });
+          if (!loyaltyRecord) {
+            loyaltyRecord = new Loyalty({
+              botId,
+              userId: user.userId,
+              rewards: {
+                '1m': false,
+                '24h': false,
+                '7d': false,
+                '30d': false,
+                '90d': false,
+                '180d': false,
+                '360d': false
+              }
+            });
+            await loyaltyRecord.save();
+          }
+          
+          // Вычисляем время подписки
+          const subscriptionTime = Date.now() - user.firstSubscribedAt.getTime();
+          const minutes = Math.floor(subscriptionTime / (1000 * 60));
+          const hours = Math.floor(subscriptionTime / (1000 * 60 * 60));
+          const days = Math.floor(subscriptionTime / (1000 * 60 * 60 * 24));
+          
+          // Проверяем каждый период
+          const periods = [
+            { key: '1m', minutes: 1 },
+            { key: '24h', hours: 24 },
+            { key: '7d', days: 7 },
+            { key: '30d', days: 30 },
+            { key: '90d', days: 90 },
+            { key: '180d', days: 180 },
+            { key: '360d', days: 360 }
+          ];
+          
+          for (const period of periods) {
+            const config = loyaltyConfig.messages[period.key];
+            if (!config || !config.enabled) continue;
+            
+            // Проверяем, достиг ли пользователь этого периода
+            let hasReachedPeriod = false;
+            if (period.minutes && minutes >= period.minutes) hasReachedPeriod = true;
+            if (period.hours && hours >= period.hours) hasReachedPeriod = true;
+            if (period.days && days >= period.days) hasReachedPeriod = true;
+            
+            // Проверяем, не получал ли уже награду за этот период
+            if (hasReachedPeriod && !loyaltyRecord.rewards[period.key]) {
+              console.log(`[LOYALTY] Пользователь ${user.userId} достиг периода ${period.key}, отправляем сообщение`);
+              
+              // Отправляем сообщение
+              let message = config.message;
+              if (!message) {
+                const periodLabels = {
+                  '1m': '1 минуту',
+                  '24h': '24 часа',
+                  '7d': '7 дней',
+                  '30d': '30 дней',
+                  '90d': '90 дней',
+                  '180d': '180 дней',
+                  '360d': '360 дней'
+                };
+                message = `Поздравляем! Вы с нами уже ${periodLabels[period.key]}! 🎉`;
+              }
+              
+              // Добавляем промокод если есть
+              if (config.promoCode) {
+                message += `\n\n🎁 Ваш промокод: \`${config.promoCode}\``;
+                
+                // Помечаем промокод как использованный
+                await PromoCode.updateOne(
+                  { botId, code: config.promoCode },
+                  { 
+                    activated: true, 
+                    activatedBy: user.userId, 
+                    activatedAt: new Date() 
+                  }
+                );
+              }
+              
+              // Отправляем сообщение пользователю
+              await bot.telegram.sendMessage(user.userId, message, { parse_mode: 'Markdown' });
+              
+              // Отмечаем, что награда выдана
+              await Loyalty.updateOne(
+                { botId, userId: user.userId },
+                { [`rewards.${period.key}`]: true }
+              );
+              
+              console.log(`[LOYALTY] Награда за период ${period.key} выдана пользователю ${user.userId}`);
+            }
+          }
+          
+        } catch (userError) {
+          console.error(`[LOYALTY] Ошибка при проверке пользователя ${user.userId}:`, userError);
+        }
+      }
+      
+    } catch (error) {
+      console.error('[LOYALTY] Ошибка при периодической проверке программы лояльности:', error);
+    }
+  }, 60000); // Проверяем каждую минуту
+}
+
 async function startBot() {
   console.log('=== [BOOT] startBot вызван ===');
   const bot = new Telegraf(token);
@@ -1213,6 +1460,9 @@ async function startBot() {
     await bot.launch();
     console.log('=== [BOOT] Bot started successfully in polling mode ===');
     console.log('Bot started successfully');
+    
+    // Запускаем периодическую проверку программы лояльности
+    startLoyaltyChecker();
   } catch (launchError) {
     console.error('=== [BOOT] Bot launch failed:', launchError);
     console.error('=== [BOOT] Пробуем запуск без await...');
@@ -1220,6 +1470,8 @@ async function startBot() {
     // Альтернативный запуск
     bot.launch().then(() => {
       console.log('=== [BOOT] Bot started successfully (alternative) ===');
+      // Запускаем периодическую проверку программы лояльности
+      startLoyaltyChecker();
     }).catch((altError) => {
       console.error('=== [BOOT] Alternative launch failed:', altError);
     });
