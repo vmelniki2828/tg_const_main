@@ -1381,14 +1381,13 @@ async function startBot() {
   // Обновляем меню команд Telegram
   await updateBotCommands(bot, state.blocks);
   
-  // Глобальный логгер для всех апдейтов Telegram
-  if (process.env.DEBUG_ALL_UPDATES === '1') {
-    bot.use((ctx, next) => {
-      console.log('=== [DEBUG] Incoming update ===');
-      console.dir(ctx.update, { depth: 5 });
-      return next();
-    });
-  }
+  // Глобальный логгер для всех апдейтов Telegram (всегда включен)
+  bot.use((ctx, next) => {
+    console.log('=== [EVENT] Incoming update ===');
+    console.log('[EVENT] Update type:', ctx.updateType);
+    console.log('[EVENT] Update:', JSON.stringify(ctx.update, null, 2));
+    return next();
+  });
 
   // Обработчик ошибок бота
   bot.catch((err, ctx) => {
@@ -1400,6 +1399,22 @@ async function startBot() {
   try {
     await bot.launch();
     console.log('=== [BOOT] Bot started successfully ===');
+    
+    // Проверяем статус бота
+    try {
+      const botInfo = await bot.telegram.getMe();
+      console.log('=== [BOOT] Bot info:', botInfo);
+    } catch (infoError) {
+      console.error('=== [BOOT] Error getting bot info:', infoError);
+    }
+    
+    // Проверяем webhook info
+    try {
+      const webhookInfo = await bot.telegram.getWebhookInfo();
+      console.log('=== [BOOT] Webhook info:', webhookInfo);
+    } catch (webhookError) {
+      console.error('=== [BOOT] Error getting webhook info:', webhookError);
+    }
     
     // Сброс счетчика ошибок при успешном запуске
     errorCount = 0;
