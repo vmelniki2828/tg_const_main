@@ -796,8 +796,15 @@ function setupBotHandlers(bot, blocks, connections) {
             console.error('❌ Error saving quiz stats:', error);
           }
           
-          // Отправляем финальное сообщение
-          const finalMessage = `${quizBlock.finalSuccessMessage || 'Поздравляем! Вы успешно прошли квиз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+           // Отправляем финальное сообщение
+           let finalMessage;
+           if (correctAnswers === totalQuestions) {
+             // Все ответы правильные - показываем сообщение об успехе
+             finalMessage = `${quizBlock.finalSuccessMessage || '🏆 Поздравляем! Вы успешно прошли квиз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+           } else {
+             // Не все ответы правильные - показываем сообщение о неудаче
+             finalMessage = `${quizBlock.finalFailureMessage || '❌ Квест завершен. Попробуйте еще раз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+           }
           
           await ctx.reply(finalMessage, { parse_mode: 'Markdown' });
           
