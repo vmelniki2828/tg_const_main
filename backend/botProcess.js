@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const { User } = require('./models');
+const { User, QuizStats } = require('./models');
 const { Loyalty } = require('./models');
 const mongoose = require('mongoose');
 const MONGO_URI = 'mongodb://157.230.20.252:27017/tg_const_main';
@@ -722,12 +722,11 @@ function setupBotHandlers(bot, blocks, connections) {
           isCorrect: answerButton.isCorrect
         });
         
-        // Отправляем сообщение о результате
-        if (answerButton.isCorrect) {
-          await ctx.reply('Правильно!');
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } else {
-          await ctx.reply('Неправильно. Попробуйте еще раз.');
+        // Проверяем правильность ответа
+        if (!answerButton.isCorrect) {
+          // Неправильный ответ - показываем тот же вопрос снова
+          const { keyboard, inlineKeyboard } = createKeyboardWithBack(currentQuestion.buttons, userId, quizState.blockId);
+          await sendMediaMessage(ctx, currentQuestion.message, currentQuestion.mediaFiles, keyboard, inlineKeyboard);
           return;
         }
         
@@ -893,9 +892,34 @@ function setupBotHandlers(bot, blocks, connections) {
       userCurrentBlock.set(userId, nextBlockId);
       console.log(`🔍 DEBUG: Updated user current block to: ${nextBlockId}`);
       
-      // Если следующий блок - квиз, инициализируем состояние квиза и показываем первый вопрос
+      // Если следующий блок - квиз, проверяем, не прошел ли пользователь уже квест
       if (nextBlock.type === 'quiz') {
         console.log(`🔍 DEBUG: Starting quiz for user ${userId}`);
+        
+        // Проверяем, не прошел ли пользователь уже этот квест
+        try {
+          const existingQuizStats = await QuizStats.findOne({
+            botId: botId,
+            userId: userId,
+            blockId: nextBlockId
+          });
+          
+          if (existingQuizStats) {
+            console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId}`);
+            await ctx.reply('Вы уже прошли этот квест!');
+            
+            // Возвращаем в главное меню
+            userCurrentBlock.set(userId, 'start');
+            const startBlock = dialogMap.get('start');
+            if (startBlock) {
+              const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+              await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+            }
+            return;
+          }
+        } catch (error) {
+          console.error('❌ Error checking existing quiz stats:', error);
+        }
         
         // Инициализируем состояние квиза
         const quizState = {
