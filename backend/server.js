@@ -732,15 +732,13 @@ app.post('/api/bots', async (req, res) => {
 // Получение состояния конкретного бота
 app.get('/api/bots/:id', async (req, res) => {
   try {
-    const state = await readState();
-    const bot = state.bots.find(b => b.id === req.params.id);
+    const bot = await Bot.findOne({ id: req.params.id });
     if (!bot) {
-      res.status(404).json({ error: 'Bot not found' });
-      return;
+      return res.status(404).json({ error: 'Bot not found' });
     }
     res.json(bot);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to load bot state' });
+    res.status(500).json({ error: 'Failed to load bot', details: error.message });
   }
 });
 

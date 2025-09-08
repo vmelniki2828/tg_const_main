@@ -28,16 +28,7 @@ function App() {
     }
   };
 
-  // Получаем статус бота при выборе бота и каждые 5 секунд
-  useEffect(() => {
-    if (selectedBotId) {
-      fetchBotStatus();
-      const interval = setInterval(fetchBotStatus, 5000);
-      return () => clearInterval(interval);
-    } else {
-      setBotStatus(null); // Сбрасываем статус при отмене выбора бота
-    }
-  }, [selectedBotId]);
+  // Удалён useEffect с setInterval для fetchBotStatus. Запрос статуса делается только при выборе бота, запуске/остановке или явном действии пользователя.
 
   // Обработчик выбора бота для редактирования
   const handleSelectBot = (botId) => {
