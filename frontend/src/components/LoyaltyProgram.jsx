@@ -6,23 +6,23 @@ const LoyaltyProgram = ({ botId, onClose }) => {
   const [loyaltyConfig, setLoyaltyConfig] = useState({
     isEnabled: false,
     messages: {
-      '1m': { enabled: false, message: '', promoCode: '' },
-      '24h': { enabled: false, message: '', promoCode: '' },
-      '7d': { enabled: false, message: '', promoCode: '' },
-      '30d': { enabled: false, message: '', promoCode: '' },
-      '90d': { enabled: false, message: '', promoCode: '' },
-      '180d': { enabled: false, message: '', promoCode: '' },
-      '360d': { enabled: false, message: '', promoCode: '' }
+      '1m': { enabled: false, message: '' },
+      '24h': { enabled: false, message: '' },
+      '7d': { enabled: false, message: '' },
+      '30d': { enabled: false, message: '' },
+      '90d': { enabled: false, message: '' },
+      '180d': { enabled: false, message: '' },
+      '360d': { enabled: false, message: '' }
     }
   });
-  const [availablePromoCodes, setAvailablePromoCodes] = useState([]);
+  const [loyaltyPromoCodes, setLoyaltyPromoCodes] = useState({});
+  const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchLoyaltyConfig();
-    fetchAvailablePromoCodes();
   }, [botId]);
 
   const fetchLoyaltyConfig = async () => {
@@ -34,20 +34,23 @@ const LoyaltyProgram = ({ botId, onClose }) => {
       }
     } catch (error) {
       console.error('Error fetching loyalty config:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const fetchAvailablePromoCodes = async () => {
+  const fetchLoyaltyPromoCodes = async (period) => {
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/available-promocodes/${botId}`);
+      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-promocodes/${botId}/${period}`);
       if (response.ok) {
-        const promoCodes = await response.json();
-        setAvailablePromoCodes(promoCodes);
+        const data = await response.json();
+        setLoyaltyPromoCodes(prev => ({
+          ...prev,
+          [period]: data
+        }));
       }
     } catch (error) {
-      console.error('Error fetching promocodes:', error);
-    } finally {
-      setLoading(false);
+      console.error('Error fetching loyalty promocodes:', error);
     }
   };
 
@@ -88,6 +91,52 @@ const LoyaltyProgram = ({ botId, onClose }) => {
         }
       }
     }));
+  };
+
+  const handleUploadPromoCodes = async (period, file) => {
+    const formData = new FormData();
+    formData.append('promocodes', file);
+    
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-promocodes/${botId}/${period}`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        alert(result.message);
+        fetchLoyaltyPromoCodes(period);
+      } else {
+        const errorData = await response.json();
+        alert('Ошибка: ' + errorData.error);
+      }
+    } catch (error) {
+      alert('Ошибка загрузки: ' + error.message);
+    }
+  };
+
+  const handleDeletePromoCodes = async (period) => {
+    if (!confirm(`Удалить все промокоды для периода ${getPeriodLabel(period)}?`)) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-promocodes/${botId}/${period}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        alert(result.message);
+        fetchLoyaltyPromoCodes(period);
+      } else {
+        const errorData = await response.json();
+        alert('Ошибка: ' + errorData.error);
+      }
+    } catch (error) {
+      alert('Ошибка удаления: ' + error.message);
+    }
   };
 
   const getPeriodLabel = (period) => {
@@ -168,19 +217,39 @@ const LoyaltyProgram = ({ botId, onClose }) => {
                         />
                       </div>
 
-                      <div className="promocode-field">
-                        <label>Промокод для подарка:</label>
-                        <select
-                          value={config.promoCode}
-                          onChange={(e) => handleMessageChange(period, 'promoCode', e.target.value)}
-                        >
-                          <option value="">Выберите промокод</option>
-                          {availablePromoCodes.map(promo => (
-                            <option key={promo.code} value={promo.code}>
-                              {promo.code} {promo.activated ? '(использован)' : '(доступен)'}
-                            </option>
-                          ))}
-                        </select>
+                      <div className="promocode-section">
+                        <div className="promocode-header">
+                          <label>Промокоды для подарка:</label>
+                          <div className="promocode-actions">
+                            <button
+                              type="button"
+                              className="manage-promocodes-btn"
+                              onClick={() => {
+                                setSelectedPeriod(period);
+                                fetchLoyaltyPromoCodes(period);
+                              }}
+                            >
+                              Управление промокодами
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {loyaltyPromoCodes[period] && (
+                          <div className="promocode-stats">
+                            <div className="stat-item">
+                              <span className="stat-label">Всего:</span>
+                              <span className="stat-value">{loyaltyPromoCodes[period].stats.total}</span>
+                            </div>
+                            <div className="stat-item">
+                              <span className="stat-label">Доступно:</span>
+                              <span className="stat-value available">{loyaltyPromoCodes[period].stats.available}</span>
+                            </div>
+                            <div className="stat-item">
+                              <span className="stat-label">Использовано:</span>
+                              <span className="stat-value used">{loyaltyPromoCodes[period].stats.used}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -209,6 +278,100 @@ const LoyaltyProgram = ({ botId, onClose }) => {
             </button>
             <button className="cancel-btn" onClick={onClose}>
               Отмена
+            </button>
+          </div>
+        </div>
+        
+        {selectedPeriod && (
+          <LoyaltyPromoCodeManager
+            botId={botId}
+            period={selectedPeriod}
+            periodLabel={getPeriodLabel(selectedPeriod)}
+            onClose={() => setSelectedPeriod(null)}
+            onUpload={(file) => handleUploadPromoCodes(selectedPeriod, file)}
+            onDelete={() => handleDeletePromoCodes(selectedPeriod)}
+            promoCodes={loyaltyPromoCodes[selectedPeriod]}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Компонент для управления промокодами
+const LoyaltyPromoCodeManager = ({ botId, period, periodLabel, onClose, onUpload, onDelete, promoCodes }) => {
+  const [file, setFile] = useState(null);
+
+  const handleFileChange = (e) => {
+    setFile(e.target.files[0]);
+  };
+
+  const handleUpload = () => {
+    if (file) {
+      onUpload(file);
+      setFile(null);
+    }
+  };
+
+  return (
+    <div className="loyalty-overlay">
+      <div className="loyalty-modal">
+        <div className="loyalty-header">
+          <h2>🎁 Промокоды для {periodLabel}</h2>
+          <button className="close-btn" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="loyalty-content">
+          <div className="promocode-upload">
+            <h3>Загрузить промокоды</h3>
+            <p>Загрузите CSV файл с промокодами (один промокод на строку)</p>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={handleFileChange}
+              className="file-input"
+            />
+            <button 
+              onClick={handleUpload}
+              disabled={!file}
+              className="upload-btn"
+            >
+              Загрузить
+            </button>
+          </div>
+
+          {promoCodes && (
+            <div className="promocode-stats">
+              <h3>Статистика промокодов</h3>
+              <div className="stats-grid">
+                <div className="stat-card">
+                  <div className="stat-number">{promoCodes.stats.total}</div>
+                  <div className="stat-label">Всего</div>
+                </div>
+                <div className="stat-card available">
+                  <div className="stat-number">{promoCodes.stats.available}</div>
+                  <div className="stat-label">Доступно</div>
+                </div>
+                <div className="stat-card used">
+                  <div className="stat-number">{promoCodes.stats.used}</div>
+                  <div className="stat-label">Использовано</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="promocode-actions">
+            <button 
+              onClick={onDelete}
+              className="delete-btn"
+            >
+              Удалить все промокоды
+            </button>
+            <button 
+              onClick={onClose}
+              className="cancel-btn"
+            >
+              Закрыть
             </button>
           </div>
         </div>

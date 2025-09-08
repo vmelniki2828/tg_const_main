@@ -83,43 +83,50 @@ const LoyaltyConfigSchema = new mongoose.Schema({
   messages: {
     '1m': {
       enabled: { type: Boolean, default: false },
-      message: { type: String, default: '' },
-      promoCode: { type: String, default: '' }
+      message: { type: String, default: '' }
     },
     '24h': {
       enabled: { type: Boolean, default: false },
-      message: { type: String, default: '' },
-      promoCode: { type: String, default: '' }
+      message: { type: String, default: '' }
     },
     '7d': {
       enabled: { type: Boolean, default: false },
-      message: { type: String, default: '' },
-      promoCode: { type: String, default: '' }
+      message: { type: String, default: '' }
     },
     '30d': {
       enabled: { type: Boolean, default: false },
-      message: { type: String, default: '' },
-      promoCode: { type: String, default: '' }
+      message: { type: String, default: '' }
     },
     '90d': {
       enabled: { type: Boolean, default: false },
-      message: { type: String, default: '' },
-      promoCode: { type: String, default: '' }
+      message: { type: String, default: '' }
     },
     '180d': {
       enabled: { type: Boolean, default: false },
-      message: { type: String, default: '' },
-      promoCode: { type: String, default: '' }
+      message: { type: String, default: '' }
     },
     '360d': {
       enabled: { type: Boolean, default: false },
-      message: { type: String, default: '' },
-      promoCode: { type: String, default: '' }
+      message: { type: String, default: '' }
     }
   },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
+
+// Схема для промокодов программы лояльности
+const LoyaltyPromoCodeSchema = new mongoose.Schema({
+  botId: { type: String, required: true },
+  period: { type: String, required: true, enum: ['1m', '24h', '7d', '30d', '90d', '180d', '360d'] },
+  code: { type: String, required: true },
+  activated: { type: Boolean, default: false },
+  activatedBy: Number,
+  activatedAt: Date,
+  createdAt: { type: Date, default: Date.now }
+});
+
+// Индекс для быстрого поиска доступных промокодов
+LoyaltyPromoCodeSchema.index({ botId: 1, period: 1, activated: 1 });
 
 module.exports = {
   Bot: mongoose.model('Bot', BotSchema),
@@ -127,5 +134,6 @@ module.exports = {
   QuizStats: mongoose.model('QuizStats', QuizStatsSchema),
   PromoCode: mongoose.model('PromoCode', PromoCodeSchema),
   Loyalty: mongoose.model('Loyalty', LoyaltySchema),
-  LoyaltyConfig: mongoose.model('LoyaltyConfig', LoyaltyConfigSchema)
+  LoyaltyConfig: mongoose.model('LoyaltyConfig', LoyaltyConfigSchema),
+  LoyaltyPromoCode: mongoose.model('LoyaltyPromoCode', LoyaltyPromoCodeSchema)
 };

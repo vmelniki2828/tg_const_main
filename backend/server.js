@@ -6,7 +6,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
 const mongoose = require('mongoose');
-const { QuizStats, Bot, User, PromoCode, Loyalty, LoyaltyConfig } = require('./models');
+const { QuizStats, Bot, User, PromoCode, Loyalty, LoyaltyConfig, LoyaltyPromoCode } = require('./models');
 
 // Загружаем переменные окружения
 try {
@@ -552,13 +552,13 @@ app.get('/api/loyalty-config/:botId', async (req, res) => {
       res.json({
         isEnabled: false,
         messages: {
-          '1m': { enabled: false, message: '', promoCode: '' },
-          '24h': { enabled: false, message: '', promoCode: '' },
-          '7d': { enabled: false, message: '', promoCode: '' },
-          '30d': { enabled: false, message: '', promoCode: '' },
-          '90d': { enabled: false, message: '', promoCode: '' },
-          '180d': { enabled: false, message: '', promoCode: '' },
-          '360d': { enabled: false, message: '', promoCode: '' }
+          '1m': { enabled: false, message: '' },
+          '24h': { enabled: false, message: '' },
+          '7d': { enabled: false, message: '' },
+          '30d': { enabled: false, message: '' },
+          '90d': { enabled: false, message: '' },
+          '180d': { enabled: false, message: '' },
+          '360d': { enabled: false, message: '' }
         }
       });
     }
@@ -602,6 +602,74 @@ app.get('/api/available-promocodes/:botId', async (req, res) => {
   } catch (error) {
     console.error('❌ Error fetching promocodes:', error);
     res.status(500).json({ error: 'Failed to fetch promocodes' });
+  }
+});
+
+// API для промокодов программы лояльности
+app.get('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
+  try {
+    const { botId, period } = req.params;
+    
+    // Получаем промокоды для конкретного периода
+    const promoCodes = await LoyaltyPromoCode.find({ botId, period });
+    
+    const stats = {
+      total: promoCodes.length,
+      available: promoCodes.filter(p => !p.activated).length,
+      used: promoCodes.filter(p => p.activated).length
+    };
+    
+    res.json({ promoCodes, stats });
+  } catch (error) {
+    console.error('❌ Error fetching loyalty promocodes:', error);
+    res.status(500).json({ error: 'Failed to fetch loyalty promocodes' });
+  }
+});
+
+app.post('/api/loyalty-promocodes/:botId/:period', promoCodeUpload.single('promocodes'), async (req, res) => {
+  try {
+    const { botId, period } = req.params;
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    
+    // Читаем CSV файл
+    const csvContent = req.file.buffer.toString('utf8');
+    const lines = csvContent.split('\n').filter(line => line.trim());
+    
+    // Удаляем существующие промокоды для этого периода
+    await LoyaltyPromoCode.deleteMany({ botId, period });
+    
+    // Добавляем новые промокоды
+    const promoCodes = lines.map(line => ({
+      botId,
+      period,
+      code: line.trim()
+    }));
+    
+    await LoyaltyPromoCode.insertMany(promoCodes);
+    
+    res.json({ 
+      success: true, 
+      message: `Загружено ${promoCodes.length} промокодов для периода ${period}` 
+    });
+  } catch (error) {
+    console.error('❌ Error uploading loyalty promocodes:', error);
+    res.status(500).json({ error: 'Failed to upload loyalty promocodes' });
+  }
+});
+
+app.delete('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
+  try {
+    const { botId, period } = req.params;
+    
+    await LoyaltyPromoCode.deleteMany({ botId, period });
+    
+    res.json({ success: true, message: `Промокоды для периода ${period} удалены` });
+  } catch (error) {
+    console.error('❌ Error deleting loyalty promocodes:', error);
+    res.status(500).json({ error: 'Failed to delete loyalty promocodes' });
   }
 });
 

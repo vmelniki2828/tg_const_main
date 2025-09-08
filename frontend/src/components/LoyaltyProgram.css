@@ -270,6 +270,193 @@
   color: #6c757d;
 }
 
+/* Стили для промокодов */
+.promocode-section {
+  margin-top: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.promocode-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.promocode-header label {
+  font-weight: 600;
+  color: #495057;
+  margin: 0;
+}
+
+.manage-promocodes-btn {
+  background: #17a2b8;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.manage-promocodes-btn:hover {
+  background: #138496;
+}
+
+.promocode-stats {
+  display: flex;
+  gap: 20px;
+  margin-top: 15px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+  min-width: 80px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #6c757d;
+  margin-bottom: 5px;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #495057;
+}
+
+.stat-value.available {
+  color: #28a745;
+}
+
+.stat-value.used {
+  color: #dc3545;
+}
+
+/* Стили для модального окна промокодов */
+.promocode-upload {
+  margin-bottom: 30px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.promocode-upload h3 {
+  margin: 0 0 10px 0;
+  color: #495057;
+}
+
+.promocode-upload p {
+  margin: 0 0 15px 0;
+  color: #6c757d;
+  font-size: 14px;
+}
+
+.file-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  background: white;
+}
+
+.upload-btn {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.upload-btn:hover:not(:disabled) {
+  background: #218838;
+}
+
+.upload-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.stat-card {
+  text-align: center;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.stat-card.available {
+  border-color: #28a745;
+  background: #f8fff9;
+}
+
+.stat-card.used {
+  border-color: #dc3545;
+  background: #fff8f8;
+}
+
+.stat-number {
+  font-size: 24px;
+  font-weight: 700;
+  color: #495057;
+  margin-bottom: 5px;
+}
+
+.stat-card.available .stat-number {
+  color: #28a745;
+}
+
+.stat-card.used .stat-number {
+  color: #dc3545;
+}
+
+.promocode-actions {
+  display: flex;
+  gap: 15px;
+  justify-content: flex-end;
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #e9ecef;
+}
+
+.delete-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.delete-btn:hover {
+  background: #c82333;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .loyalty-modal {
@@ -295,5 +482,18 @@
   
   .save-btn, .cancel-btn {
     width: 100%;
+  }
+  
+  .promocode-stats {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .promocode-actions {
+    flex-direction: column;
   }
 }

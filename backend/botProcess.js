@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const { User, QuizStats, PromoCode, Loyalty, LoyaltyConfig } = require('./models');
+const { User, QuizStats, PromoCode, Loyalty, LoyaltyConfig, LoyaltyPromoCode } = require('./models');
 const mongoose = require('mongoose');
 const MONGO_URI = 'mongodb://157.230.20.252:27017/tg_const_main';
 mongoose.connect(MONGO_URI, { 
@@ -1228,20 +1228,32 @@ function startLoyaltyChecker() {
                 message = `Поздравляем! Вы с нами уже ${periodLabels[period.key]}! 🎉`;
               }
               
-              // Добавляем промокод если есть
-              if (config.promoCode) {
-                message += `\n\n🎁 Ваш промокод: \`${config.promoCode}\``;
+              // Ищем доступный промокод для этого периода
+              const availablePromoCodes = await LoyaltyPromoCode.find({
+                botId,
+                period: period.key,
+                activated: false
+              });
+              
+              if (availablePromoCodes.length > 0) {
+                // Выбираем случайный промокод
+                const randomIndex = Math.floor(Math.random() * availablePromoCodes.length);
+                const selectedPromoCode = availablePromoCodes[randomIndex];
+                
+                message += `\n\n🎁 Ваш промокод: \`${selectedPromoCode.code}\``;
                 
                 // Помечаем промокод как использованный
-                await PromoCode.updateOne(
-                  { botId, code: config.promoCode },
+                await LoyaltyPromoCode.updateOne(
+                  { _id: selectedPromoCode._id },
                   { 
                     activated: true, 
                     activatedBy: user.userId, 
                     activatedAt: new Date() 
                   }
                 );
-                console.log(`[LOYALTY] Промокод ${config.promoCode} активирован для пользователя ${user.userId}`);
+                console.log(`[LOYALTY] Промокод ${selectedPromoCode.code} активирован для пользователя ${user.userId} за период ${period.key}`);
+              } else {
+                console.log(`[LOYALTY] Нет доступных промокодов для периода ${period.key}`);
               }
               
               // Отправляем сообщение пользователю
