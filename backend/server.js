@@ -103,6 +103,22 @@ const promoCodeUpload = multer({
   }
 });
 
+// Memory storage для промокодов лояльности
+const loyaltyPromoCodeUpload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB лимит для CSV файлов
+  },
+  fileFilter: function (req, file, cb) {
+    // Разрешаем только CSV файлы
+    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Разрешены только CSV файлы'), false);
+    }
+  }
+});
+
 const upload = multer({ 
   storage: storage,
   limits: {
@@ -626,20 +642,28 @@ app.get('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
   }
 });
 
-app.post('/api/loyalty-promocodes/:botId/:period', promoCodeUpload.single('promocodes'), async (req, res) => {
+app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single('promocodes'), async (req, res) => {
   try {
     const { botId, period } = req.params;
     
+    console.log(`[LOYALTY] Загрузка промокодов для бота ${botId}, периода ${period}`);
+    
     if (!req.file) {
+      console.log('[LOYALTY] Файл не загружен');
       return res.status(400).json({ error: 'No file uploaded' });
     }
+    
+    console.log(`[LOYALTY] Файл загружен: ${req.file.originalname}, размер: ${req.file.size} bytes`);
     
     // Читаем CSV файл
     const csvContent = req.file.buffer.toString('utf8');
     const lines = csvContent.split('\n').filter(line => line.trim());
     
+    console.log(`[LOYALTY] Найдено ${lines.length} строк в CSV файле`);
+    
     // Удаляем существующие промокоды для этого периода
-    await LoyaltyPromoCode.deleteMany({ botId, period });
+    const deleteResult = await LoyaltyPromoCode.deleteMany({ botId, period });
+    console.log(`[LOYALTY] Удалено ${deleteResult.deletedCount} существующих промокодов`);
     
     // Добавляем новые промокоды
     const promoCodes = lines.map(line => ({
@@ -648,7 +672,10 @@ app.post('/api/loyalty-promocodes/:botId/:period', promoCodeUpload.single('promo
       code: line.trim()
     }));
     
-    await LoyaltyPromoCode.insertMany(promoCodes);
+    console.log(`[LOYALTY] Создано ${promoCodes.length} промокодов для вставки`);
+    
+    const insertResult = await LoyaltyPromoCode.insertMany(promoCodes);
+    console.log(`[LOYALTY] Вставлено ${insertResult.length} промокодов в базу данных`);
     
     res.json({ 
       success: true, 
