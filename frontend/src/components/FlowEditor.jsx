@@ -31,45 +31,31 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
   useEffect(() => {
     const loadBotState = async () => {
       if (!botId) return;
-
       try {
         setIsLoading(true);
         setError(null);
-        console.log('Loading bot state for ID:', botId);
-        
         const response = await fetch(`${config.API_BASE_URL}/api/bots/${botId}`);
         if (!response.ok) {
           throw new Error('Не удалось загрузить состояние бота');
         }
         const data = await response.json();
-        console.log('Loaded bot data:', data);
-        
         if (data.editorState) {
-          if (data.editorState.blocks) {
-            console.log('Setting blocks:', data.editorState.blocks);
-            setBlocks(data.editorState.blocks);
-          }
-          if (data.editorState.connections) {
-            console.log('Setting connections:', data.editorState.connections);
-            setConnections(data.editorState.connections);
-          }
-          if (data.editorState.pan) {
-            console.log('Setting pan:', data.editorState.pan);
-            setPan(data.editorState.pan);
-          }
-          if (data.editorState.scale) {
-            console.log('Setting scale:', data.editorState.scale);
-            setScale(data.editorState.scale);
-          }
+          setBlocks(data.editorState.blocks || []);
+          setConnections(data.editorState.connections || []);
+          setPan(data.editorState.pan || { x: 0, y: 0 });
+          setScale(data.editorState.scale || 1);
+        } else {
+          setBlocks([]);
+          setConnections([]);
+          setPan({ x: 0, y: 0 });
+          setScale(1);
         }
       } catch (err) {
-        console.error('Error loading bot state:', err);
         setError(err.message);
       } finally {
         setIsLoading(false);
       }
     };
-
     loadBotState();
   }, [botId]);
 
