@@ -913,27 +913,31 @@ async function startBot() {
   try {
     console.log('=== [BOOT] Запускаем bot.launch() в polling режиме... ===');
     
-    const launchPromise = bot.launch({
-      polling: {
-        timeout: 10,
-        limit: 100,
-        allowedUpdates: ['message', 'callback_query']
-      }
-    });
+    // Попробуем запустить без дополнительной конфигурации
+    const launchPromise = bot.launch();
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => {
-        console.error('=== [BOOT] bot.launch() timeout after 30 seconds ===');
+        console.error('=== [BOOT] bot.launch() timeout after 15 seconds ===');
         console.error('=== [BOOT] Возможные причины:');
         console.error('=== [BOOT] 1. Проблемы с сетью в Docker контейнере');
         console.error('=== [BOOT] 2. Блокировка портов');
         console.error('=== [BOOT] 3. Проблемы с Telegram API');
-        reject(new Error('bot.launch() timeout after 30 seconds'));
-      }, 30000);
+        reject(new Error('bot.launch() timeout after 15 seconds'));
+      }, 15000);
     });
     
     await Promise.race([launchPromise, timeoutPromise]);
     console.log('=== [BOOT] Bot started successfully in polling mode ===');
     console.log('Bot started successfully');
+    
+    // Принудительно запускаем polling
+    try {
+      console.log('=== [BOOT] Запускаем polling вручную... ===');
+      await bot.telegram.deleteWebhook();
+      console.log('=== [BOOT] Webhook очищен для polling ===');
+    } catch (pollingError) {
+      console.error('=== [BOOT] Ошибка при запуске polling:', pollingError);
+    }
     
     // Проверяем статус бота
     try {
@@ -955,8 +959,26 @@ async function startBot() {
     errorCount = 0;
   } catch (error) {
     console.error('=== [BOOT] Ошибка запуска бота:', error);
-    console.error('=== [BOOT] Принудительно завершаем процесс...');
-    process.exit(1);
+    console.error('=== [BOOT] Пробуем альтернативный способ запуска...');
+    
+    try {
+      // Альтернативный способ - запуск без await
+      console.log('=== [BOOT] Запускаем bot.launch() без await... ===');
+      bot.launch().then(() => {
+        console.log('=== [BOOT] Bot started successfully (alternative method) ===');
+      }).catch((altError) => {
+        console.error('=== [BOOT] Alternative launch failed:', altError);
+        process.exit(1);
+      });
+      
+      // Даем время на запуск
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      console.log('=== [BOOT] Bot launch initiated, continuing... ===');
+    } catch (altError) {
+      console.error('=== [BOOT] Alternative launch method failed:', altError);
+      console.error('=== [BOOT] Принудительно завершаем процесс...');
+      process.exit(1);
+    }
   }
   
   // Graceful shutdown
