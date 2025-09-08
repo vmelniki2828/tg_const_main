@@ -735,6 +735,11 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
     setBlocks(blocks => blocks.map(b => b.id === blockId ? { ...b, description } : b));
   }
 
+  // Вспомогательная функция для проверки наличия связи для кнопки
+  function hasConnection(blockId, buttonId, connections) {
+    return connections.some(conn => String(conn.from.blockId) === String(blockId) && String(conn.from.buttonId) === String(buttonId));
+  }
+
   return (
     <div className="flow-editor">
       <div className="editor-controls">
@@ -1058,48 +1063,54 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                 </div>
 
                 <div className="block-buttons">
-                  {block.buttons.map(button => (
-                                         <div key={button.id} className="button-item">
-                       <div className="button-item-row">
-                         <input
-                           type="text"
-                           value={button.text}
-                           onChange={(e) => updateButton(block.id, button.id, e.target.value)}
-                           placeholder="Текст кнопки"
-                           title={button.text}
-                           onClick={(e) => e.stopPropagation()}
-                         />
-                         <button
-                           className={`block-button ${connectingFrom?.buttonId === button.id ? 'connecting' : ''}`}
-                           onClick={(e) => startConnection(block.id, button.id, e)}
-                           title="Создать связь"
-                         >
-                           🔗
-                         </button>
-                       </div>
-                       <div className="button-item-row">
-                         <input
-                           type="url"
-                           value={button.url || ''}
-                           onChange={(e) => updateButtonUrl(block.id, button.id, e.target.value)}
-                           placeholder="Ссылка (необязательно)"
-                           title={button.url || 'Добавить ссылку'}
-                           onClick={(e) => e.stopPropagation()}
-                           className={button.url ? 'has-url' : ''}
-                         />
-                         <button
-                           className="block-button"
-                           onClick={(e) => {
-                             e.stopPropagation();
-                             removeButton(block.id, button.id);
-                           }}
-                           title="Удалить кнопку"
-                         >
-                           ❌
-                         </button>
-                       </div>
-                     </div>
-                  ))}
+                  {block.buttons.map(button => {
+                    const noConnection = block.id === 'start' && !hasConnection(block.id, button.id, connections);
+                    return (
+                      <div key={button.id} className="button-item" style={noConnection ? { border: '2px solid red', borderRadius: 6 } : {}}>
+                        <div className="button-item-row">
+                          <input
+                            type="text"
+                            value={button.text}
+                            onChange={(e) => updateButton(block.id, button.id, e.target.value)}
+                            placeholder="Текст кнопки"
+                            title={button.text}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <button
+                            className={`block-button ${connectingFrom?.buttonId === button.id ? 'connecting' : ''}`}
+                            onClick={(e) => startConnection(block.id, button.id, e)}
+                            title="Создать связь"
+                          >
+                            🔗
+                          </button>
+                        </div>
+                        <input
+                          type="url"
+                          value={button.url || ''}
+                          onChange={(e) => updateButtonUrl(block.id, button.id, e.target.value)}
+                          placeholder="Ссылка (необязательно)"
+                          title={button.url || 'Добавить ссылку'}
+                          onClick={(e) => e.stopPropagation()}
+                          className={button.url ? 'has-url' : ''}
+                        />
+                        <button
+                          className="block-button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeButton(block.id, button.id);
+                          }}
+                          title="Удалить кнопку"
+                        >
+                          ❌
+                        </button>
+                        {noConnection && (
+                          <div style={{ color: 'red', fontSize: 12, marginTop: 4 }}>
+                            Нет связи: кнопка не ведёт никуда!
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                   
                   {/* Информация о кнопке "Назад" */}
                   {block.id !== 'start' && (
