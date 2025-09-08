@@ -1363,4 +1363,9 @@ async function startBot() {
   });
 }
 
+// Логируем editorState при запуске
+console.log('=== editorState при запуске ===');
+console.dir(state, { depth: 5 });
+console.log('==============================');
+
 startBot();
