@@ -18,15 +18,15 @@ services:
       - ./backend/editorState.json:/app/backend/editorState.json
       - ./backend/quizStats.json:/app/backend/quizStats.json
       - ./backend/backups:/app/backend/backups
-    restart: unless-stopped
+    restart: always
     deploy:
       resources:
         limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
           cpus: '1.0'
           memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://157.230.20.252:3001/api/health || exit 1"]
       interval: 30s

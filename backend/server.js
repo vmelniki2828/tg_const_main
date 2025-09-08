@@ -21,11 +21,31 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 // Подключение к MongoDB
 const MONGO_URI = 'mongodb://157.230.20.252:27017/tg_const_main';
-mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(MONGO_URI, { 
+  useNewUrlParser: true, 
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+  bufferCommands: false,
+  bufferMaxEntries: 0
+})
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => {
     console.error('❌ MongoDB connection error:', err);
-    process.exit(1);
+    console.error('❌ Retrying MongoDB connection in 5 seconds...');
+    setTimeout(() => {
+      mongoose.connect(MONGO_URI, { 
+        useNewUrlParser: true, 
+        useUnifiedTopology: true,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+        bufferCommands: false,
+        bufferMaxEntries: 0
+      }).catch(retryErr => {
+        console.error('❌ MongoDB retry failed:', retryErr);
+        process.exit(1);
+      });
+    }, 5000);
   });
 
 // Настройка CORS
@@ -612,6 +632,43 @@ async function writeQuizStats(stats) {
 
 // Глобальная карта активных процессов ботов
 const activeProcesses = new Map();
+
+// Мониторинг состояния ботов
+setInterval(async () => {
+  try {
+    console.log(`🔍 Monitoring: ${activeProcesses.size} bots running`);
+    
+    // Проверяем каждый активный процесс
+    for (const [botId, process] of activeProcesses.entries()) {
+      if (process.killed || process.exitCode !== null) {
+        console.log(`⚠️ Bot ${botId} process is dead, removing from active list`);
+        activeProcesses.delete(botId);
+        
+        // Обновляем статус в БД
+        await Bot.updateOne({ id: botId }, { $set: { isActive: false } });
+        console.log(`📝 Bot ${botId} marked as inactive in database`);
+      }
+    }
+    
+    // Проверяем, есть ли активные боты в БД, которые не запущены
+    const activeBotsInDB = await Bot.find({ isActive: true });
+    for (const bot of activeBotsInDB) {
+      if (!activeProcesses.has(bot.id)) {
+        console.log(`🔄 Bot ${bot.id} is active in DB but not running, attempting restart...`);
+        try {
+          await startBot(bot);
+          console.log(`✅ Bot ${bot.id} restarted successfully`);
+        } catch (error) {
+          console.error(`❌ Failed to restart bot ${bot.id}:`, error);
+          // Помечаем бота как неактивного
+          await Bot.updateOne({ id: bot.id }, { $set: { isActive: false } });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error in bot monitoring:', error);
+  }
+}, 30000); // Проверяем каждые 30 секунд
 
 // Получение editorState из MongoDB для запуска botProcess.js
 async function startBot(bot) {

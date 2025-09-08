@@ -3,11 +3,31 @@ const { User, QuizStats, PromoCode } = require('./models');
 const { Loyalty } = require('./models');
 const mongoose = require('mongoose');
 const MONGO_URI = 'mongodb://157.230.20.252:27017/tg_const_main';
-mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(MONGO_URI, { 
+  useNewUrlParser: true, 
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+  bufferCommands: false,
+  bufferMaxEntries: 0
+})
   .then(() => console.log('✅ MongoDB connected (botProcess.js)'))
   .catch(err => {
     console.error('❌ MongoDB connection error (botProcess.js):', err);
-    process.exit(1);
+    console.error('❌ Retrying MongoDB connection in 5 seconds...');
+    setTimeout(() => {
+      mongoose.connect(MONGO_URI, { 
+        useNewUrlParser: true, 
+        useUnifiedTopology: true,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+        bufferCommands: false,
+        bufferMaxEntries: 0
+      }).catch(retryErr => {
+        console.error('❌ MongoDB retry failed:', retryErr);
+        process.exit(1);
+      });
+    }, 5000);
   });
 
 // Получаем параметры из аргументов командной строки
@@ -1119,11 +1139,12 @@ async function startBot() {
     console.error(`❌ Critical bot error #${errorCount}:`, error);
     
     if (errorCount >= maxErrors) {
-      console.error(`🚨 Too many errors (${errorCount}), restarting bot...`);
-      process.exit(1); // Docker перезапустит контейнер
+      console.error(`🚨 Too many errors (${errorCount}), but continuing to run...`);
+      // Не завершаем процесс, а просто логируем и сбрасываем счетчик
+      errorCount = Math.max(0, errorCount - 5);
     }
     
-    // Сброс счетчика ошибок через 5 минут
+    // Сброс счетчика ошибок через 10 минут
     setTimeout(() => {
       errorCount = Math.max(0, errorCount - 1);
     }, errorWindow);
