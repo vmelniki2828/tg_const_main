@@ -632,6 +632,15 @@ app.put('/api/bots/:id', async (req, res) => {
 
     await writeState(state);
     console.log('State saved successfully');
+    // Обновить в MongoDB
+    await Bot.updateOne(
+      { id: req.params.id },
+      { $set: {
+        name: updatedBot.name,
+        token: updatedBot.token,
+        editorState: updatedBot.editorState
+      }}
+    );
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating bot:', error);
@@ -1054,6 +1063,16 @@ app.get('/api/health', (req, res) => {
 });
 
 // API endpoint для получения статистики ботов
+
+// ВАЖНО: Все операции с User, QuizStats, PromoCode, Loyalty всегда используют botId как фильтр!
+// Пример создания пользователя:
+// await User.create({ botId, userId, ... });
+// Пример поиска пользователей:
+// await User.find({ botId });
+// Аналогично для QuizStats, PromoCode, Loyalty
+
+// Endpoint /api/bots/:id/full уже реализует правильную агрегацию по botId:
+// Возвращает bot, users, quizStats, promoCodes, loyalties — все по botId
 
 // Обработка завершения сервера
 async function shutdownServer(signal) {

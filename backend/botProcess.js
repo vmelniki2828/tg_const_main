@@ -557,8 +557,31 @@ function setupBotHandlers(bot, blocks, connections) {
   // Обработка текстовых сообщений
   bot.on('text', async (ctx) => {
     try {
-      const messageText = ctx.message.text;
       const userId = ctx.from.id;
+      // Сохраняем пользователя в MongoDB при любом сообщении
+      await User.updateOne(
+        { botId, userId },
+        {
+          $setOnInsert: {
+            botId,
+            userId,
+            username: ctx.from.username,
+            firstName: ctx.from.first_name,
+            lastName: ctx.from.last_name,
+            firstSubscribedAt: new Date(),
+            isSubscribed: true,
+            subscriptionHistory: [{ subscribedAt: new Date() }],
+          },
+          $set: {
+            lastSubscribedAt: new Date(),
+            isSubscribed: true
+          }
+        },
+        { upsert: true }
+      );
+      console.log('[MongoDB] Пользователь сохранён:', { botId, userId });
+      const messageText = ctx.message.text;
+      
       let currentBlockId = userCurrentBlock.get(userId);
       
       // Отслеживаем активность пользователя
