@@ -731,6 +731,7 @@ function setupBotHandlers(bot, blocks, connections) {
             const firstQuestion = questions[0];
             console.log(`🔍 DEBUG: First question:`, JSON.stringify(firstQuestion, null, 2));
             const { keyboard, inlineKeyboard } = createKeyboardWithBack(firstQuestion.buttons, userId, currentBlockId);
+            // НЕ показываем сообщение блока квиза, только первый вопрос
             await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles, keyboard, inlineKeyboard);
             return;
           } else {
@@ -787,6 +788,13 @@ function setupBotHandlers(bot, blocks, connections) {
         if (userAnswer.isCorrect) {
           console.log(`✅ Correct answer for question ${quizState.currentQuestionIndex}`);
           
+          // Показываем сообщение об успехе
+          const successMessage = currentQuestion.successMessage || 'Правильно!';
+          await ctx.reply(successMessage);
+          
+          // Небольшая пауза перед следующим вопросом
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
           // Переходим к следующему вопросу
           quizState.currentQuestionIndex++;
           
@@ -816,9 +824,15 @@ function setupBotHandlers(bot, blocks, connections) {
               console.error('❌ Error saving quiz stats:', error);
             }
             
-            // Отправляем финальное сообщение
-            const finalMessage = currentBlock.finalSuccessMessage || 'Поздравляем! Вы успешно прошли квиз!';
-            await ctx.reply(finalMessage);
+            // Отправляем финальное сообщение с статистикой
+            const correctAnswers = quizState.answers.filter(a => a.isCorrect).length;
+            const totalQuestions = questions.length;
+            const percentage = Math.round((correctAnswers / totalQuestions) * 100);
+            const completionTime = Math.round((quizState.completionTime - quizState.startTime) / 1000);
+            
+            const finalMessage = `${currentBlock.finalSuccessMessage || 'Поздравляем! Вы успешно прошли квиз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+            
+            await ctx.reply(finalMessage, { parse_mode: 'Markdown' });
             
             // Если настроено возвращение в начало
             if (currentBlock.returnToStartOnComplete) {
@@ -1082,8 +1096,13 @@ async function startBot() {
   console.log('=== [BOOT] Запускаем bot.launch() в polling режиме... ===');
   
   try {
-    // Запускаем бота синхронно
-    await bot.launch();
+    // Запускаем бота синхронно с таймаутом
+    const launchPromise = bot.launch();
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Launch timeout')), 5000);
+    });
+    
+    await Promise.race([launchPromise, timeoutPromise]);
     console.log('=== [BOOT] Bot started successfully in polling mode ===');
     console.log('Bot started successfully');
   } catch (launchError) {
