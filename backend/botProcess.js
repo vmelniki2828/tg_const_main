@@ -672,6 +672,175 @@ function setupBotHandlers(bot, blocks, connections) {
       
       console.log(`🔍 DEBUG: Processing in block ${currentBlockId} (type: ${currentBlock.type})`);
       
+      // Обработка квизов - проверяем, находится ли пользователь в квизе
+      if (currentBlock.type === 'quiz') {
+        console.log(`🔍 DEBUG: Processing quiz block`);
+        
+        // Получаем состояние квиза пользователя
+        let quizState = userQuizStates.get(userId);
+        
+        // Если квиз не начат, инициализируем его и показываем первый вопрос
+        if (!quizState) {
+          console.log(`🔍 DEBUG: Initializing quiz for user ${userId}`);
+          quizState = {
+            blockId: currentBlockId,
+            currentQuestionIndex: 0,
+            startTime: Date.now(),
+            answers: [],
+            isCompleted: false
+          };
+          userQuizStates.set(userId, quizState);
+          
+          // Показываем первый вопрос
+          const questions = currentBlock.questions || [];
+          console.log(`🔍 DEBUG: First quiz entry - questions count: ${questions.length}`);
+          
+          if (questions.length > 0) {
+            const firstQuestion = questions[0];
+            console.log(`🔍 DEBUG: First question: ${firstQuestion.message}`);
+            const { keyboard, inlineKeyboard } = createKeyboardWithBack(firstQuestion.buttons, userId, currentBlockId);
+            await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles, keyboard, inlineKeyboard);
+            return;
+          } else {
+            console.log(`❌ No questions found in quiz block on first entry`);
+            await ctx.reply('Квиз не настроен');
+            return;
+          }
+        }
+        
+        // Если квиз уже начат, обрабатываем ответ
+        if (quizState && !quizState.isCompleted) {
+          console.log(`🔍 DEBUG: Processing quiz answer for question ${quizState.currentQuestionIndex}`);
+          
+          const questions = currentBlock.questions || [];
+          const currentQuestion = questions[quizState.currentQuestionIndex];
+          
+          if (!currentQuestion) {
+            console.log(`❌ Question ${quizState.currentQuestionIndex} not found`);
+            await ctx.reply('Ошибка в квизе');
+            return;
+          }
+          
+          // Проверяем, не отвечал ли пользователь уже на этот вопрос
+          const alreadyAnswered = quizState.answers.some(a => a.questionIndex === quizState.currentQuestionIndex);
+          console.log(`🔍 DEBUG: Already answered: ${alreadyAnswered}`);
+          
+          if (alreadyAnswered) {
+            console.log(`⚠️ User already answered question ${quizState.currentQuestionIndex}, ignoring duplicate`);
+            return;
+          }
+          
+          // Ищем кнопку с ответом
+          const answerButton = currentQuestion.buttons.find(btn => btn.text === messageText);
+          if (!answerButton) {
+            console.log(`❌ Answer button not found for: ${messageText}`);
+            await ctx.reply('Пожалуйста, выберите один из предложенных вариантов ответа');
+            return;
+          }
+          
+          console.log(`🔍 DEBUG: Answer button found:`, answerButton);
+          
+          // Сохраняем ответ
+          quizState.answers.push({
+            questionIndex: quizState.currentQuestionIndex,
+            answer: messageText,
+            isCorrect: answerButton.isCorrect
+          });
+          
+          // Отправляем сообщение о результате
+          if (answerButton.isCorrect) {
+            await ctx.reply('Правильно!');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else {
+            await ctx.reply('Неправильно. Попробуйте еще раз.');
+            return;
+          }
+          
+          // Переходим к следующему вопросу
+          quizState.currentQuestionIndex++;
+          
+          // Проверяем, завершен ли квиз
+          if (quizState.currentQuestionIndex >= questions.length) {
+            // Квиз завершен
+            quizState.isCompleted = true;
+            quizState.endTime = Date.now();
+            
+            // Сохраняем статистику в MongoDB
+            const correctAnswers = quizState.answers.filter(a => a.isCorrect).length;
+            const totalQuestions = questions.length;
+            const percentage = Math.round((correctAnswers / totalQuestions) * 100);
+            const completionTime = Math.round((quizState.endTime - quizState.startTime) / 1000);
+            
+            try {
+              const quizStats = new QuizStats({
+                botId: botId,
+                userId: userId,
+                blockId: currentBlockId,
+                correctAnswers: correctAnswers,
+                totalQuestions: totalQuestions,
+                percentage: percentage,
+                completionTime: completionTime,
+                answers: quizState.answers,
+                completedAt: new Date()
+              });
+              
+              await quizStats.save();
+              console.log(`✅ Quiz stats saved to MongoDB for user ${userId}`);
+            } catch (error) {
+              console.error('❌ Error saving quiz stats:', error);
+            }
+            
+            // Отправляем финальное сообщение
+            const finalMessage = `${currentBlock.finalSuccessMessage || 'Поздравляем! Вы успешно прошли квиз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+            
+            await ctx.reply(finalMessage, { parse_mode: 'Markdown' });
+            
+            // Если настроено возвращение в начало
+            if (currentBlock.returnToStartOnComplete) {
+              console.log(`🔍 DEBUG: Returning to start after quiz completion`);
+              userCurrentBlock.set(userId, 'start');
+              userQuizStates.delete(userId);
+              userNavigationHistory.delete(userId);
+              
+              const startBlock = dialogMap.get('start');
+              if (startBlock) {
+                const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+                await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+                console.log(`✅ Returned to start block after quiz completion`);
+              }
+            }
+            
+            return;
+          } else {
+            // Следующий вопрос
+            const nextQuestion = questions[quizState.currentQuestionIndex];
+            const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextQuestion.buttons, userId, currentBlockId);
+            await sendMediaMessage(ctx, nextQuestion.message, nextQuestion.mediaFiles, keyboard, inlineKeyboard);
+          }
+          
+          return;
+        }
+        
+        // Если квиз завершен, показываем сообщение и возвращаем в главное меню
+        if (quizState && quizState.isCompleted) {
+          console.log(`🔍 DEBUG: Quiz already completed, returning to start`);
+          await ctx.reply('Вы уже прошли этот квиз! Возвращаемся в главное меню.');
+          
+          userCurrentBlock.set(userId, 'start');
+          userQuizStates.delete(userId);
+          userNavigationHistory.delete(userId);
+          
+          const startBlock = dialogMap.get('start');
+          if (startBlock) {
+            const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+            await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+          }
+          return;
+        }
+        
+        return;
+      }
+      
       // Обработка кнопки "Назад"
       if (messageText === '⬅️ Назад') {
         console.log(`🔍 DEBUG: Processing "Назад" button`);
@@ -969,15 +1138,26 @@ function setupBotHandlers(bot, blocks, connections) {
         userNavigationHistory.set(userId, userHistory);
       }
       
-      // Если следующий блок - квиз, очищаем состояние квиза и НЕ показываем сообщение блока
+      // Если следующий блок - квиз, очищаем состояние квиза и показываем первый вопрос
       if (nextBlock.type === 'quiz') {
         userQuizStates.delete(userId);
-        // Для квизов НЕ отправляем сообщение блока, только первый вопрос
         console.log(`🔍 DEBUG: Skipping quiz block message, will show first question instead`);
         
         // ВАЖНО: Обновляем текущий блок пользователя на квиз
         userCurrentBlock.set(userId, nextBlockId);
         console.log(`🔍 DEBUG: Updated user current block to quiz: ${nextBlockId}`);
+        
+        // Показываем первый вопрос квиза
+        const questions = nextBlock.questions || [];
+        if (questions.length > 0) {
+          const firstQuestion = questions[0];
+          console.log(`🔍 DEBUG: Showing first question: ${firstQuestion.message}`);
+          const { keyboard, inlineKeyboard } = createKeyboardWithBack(firstQuestion.buttons, userId, nextBlockId);
+          await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles, keyboard, inlineKeyboard);
+        } else {
+          console.log(`❌ No questions found in quiz block`);
+          await ctx.reply('Квиз не настроен');
+        }
       } else {
         // Обновляем текущий блок для не-квизов
         userCurrentBlock.set(userId, nextBlockId);
@@ -1156,24 +1336,19 @@ async function startBot() {
   // Запускаем бота в polling режиме
   console.log('=== [BOOT] Запускаем bot.launch() в polling режиме... ===');
   
-  // Запускаем бота синхронно
-  console.log('=== [BOOT] Запускаем bot.launch() синхронно... ===');
+  // Запускаем бота без await - пусть работает в фоне
+  console.log('=== [BOOT] Запускаем bot.launch() без await... ===');
   
-  try {
-    await bot.launch();
+  bot.launch().then(() => {
     console.log('=== [BOOT] Bot started successfully in polling mode ===');
     console.log('Bot started successfully');
-  } catch (launchError) {
+  }).catch((launchError) => {
     console.error('=== [BOOT] Bot launch failed:', launchError);
-    console.error('=== [BOOT] Пробуем запуск без await...');
-    
-    // Альтернативный запуск
-    bot.launch().then(() => {
-      console.log('=== [BOOT] Bot started successfully (alternative) ===');
-    }).catch((altError) => {
-      console.error('=== [BOOT] Alternative launch failed:', altError);
-    });
-  }
+  });
+  
+  // Даем время на запуск
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  console.log('=== [BOOT] Bot launch initiated, continuing... ===');
   
   // Сброс счетчика ошибок при успешном запуске
   errorCount = 0;
