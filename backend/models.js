@@ -47,6 +47,7 @@ const QuizStatsSchema = new mongoose.Schema({
     answer: String,
     isCorrect: Boolean
   }],
+  promoCode: { type: String, default: null },
   completedAt: { type: Date, default: Date.now }
 });
 

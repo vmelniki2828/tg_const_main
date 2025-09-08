@@ -286,7 +286,7 @@ app.get('/api/quiz-stats', async (req, res) => {
           selectedAnswer: answer.answer,
           isCorrect: answer.isCorrect
         })),
-        promoCode: '' // Можно получить из PromoCode коллекции
+        promoCode: record.promoCode || ''
       });
     }
     
