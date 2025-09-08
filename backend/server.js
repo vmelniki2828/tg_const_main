@@ -217,10 +217,92 @@ app.post('/api/cleanup-unused-media', async (req, res) => {
 // Эндпоинт для получения статистики квизов
 app.get('/api/quiz-stats', async (req, res) => {
   try {
-    const stats = await readQuizStats();
+    console.log('📊 Загружаем статистику квизов из MongoDB...');
+    
+    // Получаем все записи QuizStats из MongoDB
+    const quizStatsRecords = await QuizStats.find({});
+    console.log(`📊 Найдено ${quizStatsRecords.length} записей в MongoDB`);
+    
+    // Группируем по blockId (ID квиза)
+    const stats = {};
+    
+    for (const record of quizStatsRecords) {
+      const quizId = record.blockId;
+      
+      if (!stats[quizId]) {
+        stats[quizId] = {
+          totalAttempts: 0,
+          successfulCompletions: 0,
+          failedAttempts: 0,
+          averageScore: 0,
+          userAttempts: []
+        };
+      }
+      
+      // Увеличиваем счетчики
+      stats[quizId].totalAttempts++;
+      
+      if (record.percentage === 100) {
+        stats[quizId].successfulCompletions++;
+      } else {
+        stats[quizId].failedAttempts++;
+      }
+      
+      // Получаем информацию о пользователе из User коллекции
+      let userInfo = {
+        userName: 'Пользователь',
+        userLastName: '',
+        username: ''
+      };
+      
+      try {
+        const user = await User.findOne({ 
+          botId: record.botId, 
+          userId: record.userId 
+        });
+        if (user) {
+          userInfo = {
+            userName: user.firstName || 'Пользователь',
+            userLastName: user.lastName || '',
+            username: user.username || ''
+          };
+        }
+      } catch (error) {
+        console.error('❌ Error fetching user info:', error);
+      }
+      
+      // Добавляем попытку пользователя
+      stats[quizId].userAttempts.push({
+        userId: record.userId,
+        userName: userInfo.userName,
+        userLastName: userInfo.userLastName,
+        username: userInfo.username,
+        success: record.percentage === 100,
+        score: record.correctAnswers,
+        successRate: record.percentage,
+        timestamp: record.completedAt.getTime(),
+        duration: record.completionTime * 1000, // конвертируем в миллисекунды
+        answers: record.answers.map(answer => ({
+          selectedAnswer: answer.answer,
+          isCorrect: answer.isCorrect
+        })),
+        promoCode: '' // Можно получить из PromoCode коллекции
+      });
+    }
+    
+    // Вычисляем средний балл для каждого квиза
+    Object.keys(stats).forEach(quizId => {
+      const quizStats = stats[quizId];
+      if (quizStats.userAttempts.length > 0) {
+        const totalScore = quizStats.userAttempts.reduce((sum, attempt) => sum + attempt.score, 0);
+        quizStats.averageScore = Math.round((totalScore / quizStats.userAttempts.length) * 10) / 10;
+      }
+    });
+    
+    console.log(`📊 Сформирована статистика для ${Object.keys(stats).length} квизов`);
     res.json(stats);
   } catch (error) {
-    console.error('Error getting quiz stats:', error);
+    console.error('❌ Error getting quiz stats:', error);
     res.status(500).json({ error: 'Failed to get quiz stats' });
   }
 });
