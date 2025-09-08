@@ -331,6 +331,7 @@ function setupBotHandlers(bot, blocks, connections) {
   console.log('=== [BOOT] setupBotHandlers вызван ===');
   // Создаем карту диалогов для быстрого доступа
   const dialogMap = new Map();
+  console.log(`[BOOT] Creating dialogMap from ${blocks.length} blocks:`);
   blocks.forEach(block => {
     dialogMap.set(block.id, {
       message: block.message,
@@ -338,7 +339,9 @@ function setupBotHandlers(bot, blocks, connections) {
       mediaFiles: block.mediaFiles || [],
       type: block.type
     });
+    console.log(`[BOOT] dialogMap: ${block.id} -> ${block.type} (${(block.buttons || []).length} buttons)`);
   });
+  console.log(`[BOOT] Final dialogMap size: ${dialogMap.size}`);
 
   // Карта для отслеживания истории навигации пользователей
   // const userNavigationHistory = new Map(); // Удалено
@@ -478,11 +481,14 @@ function setupBotHandlers(bot, blocks, connections) {
 
   // Создаем карту соединений для быстрого доступа
   const connectionMap = new Map();
+  console.log(`[BOOT] Creating connectionMap from ${connections.length} connections:`);
   connections.forEach(conn => {
     const key = `${String(conn.from.blockId)}_${String(conn.from.buttonId)}`;
     connectionMap.set(key, conn.to);
     console.log(`[BOOT] connectionMap: ${key} -> ${conn.to}`);
+    console.log(`[BOOT] Connection details:`, JSON.stringify(conn, null, 2));
   });
+  console.log(`[BOOT] Final connectionMap size: ${connectionMap.size}`);
 
   // Обработка команды /start
   bot.command('start', async (ctx) => {
@@ -681,7 +687,17 @@ function setupBotHandlers(bot, blocks, connections) {
       if (currentBlock && currentBlock.type !== 'quiz') {
         const button = currentBlock.buttons.find(btn => btn.text === messageText);
         if (button) {
-          const nextBlockId = connectionMap.get(`${String(currentBlockId)}_${String(button.id)}`);
+          const connectionKey = `${String(currentBlockId)}_${String(button.id)}`;
+          const nextBlockId = connectionMap.get(connectionKey);
+          
+          console.log(`🔍 DEBUG: Button clicked: "${messageText}"`);
+          console.log(`🔍 DEBUG: Current block: ${currentBlockId}`);
+          console.log(`🔍 DEBUG: Button ID: ${button.id}`);
+          console.log(`🔍 DEBUG: Connection key: ${connectionKey}`);
+          console.log(`🔍 DEBUG: Next block ID: ${nextBlockId}`);
+          console.log(`🔍 DEBUG: ConnectionMap has key: ${connectionMap.has(connectionKey)}`);
+          console.log(`🔍 DEBUG: DialogMap has next block: ${dialogMap.has(nextBlockId)}`);
+          
           if (nextBlockId && dialogMap.has(nextBlockId)) {
             // Добавляем текущий блок в историю
             let userHistory = userNavigationHistory.get(userId) || [];
@@ -697,6 +713,7 @@ function setupBotHandlers(bot, blocks, connections) {
             await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
             return;
           } else {
+            console.log(`❌ DEBUG: Routing error - nextBlockId: ${nextBlockId}, dialogMap.has: ${dialogMap.has(nextBlockId)}`);
             await ctx.reply('Ошибка маршрутизации: не найден следующий блок.');
             return;
           }

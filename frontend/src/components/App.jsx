@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import FlowEditor from './FlowEditor';
 import BotsList from './BotsList';
 import QuizStats from './QuizStats';
-import SystemStats from './SystemStats';
 import config from '../config';
 
 function App() {
@@ -11,7 +10,6 @@ function App() {
   const [error, setError] = useState(null);
   const [botStatus, setBotStatus] = useState(null);
   const [showStats, setShowStats] = useState(false);
-  const [showSystemStats, setShowSystemStats] = useState(false);
   const flowEditorRef = useRef();
 
   // Функция для получения статуса бота
@@ -168,12 +166,6 @@ function App() {
           >
             📊 Статистика квизов
           </button>
-          <button 
-            onClick={() => setShowSystemStats(true)}
-            className="editor-button system-stats-button"
-          >
-            🖥️ Статистика системы
-          </button>
           <div className="bot-status">
             Статус бота: {botStatus ? '🟢 Запущен' : '🔴 Остановлен'}
           </div>
@@ -208,12 +200,6 @@ function App() {
           <QuizStats 
             blocks={flowEditorRef.current?.getState()?.blocks || []}
             onClose={() => setShowStats(false)}
-          />
-        )}
-        
-        {showSystemStats && (
-          <SystemStats 
-            onClose={() => setShowSystemStats(false)}
           />
         )}
       </div>
