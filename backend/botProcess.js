@@ -7,9 +7,7 @@ mongoose.connect(MONGO_URI, {
   useNewUrlParser: true, 
   useUnifiedTopology: true,
   serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-  bufferCommands: false,
-  bufferMaxEntries: 0
+  socketTimeoutMS: 45000
 })
   .then(() => console.log('✅ MongoDB connected (botProcess.js)'))
   .catch(err => {
@@ -20,9 +18,7 @@ mongoose.connect(MONGO_URI, {
         useNewUrlParser: true, 
         useUnifiedTopology: true,
         serverSelectionTimeoutMS: 5000,
-        socketTimeoutMS: 45000,
-        bufferCommands: false,
-        bufferMaxEntries: 0
+        socketTimeoutMS: 45000
       }).catch(retryErr => {
         console.error('❌ MongoDB retry failed:', retryErr);
         process.exit(1);

@@ -25,9 +25,7 @@ mongoose.connect(MONGO_URI, {
   useNewUrlParser: true, 
   useUnifiedTopology: true,
   serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-  bufferCommands: false,
-  bufferMaxEntries: 0
+  socketTimeoutMS: 45000
 })
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => {
@@ -38,9 +36,7 @@ mongoose.connect(MONGO_URI, {
         useNewUrlParser: true, 
         useUnifiedTopology: true,
         serverSelectionTimeoutMS: 5000,
-        socketTimeoutMS: 45000,
-        bufferCommands: false,
-        bufferMaxEntries: 0
+        socketTimeoutMS: 45000
       }).catch(retryErr => {
         console.error('❌ MongoDB retry failed:', retryErr);
         process.exit(1);
@@ -345,20 +341,7 @@ app.get('/api/quiz-stats', async (req, res) => {
   }
 });
 
-// Эндпоинт для восстановления статистики из бэкапа
-app.post('/api/restore-stats', async (req, res) => {
-  try {
-    const restored = await restoreStatsFromBackup();
-    if (restored) {
-      res.json({ success: true, message: 'Статистика восстановлена из бэкапа' });
-    } else {
-      res.status(404).json({ error: 'Бэкап не найден' });
-    }
-  } catch (error) {
-    console.error('Error restoring stats:', error);
-    res.status(500).json({ error: 'Failed to restore stats' });
-  }
-});
+// Эндпоинт для восстановления статистики из бэкапа (удален - теперь используется MongoDB)
 
 // Эндпоинт для добавления статистики квиза (от ботов)
 app.post('/api/quiz-stats', async (req, res) => {
@@ -554,25 +537,7 @@ app.delete('/api/quiz-promocodes/:quizId', async (req, res) => {
 // Удалены все функции и вызовы, связанные с файлами (writeState, readState, restoreStatsFromBackup, state.json, editorState.json, бэкапы)
 // Весь backend теперь работает только с MongoDB
 
-// Заменить функции readQuizStats и writeQuizStats на работу с MongoDB
-async function readQuizStats() {
-  try {
-    const statsArr = await QuizStats.find({});
-    const stats = {};
-    statsArr.forEach(qs => {
-      stats[qs.quizId] = {
-        userAttempts: qs.attempts,
-        totalAttempts: qs.attempts.length,
-        successfulCompletions: qs.attempts.filter(a => a.success).length,
-        failedAttempts: qs.attempts.filter(a => !a.success).length
-      };
-    });
-    return stats;
-  } catch (error) {
-    console.error('❌ Error reading quiz stats from MongoDB:', error);
-    return {};
-  }
-}
+// Старые функции удалены - теперь используется MongoDB напрямую
 
 // Функция для восстановления статистики из бэкапа
 async function restoreStatsFromBackup() {
@@ -1266,23 +1231,16 @@ process.on('SIGTERM', () => shutdownServer('SIGTERM'));
 app.listen(PORT, HOST, async () => {
   console.log(`🚀 Server running on ${HOST}:${PORT}`);
   
-  // Пытаемся восстановить статистику из бэкапа при запуске
-  try {
-    const stats = await readQuizStats();
-    if (Object.keys(stats).length === 0) {
-      console.log('📊 Статистика пустая, пытаемся восстановить из бэкапа...');
-      const restored = await restoreStatsFromBackup();
-      if (restored) {
-        console.log('✅ Статистика восстановлена из бэкапа при запуске');
-      } else {
-        console.log('📊 Бэкап не найден, начинаем с пустой статистики');
-      }
+  // Ждем подключения к MongoDB
+  await new Promise((resolve) => {
+    if (mongoose.connection.readyState === 1) {
+      resolve();
     } else {
-      console.log(`📊 Загружена статистика: ${Object.keys(stats).length} квизов`);
+      mongoose.connection.once('connected', resolve);
     }
-  } catch (error) {
-    console.error('❌ Error during startup stats check:', error);
-  }
+  });
+  
+  console.log('✅ MongoDB connection confirmed, starting initialization...');
   
   // Загружаем активные боты из MongoDB
   try {
