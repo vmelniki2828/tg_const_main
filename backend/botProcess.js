@@ -569,16 +569,17 @@ function setupBotHandlers(bot, blocks, connections) {
             firstName: ctx.from.first_name,
             lastName: ctx.from.last_name,
             firstSubscribedAt: new Date(),
-            isSubscribed: true,
+            isSubscribed: true, // Только Boolean!
             subscriptionHistory: [{ subscribedAt: new Date() }],
           },
           $set: {
             lastSubscribedAt: new Date(),
-            isSubscribed: true
+            isSubscribed: true // Только Boolean!
           }
         },
         { upsert: true }
       );
+      // ВАЖНО: isSubscribed не должен быть вложенным объектом нигде в схеме или данных!
       console.log('[MongoDB] Пользователь сохранён:', { botId, userId });
       const messageText = ctx.message.text;
       
