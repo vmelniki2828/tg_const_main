@@ -52,8 +52,14 @@ function App() {
       setIsLoading(true);
       setError(null);
 
-      // Сначала сохраняем текущее состояние
-      const editorState = flowEditorRef.current?.getState();
+      // Сохраняем текущее состояние
+      const flowData = flowEditorRef.current?.getFlowData();
+      const editorState = {
+        blocks: flowData.blocks,
+        connections: flowData.connections,
+        pan: flowData.pan,
+        scale: flowData.scale
+      };
       console.log('Saving editor state before activation:', editorState);
       
       const saveResponse = await fetch(`${config.API_BASE_URL}/api/bots/${selectedBotId}`, {
@@ -63,6 +69,7 @@ function App() {
         },
         body: JSON.stringify({
           editorState,
+          // Можно добавить name и token, если нужно
         }),
       });
 
