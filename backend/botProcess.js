@@ -757,10 +757,9 @@ function setupBotHandlers(bot, blocks, connections) {
         
         // Проверяем правильность ответа
         if (!answerButton.isCorrect) {
-          // Неправильный ответ - показываем тот же вопрос снова
-          const { keyboard, inlineKeyboard } = createKeyboardWithBack(currentQuestion.buttons, userId, quizState.blockId);
-          await sendMediaMessage(ctx, currentQuestion.message, currentQuestion.mediaFiles, keyboard, inlineKeyboard);
-          return;
+          console.log(`❌ Wrong answer for question ${quizState.currentQuestionIndex}`);
+        } else {
+          console.log(`✅ Correct answer for question ${quizState.currentQuestionIndex}`);
         }
         
         // Переходим к следующему вопросу
