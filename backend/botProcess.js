@@ -748,6 +748,19 @@ function setupBotHandlers(bot, blocks, connections) {
           }
         }
         
+        // Если квиз уже начат, но пользователь снова нажал кнопку - показываем текущий вопрос
+        if (quizState && !quizState.isCompleted) {
+          console.log(`🔍 DEBUG: Quiz already started, showing current question ${quizState.currentQuestionIndex}`);
+          const questions = currentBlock.questions || [];
+          const currentQuestion = questions[quizState.currentQuestionIndex];
+          
+          if (currentQuestion) {
+            const { keyboard, inlineKeyboard } = createKeyboardWithBack(currentQuestion.buttons, userId, currentBlockId);
+            await sendMediaMessage(ctx, currentQuestion.message, currentQuestion.mediaFiles, keyboard, inlineKeyboard);
+            return;
+          }
+        }
+        
         // Проверяем, завершен ли квиз
         if (quizState.isCompleted) {
           console.log(`🔍 DEBUG: Quiz already completed for user ${userId}`);
@@ -783,6 +796,10 @@ function setupBotHandlers(bot, blocks, connections) {
         
         // Проверяем, не отвечал ли пользователь уже на этот вопрос
         const alreadyAnswered = quizState.answers.some(a => a.questionIndex === quizState.currentQuestionIndex);
+        console.log(`🔍 DEBUG: Checking if already answered question ${quizState.currentQuestionIndex}`);
+        console.log(`🔍 DEBUG: Current answers:`, quizState.answers.map(a => ({ questionIndex: a.questionIndex, answer: a.answer })));
+        console.log(`🔍 DEBUG: Already answered: ${alreadyAnswered}`);
+        
         if (alreadyAnswered) {
           console.log(`⚠️ User already answered question ${quizState.currentQuestionIndex}, ignoring duplicate`);
           return;
@@ -939,14 +956,16 @@ function setupBotHandlers(bot, blocks, connections) {
       // Обновляем текущий блок
       userCurrentBlock.set(userId, nextBlockId);
       
-      // Если следующий блок - квиз, очищаем состояние квиза
+      // Если следующий блок - квиз, очищаем состояние квиза и НЕ показываем сообщение блока
       if (nextBlock.type === 'quiz') {
         userQuizStates.delete(userId);
+        // Для квизов НЕ отправляем сообщение блока, только первый вопрос
+        console.log(`🔍 DEBUG: Skipping quiz block message, will show first question instead`);
+      } else {
+        // Отправляем следующий блок (только для не-квизов)
+        const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
+        await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
       }
-      
-      // Отправляем следующий блок
-      const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
-      await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
       
       console.log(`✅ Successfully navigated to block ${nextBlockId}`);
       return;
