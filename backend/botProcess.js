@@ -672,6 +672,39 @@ function setupBotHandlers(bot, blocks, connections) {
       
       console.log(`🔍 DEBUG: Processing in block ${currentBlockId} (type: ${currentBlock.type})`);
       
+      // Проверяем, не пытается ли пользователь пройти квест повторно
+      if (currentBlockId === 'start') {
+        console.log(`🔍 DEBUG: User in start block, checking if trying to start quiz`);
+        
+        // Находим кнопку и проверяем, ведет ли она к квизу
+        const button = currentBlock.buttons?.find(btn => btn.text === messageText);
+        if (button) {
+          const connectionKey = `${String(currentBlockId)}_${String(button.id)}`;
+          const nextBlockId = connectionMap.get(connectionKey);
+          const nextBlock = dialogMap.get(nextBlockId);
+          
+          if (nextBlock && nextBlock.type === 'quiz') {
+            console.log(`🔍 DEBUG: Button leads to quiz, checking if already completed`);
+            
+            try {
+              const existingQuizStats = await QuizStats.findOne({
+                botId: botId,
+                userId: userId,
+                blockId: nextBlockId
+              });
+              
+              if (existingQuizStats) {
+                console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId}`);
+                await ctx.reply('Вы уже прошли этот квест!');
+                return;
+              }
+            } catch (error) {
+              console.error('❌ Error checking existing quiz stats:', error);
+            }
+          }
+        }
+      }
+      
       // Проверяем, находится ли пользователь в квизе (по состоянию, а не по блоку)
       const quizState = userQuizStates.get(userId);
       if (quizState && !quizState.isCompleted) {
@@ -841,32 +874,6 @@ function setupBotHandlers(bot, blocks, connections) {
       
       const button = currentBlock.buttons?.find(btn => btn.text === messageText);
       
-      // Если это кнопка перехода к квизу, проверяем, не прошел ли пользователь уже квест
-      if (button) {
-        const connectionKey = `${String(currentBlockId)}_${String(button.id)}`;
-        const nextBlockId = connectionMap.get(connectionKey);
-        const nextBlock = dialogMap.get(nextBlockId);
-        
-        if (nextBlock && nextBlock.type === 'quiz') {
-          console.log(`🔍 DEBUG: Button leads to quiz, checking if already completed`);
-          
-          try {
-            const existingQuizStats = await QuizStats.findOne({
-              botId: botId,
-              userId: userId,
-              blockId: nextBlockId
-            });
-            
-            if (existingQuizStats) {
-              console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId}`);
-              await ctx.reply('Вы уже прошли этот квест!');
-              return;
-            }
-          } catch (error) {
-            console.error('❌ Error checking existing quiz stats:', error);
-          }
-        }
-      }
       
       if (!button) {
         console.log(`❌ Button "${messageText}" not found in current block`);
