@@ -567,41 +567,20 @@ app.put('/api/bots/:id', async (req, res) => {
 // Активация бота
 app.post('/api/bots/:id/activate', async (req, res) => {
   try {
-    console.log('POST /api/bots/:id/activate - Bot ID:', req.params.id);
-    
     const bot = await Bot.findOne({ id: req.params.id });
-    
     if (!bot) {
-      console.log('Bot not found for activation:', req.params.id);
-      res.status(404).json({ error: 'Bot not found' });
-      return;
+      console.error('Bot not found for activation:', req.params.id);
+      return res.status(404).json({ error: 'Bot not found' });
     }
-
-    console.log('Found bot for activation:', { id: bot.id, name: bot.name, isActive: bot.isActive });
-
-    // Проверяем токен
     if (!bot.token) {
-      console.log('Bot token is missing');
-      res.status(400).json({ error: 'Bot token is missing' });
-      return;
+      console.error('Bot token is missing for activation:', req.params.id);
+      return res.status(400).json({ error: 'Bot token is missing' });
     }
-
-    // Проверяем состояние редактора
     if (!bot.editorState || !bot.editorState.blocks || !bot.editorState.connections) {
-      console.log('Invalid editor state');
-      res.status(400).json({ error: 'Invalid editor state' });
-      return;
+      console.error('Invalid editor state for activation:', req.params.id, bot.editorState);
+      return res.status(400).json({ error: 'Invalid editor state' });
     }
-
-    // Проверяем наличие стартового блока
-    const startBlock = bot.editorState.blocks.find(b => b.id === 'start');
-    if (!startBlock) {
-      console.log('Start block is missing');
-      res.status(400).json({ error: 'Missing start block in editor state' });
-      return;
-    }
-
-    console.log('All validations passed, starting bot activation...');
+    console.log('All validations passed, starting bot activation for:', req.params.id);
 
     // Останавливаем текущий бот, если он запущен
     if (activeProcesses.has(bot.id)) {
@@ -632,7 +611,7 @@ app.post('/api/bots/:id/activate', async (req, res) => {
     }
   } catch (error) {
     console.error('Error in activate endpoint:', error);
-    res.status(500).json({ error: 'Failed to activate bot' });
+    res.status(500).json({ error: 'Failed to activate bot', details: error.message });
   }
 });
 
