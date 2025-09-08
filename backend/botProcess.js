@@ -674,6 +674,33 @@ function setupBotHandlers(bot, blocks, connections) {
       }
       // --- конец новой логики ---
       
+      // --- Переход к следующему блоку по кнопке ---
+      if (currentBlock && currentBlock.type !== 'quiz') {
+        const button = currentBlock.buttons.find(btn => btn.text === messageText);
+        if (button) {
+          const nextBlockId = connectionMap.get(`${String(currentBlockId)}_${String(button.id)}`);
+          if (nextBlockId && dialogMap.has(nextBlockId)) {
+            // Добавляем текущий блок в историю
+            let userHistory = userNavigationHistory.get(userId) || [];
+            userHistory.push(currentBlockId);
+            userNavigationHistory.set(userId, userHistory);
+
+            // Обновляем текущий блок пользователя
+            userCurrentBlock.set(userId, nextBlockId);
+
+            // Отправляем следующий блок
+            const nextBlock = dialogMap.get(nextBlockId);
+            const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
+            await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
+            return;
+          } else {
+            await ctx.reply('Ошибка маршрутизации: не найден следующий блок.');
+            return;
+          }
+        }
+      }
+      // --- конец перехода ---
+      
       // Обработка кнопки "Назад"
       if (messageText === '⬅️ Назад') {
         const userHistory = userNavigationHistory.get(userId);
