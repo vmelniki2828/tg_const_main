@@ -6,7 +6,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
 const mongoose = require('mongoose');
-const { QuizStats, Bot } = require('./models');
+const { QuizStats, Bot, User, PromoCode, Loyalty } = require('./models');
 
 // Загружаем переменные окружения
 try {
@@ -1116,5 +1116,22 @@ app.listen(PORT, HOST, async () => {
     }
   } catch (error) {
     console.error('Error loading state:', error);
+  }
+}); 
+
+app.get('/api/bots/:id/full', async (req, res) => {
+  try {
+    const botId = req.params.id;
+    const bot = await Bot.findOne({ id: botId });
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot not found' });
+    }
+    const users = await User.find({ botId });
+    const quizStats = await QuizStats.find({ botId });
+    const promoCodes = await PromoCode.find({ botId });
+    const loyalties = await Loyalty.find({ botId });
+    res.json({ bot, users, quizStats, promoCodes, loyalties });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to load full bot info', details: error.message });
   }
 }); 
