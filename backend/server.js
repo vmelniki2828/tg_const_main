@@ -754,11 +754,10 @@ app.post('/api/bots/:id/deactivate', async (req, res) => {
 // Получение списка ботов
 app.get('/api/bots', async (req, res) => {
   try {
-    const state = await readState();
-    const botsList = state.bots.map(({ id, name, isActive }) => ({ id, name, isActive }));
-    res.json({ bots: botsList, activeBot: state.activeBot });
+    const bots = await Bot.find({});
+    res.json({ bots, activeBot: null });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to load bots list' });
+    res.status(500).json({ error: 'Failed to load bots', details: error.message });
   }
 });
 
