@@ -675,6 +675,8 @@ function setupBotHandlers(bot, blocks, connections) {
       // Обработка кнопки "Назад"
       if (messageText === '⬅️ Назад') {
         console.log(`🔍 DEBUG: Processing "Назад" button`);
+        console.log(`🔍 DEBUG: Current block type: ${currentBlock.type}`);
+        console.log(`🔍 DEBUG: User history:`, userNavigationHistory.get(userId));
         
         // Если пользователь в квизе, очищаем состояние квиза
         if (currentBlock.type === 'quiz') {
@@ -686,6 +688,7 @@ function setupBotHandlers(bot, blocks, connections) {
         
         if (userHistory && userHistory.length > 0) {
           const previousBlockId = userHistory.pop();
+          console.log(`🔍 DEBUG: Previous block ID: ${previousBlockId}`);
           const prevBlock = dialogMap.get(previousBlockId);
           
           if (prevBlock) {
@@ -696,7 +699,11 @@ function setupBotHandlers(bot, blocks, connections) {
             await sendMediaMessage(ctx, prevBlock.message, prevBlock.mediaFiles, keyboard, inlineKeyboard);
             console.log(`✅ Navigated back to block ${previousBlockId}`);
             return;
+          } else {
+            console.log(`❌ Previous block ${previousBlockId} not found in dialogMap`);
           }
+        } else {
+          console.log(`❌ No user history found`);
         }
         
         await ctx.reply('Нет предыдущего блока');
@@ -771,6 +778,13 @@ function setupBotHandlers(bot, blocks, connections) {
         if (!userAnswer) {
           console.log(`❌ Answer "${messageText}" not found in question`);
           await ctx.reply('Выберите один из предложенных вариантов');
+          return;
+        }
+        
+        // Проверяем, не отвечал ли пользователь уже на этот вопрос
+        const alreadyAnswered = quizState.answers.some(a => a.questionIndex === quizState.currentQuestionIndex);
+        if (alreadyAnswered) {
+          console.log(`⚠️ User already answered question ${quizState.currentQuestionIndex}, ignoring duplicate`);
           return;
         }
         
@@ -870,10 +884,14 @@ function setupBotHandlers(bot, blocks, connections) {
       
       // Обработка обычных блоков с кнопками
       console.log(`🔍 DEBUG: Processing regular block with buttons`);
+      console.log(`🔍 DEBUG: Current block buttons:`, currentBlock.buttons?.map(b => ({ id: b.id, text: b.text })));
+      console.log(`🔍 DEBUG: Looking for button with text: "${messageText}"`);
+      
       const button = currentBlock.buttons?.find(btn => btn.text === messageText);
       
       if (!button) {
         console.log(`❌ Button "${messageText}" not found in current block`);
+        console.log(`❌ Available buttons:`, currentBlock.buttons?.map(b => b.text));
         await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
         return;
       }
@@ -897,9 +915,13 @@ function setupBotHandlers(bot, blocks, connections) {
       
       console.log(`🔍 DEBUG: Connection key: ${connectionKey}`);
       console.log(`🔍 DEBUG: Next block ID: ${nextBlockId}`);
+      console.log(`🔍 DEBUG: Available connections:`, Array.from(connectionMap.entries()));
+      console.log(`🔍 DEBUG: Available blocks:`, Array.from(dialogMap.keys()));
       
       if (!nextBlockId || !dialogMap.has(nextBlockId)) {
         console.log(`❌ No valid next block found`);
+        console.log(`❌ Connection key "${connectionKey}" not found in connectionMap`);
+        console.log(`❌ Next block ID "${nextBlockId}" not found in dialogMap`);
         await ctx.reply('Ошибка маршрутизации: не найден следующий блок.');
         return;
       }
