@@ -824,29 +824,19 @@ app.get('/api/bots/:id', async (req, res) => {
 // Удаление бота
 app.delete('/api/bots/:id', async (req, res) => {
   try {
-    const state = await readState();
-    const botIndex = state.bots.findIndex(b => b.id === req.params.id);
-    
-    if (botIndex === -1) {
-      res.status(404).json({ error: 'Bot not found' });
-      return;
-    }
-
-    // Останавливаем бота если он запущен
-    await stopBot(req.params.id);
-
-    // Удаляем бота из списка
-    state.bots.splice(botIndex, 1);
-    
-    // Если удаляем активного бота, сбрасываем activeBot
-    if (state.activeBot === req.params.id) {
-      state.activeBot = null;
-    }
-
-    await writeState(state);
+    const botId = req.params.id;
+    // Остановить процесс бота, если он запущен
+    await stopBot(botId);
+    // Удалить бота из MongoDB
+    await Bot.deleteOne({ id: botId });
+    // Удалить все связанные данные
+    await User.deleteMany({ botId });
+    await QuizStats.deleteMany({ botId });
+    await PromoCode.deleteMany({ botId });
+    await Loyalty.deleteMany({ botId });
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete bot' });
+    res.status(500).json({ error: 'Failed to delete bot', details: error.message });
   }
 });
 
