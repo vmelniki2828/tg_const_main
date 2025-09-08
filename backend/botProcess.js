@@ -288,6 +288,13 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
   }
 }
 
+// Глобальные переменные для состояния пользователей
+const userCurrentBlock = new Map();
+const userNavigationHistory = new Map();
+const userQuizStates = new Map();
+const userLastActivity = new Map();
+const completedQuizzes = new Map();
+
 function setupBotHandlers(bot, blocks, connections) {
   // Создаем карту диалогов для быстрого доступа
   const dialogMap = new Map();
@@ -301,16 +308,16 @@ function setupBotHandlers(bot, blocks, connections) {
   });
 
   // Карта для отслеживания истории навигации пользователей
-  const userNavigationHistory = new Map();
+  // const userNavigationHistory = new Map(); // Удалено
   
   // Карта для отслеживания текущего блока каждого пользователя
-  const userCurrentBlock = new Map();
+  // const userCurrentBlock = new Map(); // Удалено
   
   // Карта для отслеживания состояния квиза каждого пользователя
-  const userQuizStates = new Map();
+  // const userQuizStates = new Map(); // Удалено
   
   // Карта для отслеживания завершенных квизов пользователей
-  const completedQuizzes = new Map();
+  // const completedQuizzes = new Map(); // Удалено
 
   // Функция для очистки старых данных пользователей (оптимизация памяти)
   function cleanupOldUserData() {
@@ -369,7 +376,7 @@ function setupBotHandlers(bot, blocks, connections) {
   }
 
   // Карта для отслеживания последней активности пользователей
-  const userLastActivity = new Map();
+  // const userLastActivity = new Map(); // Удалено
 
   // Запускаем очистку памяти каждые 15 минут (более часто)
   setInterval(cleanupOldUserData, 15 * 60 * 1000);
