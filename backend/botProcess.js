@@ -1395,6 +1395,17 @@ async function startBot() {
     handleCriticalError(err);
   });
   
+  // Проверяем подключение к Telegram API
+  try {
+    console.log('=== [BOOT] Проверяем подключение к Telegram API... ===');
+    const botInfo = await bot.telegram.getMe();
+    console.log('=== [BOOT] Telegram API доступен, bot info:', botInfo);
+  } catch (apiError) {
+    console.error('=== [BOOT] Ошибка подключения к Telegram API:', apiError);
+    console.error('=== [BOOT] Проверьте интернет-соединение и доступность api.telegram.org');
+    process.exit(1);
+  }
+
   // Очищаем webhook перед запуском
   try {
     console.log('=== [BOOT] Очищаем webhook... ===');
@@ -1404,17 +1415,23 @@ async function startBot() {
     console.error('=== [BOOT] Ошибка очистки webhook:', webhookError);
   }
 
-  // Запускаем бота с таймаутом
+  // Запускаем бота в polling режиме с таймаутом
   try {
-    console.log('=== [BOOT] Запускаем bot.launch()... ===');
+    console.log('=== [BOOT] Запускаем bot.launch() в polling режиме... ===');
     
-    const launchPromise = bot.launch();
+    const launchPromise = bot.launch({
+      polling: {
+        timeout: 10,
+        limit: 100,
+        allowedUpdates: ['message', 'callback_query']
+      }
+    });
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('bot.launch() timeout after 30 seconds')), 30000);
     });
     
     await Promise.race([launchPromise, timeoutPromise]);
-    console.log('=== [BOOT] Bot started successfully ===');
+    console.log('=== [BOOT] Bot started successfully in polling mode ===');
     
     // Проверяем статус бота
     try {
