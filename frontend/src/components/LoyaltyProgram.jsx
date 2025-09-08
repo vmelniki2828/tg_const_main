@@ -117,7 +117,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
   };
 
   const handleDeletePromoCodes = async (period) => {
-    if (!confirm(`Удалить все промокоды для периода ${getPeriodLabel(period)}?`)) {
+    if (!window.confirm(`Удалить все промокоды для периода ${getPeriodLabel(period)}?`)) {
       return;
     }
     
