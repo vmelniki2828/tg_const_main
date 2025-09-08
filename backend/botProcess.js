@@ -446,6 +446,33 @@ function setupBotHandlers(bot, blocks, connections) {
   // Обработка команды /start
   bot.command('start', async (ctx) => {
     const userId = ctx.from.id;
+    // Сохраняем пользователя в MongoDB при запуске /start
+    try {
+      console.log(`[MongoDB] /start: попытка сохранить пользователя:`, { botId, userId, from: ctx.from });
+      const updateResult = await User.updateOne(
+        { botId, userId },
+        {
+          $setOnInsert: {
+            botId,
+            userId,
+            username: ctx.from.username,
+            firstName: ctx.from.first_name,
+            lastName: ctx.from.last_name,
+            firstSubscribedAt: new Date(),
+            isSubscribed: true,
+            subscriptionHistory: [{ subscribedAt: new Date() }],
+          },
+          $set: {
+            lastSubscribedAt: new Date(),
+            isSubscribed: true
+          }
+        },
+        { upsert: true }
+      );
+      console.log('[MongoDB] /start: результат updateOne:', updateResult);
+    } catch (err) {
+      console.error('[MongoDB] /start: ошибка при сохранении пользователя:', err);
+    }
     
     // Очищаем историю навигации пользователя
     userNavigationHistory.delete(userId);
