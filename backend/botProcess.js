@@ -580,14 +580,9 @@ function setupBotHandlers(bot, blocks, connections) {
         { upsert: true }
       );
       console.log('[MongoDB] Пользователь сохранён:', { botId, userId });
-      const messageText = ctx.message.text.trim();
+      const messageText = ctx.message.text;
       
       let currentBlockId = userCurrentBlock.get(userId);
-      let currentBlock = blocks.find(b => b.id === currentBlockId);
-      if (!currentBlock) {
-        console.log(`❌ Current block not found for user ${userId}, id: ${currentBlockId}`);
-        return;
-      }
       
       // Отслеживаем активность пользователя
       userLastActivity.set(userId, Date.now());

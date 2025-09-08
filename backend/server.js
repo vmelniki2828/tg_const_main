@@ -547,15 +547,17 @@ async function stopBot(botId) {
   return Promise.resolve();
 }
 
-// Функция для запуска бота
+// Получение editorState из MongoDB для запуска botProcess.js
 async function startBot(bot) {
   console.log(`Starting bot ${bot.id}...`);
-  
+  // Получаем editorState из MongoDB
+  const botDoc = await Bot.findOne({ id: bot.id });
+  if (!botDoc) throw new Error('Bot not found in MongoDB');
   const botProcess = spawn('node', [
     path.join(__dirname, 'botProcess.js'),
     bot.token,
     bot.id,
-    JSON.stringify(bot.editorState)
+    JSON.stringify(botDoc.editorState)
   ]);
 
   return new Promise((resolve, reject) => {
@@ -602,48 +604,21 @@ async function startBot(bot) {
   });
 }
 
-// Обновление состояния конкретного бота
+// Обновление editorState только в MongoDB
 app.put('/api/bots/:id', async (req, res) => {
   try {
     const { name, token, editorState } = req.body;
-    console.log('PUT /api/bots/:id - Request body:', { name, token: token ? '***' : 'undefined', editorState });
-    
-    const state = await readState();
-    const botIndex = state.bots.findIndex(b => b.id === req.params.id);
-    
-    if (botIndex === -1) {
-      console.log('Bot not found:', req.params.id);
-      res.status(404).json({ error: 'Bot not found' });
-      return;
-    }
-
-    console.log('Found bot at index:', botIndex);
-
-    // Обновляем данные бота
-    const updatedBot = {
-      ...state.bots[botIndex],
-      name: name || state.bots[botIndex].name,
-      token: token || state.bots[botIndex].token,
-      editorState: editorState || state.bots[botIndex].editorState
-    };
-
-    console.log('Updated bot state:', updatedBot);
-    state.bots[botIndex] = updatedBot;
-
-    await writeState(state);
-    console.log('State saved successfully');
     // Обновить в MongoDB
     await Bot.updateOne(
       { id: req.params.id },
       { $set: {
-        name: updatedBot.name,
-        token: updatedBot.token,
-        editorState: updatedBot.editorState
+        name,
+        token,
+        editorState
       }}
     );
     res.json({ success: true });
   } catch (error) {
-    console.error('Error updating bot:', error);
     res.status(500).json({ error: 'Failed to update bot' });
   }
 });
