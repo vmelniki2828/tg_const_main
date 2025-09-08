@@ -583,7 +583,7 @@ function setupBotHandlers(bot, blocks, connections) {
       const messageText = ctx.message.text.trim();
       
       let currentBlockId = userCurrentBlock.get(userId);
-      const currentBlock = blocks.find(b => b.id === currentBlockId);
+      let currentBlock = blocks.find(b => b.id === currentBlockId);
       if (!currentBlock) {
         console.log(`❌ Current block not found for user ${userId}, id: ${currentBlockId}`);
         return;
