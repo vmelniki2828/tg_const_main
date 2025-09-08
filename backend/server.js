@@ -580,6 +580,8 @@ app.post('/api/bots/:id/activate', async (req, res) => {
       console.error('Invalid editor state for activation:', req.params.id, bot.editorState);
       return res.status(400).json({ error: 'Invalid editor state' });
     }
+    // Обновляем isActive в базе
+    await Bot.updateOne({ id: req.params.id }, { $set: { isActive: true } });
     console.log('All validations passed, starting bot activation for:', req.params.id);
     try {
       await startBot(bot);
