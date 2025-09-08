@@ -294,27 +294,42 @@ async function saveUserToMongo(ctx) {
   const userId = ctx.from.id;
   try {
     console.log(`[MongoDB] saveUserToMongo: попытка сохранить пользователя:`, { botId, userId, from: ctx.from });
-    const updateResult = await User.updateOne(
-      { botId, userId },
-      {
-        $setOnInsert: {
-          botId,
-          userId,
-          username: ctx.from.username,
-          firstName: ctx.from.first_name,
-          lastName: ctx.from.last_name,
-          firstSubscribedAt: new Date(),
-          isSubscribed: true,
-          subscriptionHistory: [{ subscribedAt: new Date() }],
-        },
-        $set: {
-          lastSubscribedAt: new Date(),
-          isSubscribed: true
+    
+    // Сначала проверяем, существует ли пользователь
+    const existingUser = await User.findOne({ botId, userId });
+    
+    if (existingUser) {
+      // Обновляем существующего пользователя
+      const updateResult = await User.updateOne(
+        { botId, userId },
+        {
+          $set: {
+            lastSubscribedAt: new Date(),
+            isSubscribed: true,
+            username: ctx.from.username,
+            firstName: ctx.from.first_name,
+            lastName: ctx.from.last_name
+          }
         }
-      },
-      { upsert: true }
-    );
-    console.log('[MongoDB] saveUserToMongo: результат updateOne:', updateResult);
+      );
+      console.log('[MongoDB] saveUserToMongo: пользователь обновлен:', updateResult);
+    } else {
+      // Создаем нового пользователя
+      const newUser = new User({
+        botId,
+        userId,
+        username: ctx.from.username,
+        firstName: ctx.from.first_name,
+        lastName: ctx.from.last_name,
+        firstSubscribedAt: new Date(),
+        lastSubscribedAt: new Date(),
+        isSubscribed: true,
+        subscriptionHistory: [{ subscribedAt: new Date() }]
+      });
+      
+      const saveResult = await newUser.save();
+      console.log('[MongoDB] saveUserToMongo: новый пользователь создан:', saveResult._id);
+    }
   } catch (err) {
     console.error('[MongoDB] saveUserToMongo: ошибка при сохранении пользователя:', err);
   }
