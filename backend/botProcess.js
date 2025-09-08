@@ -1395,9 +1395,25 @@ async function startBot() {
     handleCriticalError(err);
   });
   
-  // Запускаем бота
+  // Очищаем webhook перед запуском
   try {
-    await bot.launch();
+    console.log('=== [BOOT] Очищаем webhook... ===');
+    await bot.telegram.deleteWebhook();
+    console.log('=== [BOOT] Webhook очищен ===');
+  } catch (webhookError) {
+    console.error('=== [BOOT] Ошибка очистки webhook:', webhookError);
+  }
+
+  // Запускаем бота с таймаутом
+  try {
+    console.log('=== [BOOT] Запускаем bot.launch()... ===');
+    
+    const launchPromise = bot.launch();
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('bot.launch() timeout after 30 seconds')), 30000);
+    });
+    
+    await Promise.race([launchPromise, timeoutPromise]);
     console.log('=== [BOOT] Bot started successfully ===');
     
     // Проверяем статус бота
