@@ -714,6 +714,17 @@ function setupBotHandlers(bot, blocks, connections) {
             return;
           } else {
             console.log(`❌ DEBUG: Routing error - nextBlockId: ${nextBlockId}, dialogMap.has: ${dialogMap.has(nextBlockId)}`);
+            
+            // Проверяем, есть ли у следующего блока кнопки
+            if (nextBlockId && dialogMap.has(nextBlockId)) {
+              const nextBlock = dialogMap.get(nextBlockId);
+              if (!nextBlock.buttons || nextBlock.buttons.length === 0) {
+                await ctx.reply('❌ Ошибка: следующий блок не имеет кнопок для навигации. Обратитесь к администратору.');
+                console.log(`❌ DEBUG: Next block ${nextBlockId} has no buttons`);
+                return;
+              }
+            }
+            
             await ctx.reply('Ошибка маршрутизации: не найден следующий блок.');
             return;
           }

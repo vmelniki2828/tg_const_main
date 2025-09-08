@@ -354,6 +354,22 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
     }
 
     if (connectingFrom && connectingFrom.blockId !== toBlockId) {
+      // Проверяем, есть ли у целевого блока кнопки
+      const targetBlock = blocks.find(b => b.id === toBlockId);
+      if (targetBlock && (!targetBlock.buttons || targetBlock.buttons.length === 0)) {
+        const confirmConnection = window.confirm(
+          `⚠️ Внимание! Блок "${targetBlock.message || toBlockId}" не имеет кнопок.\n\n` +
+          `Пользователи не смогут перейти дальше из этого блока.\n\n` +
+          `Продолжить создание соединения?`
+        );
+        
+        if (!confirmConnection) {
+          setConnectingFrom(null);
+          setIsConnecting(false);
+          return;
+        }
+      }
+      
       // Удаляем старое соединение для этой кнопки, если оно существует
       const filteredConnections = connections.filter(
         conn => !(conn.from.blockId === connectingFrom.blockId && 
@@ -1063,6 +1079,23 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                 </div>
 
                 <div className="block-buttons">
+                  {/* Предупреждение для блоков без кнопок */}
+                  {block.id !== 'start' && (!block.buttons || block.buttons.length === 0) && (
+                    <div className="no-buttons-warning" style={{ 
+                      background: '#ffebee', 
+                      border: '2px solid #f44336', 
+                      borderRadius: '6px', 
+                      padding: '8px', 
+                      margin: '4px 0',
+                      color: '#c62828',
+                      fontSize: '12px',
+                      textAlign: 'center'
+                    }}>
+                      ⚠️ Блок без кнопок!<br/>
+                      Пользователи не смогут перейти дальше
+                    </div>
+                  )}
+                  
                   {block.buttons.map(button => {
                     const noConnection = block.id === 'start' && !hasConnection(block.id, button.id, connections);
                     return (
