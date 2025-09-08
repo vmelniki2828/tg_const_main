@@ -575,7 +575,14 @@ function setupBotHandlers(bot, blocks, connections) {
     console.log('=== [EVENT] Получено текстовое сообщение ===');
     console.log('[EVENT] ctx:', JSON.stringify(ctx, null, 2));
     console.log('[EVENT] ctx.from:', ctx.from);
-    await saveUserToMongo(ctx);
+    
+    try {
+      await saveUserToMongo(ctx);
+      console.log('✅ saveUserToMongo completed');
+    } catch (error) {
+      console.error('❌ Error in saveUserToMongo:', error);
+    }
+    
     try {
       const userId = ctx.from?.id;
       console.log(`[MongoDB] Попытка сохранить пользователя:`, { botId, userId, from: ctx.from });
@@ -604,11 +611,14 @@ function setupBotHandlers(bot, blocks, connections) {
       // ВАЖНО: isSubscribed не должен быть вложенным объектом нигде в схеме или данных!
       console.log('[MongoDB] Пользователь сохранён:', { botId, userId });
       const messageText = ctx.message.text;
+      console.log(`🔍 DEBUG: Message text: "${messageText}"`);
       
       let currentBlockId = userCurrentBlock.get(userId);
+      console.log(`🔍 DEBUG: Current block ID: ${currentBlockId}`);
       
       // Отслеживаем активность пользователя
       userLastActivity.set(userId, Date.now());
+      console.log(`🔍 DEBUG: User activity updated`);
       
       console.log(`🔍 DEBUG: Received message: "${messageText}" from user ${userId} in block ${currentBlockId}`);
       console.log(`🔍 DEBUG: User quiz state exists: ${userQuizStates.has(userId)}`);
@@ -684,9 +694,14 @@ function setupBotHandlers(bot, blocks, connections) {
       // --- конец новой логики ---
       
       // --- Переход к следующему блоку по кнопке ---
+      console.log(`🔍 DEBUG: Checking button navigation for block type: ${currentBlock?.type}`);
       if (currentBlock && currentBlock.type !== 'quiz') {
+        console.log(`🔍 DEBUG: Looking for button with text: "${messageText}"`);
+        console.log(`🔍 DEBUG: Available buttons:`, currentBlock.buttons?.map(b => b.text));
+        
         const button = currentBlock.buttons.find(btn => btn.text === messageText);
         if (button) {
+          console.log(`🔍 DEBUG: Button found:`, button);
           const connectionKey = `${String(currentBlockId)}_${String(button.id)}`;
           const nextBlockId = connectionMap.get(connectionKey);
           
@@ -699,18 +714,28 @@ function setupBotHandlers(bot, blocks, connections) {
           console.log(`🔍 DEBUG: DialogMap has next block: ${dialogMap.has(nextBlockId)}`);
           
           if (nextBlockId && dialogMap.has(nextBlockId)) {
+            console.log(`🔍 DEBUG: Valid navigation found, proceeding...`);
+            
             // Добавляем текущий блок в историю
             let userHistory = userNavigationHistory.get(userId) || [];
             userHistory.push(currentBlockId);
             userNavigationHistory.set(userId, userHistory);
+            console.log(`🔍 DEBUG: History updated`);
 
             // Обновляем текущий блок пользователя
             userCurrentBlock.set(userId, nextBlockId);
+            console.log(`🔍 DEBUG: Current block updated to: ${nextBlockId}`);
 
             // Отправляем следующий блок
             const nextBlock = dialogMap.get(nextBlockId);
+            console.log(`🔍 DEBUG: Next block data:`, nextBlock);
+            
             const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
+            console.log(`🔍 DEBUG: Keyboard created:`, keyboard);
+            
+            console.log(`🔍 DEBUG: Sending media message...`);
             await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
+            console.log(`🔍 DEBUG: Media message sent successfully`);
             return;
           } else {
             console.log(`❌ DEBUG: Routing error - nextBlockId: ${nextBlockId}, dialogMap.has: ${dialogMap.has(nextBlockId)}`);
@@ -728,25 +753,36 @@ function setupBotHandlers(bot, blocks, connections) {
             await ctx.reply('Ошибка маршрутизации: не найден следующий блок.');
             return;
           }
+        } else {
+          console.log(`🔍 DEBUG: Button not found in current block`);
         }
       }
       // --- конец перехода ---
       
       // Обработка кнопки "Назад"
       if (messageText === '⬅️ Назад') {
+        console.log(`🔍 DEBUG: Processing "Назад" button`);
         const userHistory = userNavigationHistory.get(userId);
+        console.log(`🔍 DEBUG: User history:`, userHistory);
+        
         if (userHistory && userHistory.length > 0) {
           const previousBlockId = userHistory.pop();
+          console.log(`🔍 DEBUG: Previous block ID: ${previousBlockId}`);
+          
           const prevBlock = dialogMap.get(previousBlockId);
+          console.log(`🔍 DEBUG: Previous block data:`, prevBlock);
           
           if (prevBlock) {
+            console.log(`🔍 DEBUG: Sending previous block message...`);
             const { keyboard, inlineKeyboard } = createKeyboardWithBack(prevBlock.buttons, userId, previousBlockId);
             await sendMediaMessage(ctx, prevBlock.message, prevBlock.mediaFiles, keyboard, inlineKeyboard);
             userCurrentBlock.set(userId, previousBlockId);
             userNavigationHistory.set(userId, userHistory);
+            console.log(`🔍 DEBUG: Navigation back completed`);
             return;
           }
         }
+        console.log(`🔍 DEBUG: No previous block available`);
         await ctx.reply('Нет предыдущего блока');
         return;
       }
@@ -1312,6 +1348,12 @@ function setupBotHandlers(bot, blocks, connections) {
     } catch (error) {
       console.error('❌ Critical error in message handler:', error);
       console.error('📄 Error stack:', error.stack);
+      console.error('📄 Error details:', {
+        message: error.message,
+        name: error.name,
+        code: error.code,
+        response: error.response
+      });
       
       // Обработка ошибки 403 (пользователь заблокировал бота)
       if (error.response && error.response.error_code === 403) {
@@ -1321,9 +1363,16 @@ function setupBotHandlers(bot, blocks, connections) {
       
       // Попытка отправить сообщение об ошибке пользователю
       try {
+        console.log(`🔍 DEBUG: Attempting to send error message to user`);
         await ctx.reply('Произошла ошибка. Попробуйте еще раз или нажмите /start для перезапуска.');
+        console.log(`🔍 DEBUG: Error message sent successfully`);
       } catch (replyError) {
         console.error('❌ Error sending error message:', replyError);
+        console.error('❌ Reply error details:', {
+          message: replyError.message,
+          name: replyError.name,
+          code: replyError.code
+        });
       }
       
       // Принудительная очистка памяти при критической ошибке
