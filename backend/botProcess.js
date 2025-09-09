@@ -1,3 +1,14 @@
+// Обработка необработанных ошибок
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught Exception in botProcess.js:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection in botProcess.js:', reason);
+  process.exit(1);
+});
+
 const { Telegraf } = require('telegraf');
 const { User, QuizStats, PromoCode, Loyalty, LoyaltyConfig, LoyaltyPromoCode } = require('./models');
 const mongoose = require('mongoose');
@@ -36,12 +47,18 @@ if (!token || !botId || !stateJson) {
 // Парсим состояние
 let state;
 try {
+  console.log('=== [BOOT] Парсинг editorState ===');
+  console.log('=== [BOOT] stateJson length:', stateJson ? stateJson.length : 'undefined');
   state = JSON.parse(stateJson);
   if (!state.blocks || !state.connections) {
     throw new Error('Invalid state format');
   }
+  console.log('=== [BOOT] editorState успешно распарсен ===');
+  console.log('=== [BOOT] blocks:', state.blocks.length);
+  console.log('=== [BOOT] connections:', state.connections ? state.connections.length : 0);
 } catch (error) {
-  console.error('Failed to parse state:', error);
+  console.error('=== [BOOT] Ошибка парсинга editorState:', error);
+  console.error('=== [BOOT] stateJson:', stateJson);
   process.exit(1);
 }
 
@@ -405,7 +422,7 @@ function setupBotHandlers(bot, blocks, connections) {
   }
 
   // Карта для отслеживания последней активности пользователей
-  // const userLastActivity = new Map(); // Удалено
+  // (объявлена выше в коде)
 
   // Очистка памяти ОТКЛЮЧЕНА - данные сохраняются навсегда
   // setInterval(cleanupOldUserData, 60 * 60 * 1000);
@@ -1235,8 +1252,9 @@ function startLoyaltyChecker() {
 let bot;
 
 async function startBot() {
-  console.log('=== [BOOT] startBot вызван ===');
-  bot = new Telegraf(token);
+  try {
+    console.log('=== [BOOT] startBot вызван ===');
+    bot = new Telegraf(token);
   
   // Счетчик ошибок для автоматического перезапуска
   let errorCount = 0;
@@ -1380,6 +1398,11 @@ async function startBot() {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
     handleCriticalError(reason);
   });
+  } catch (error) {
+    console.error('💥 Critical error in startBot:', error);
+    console.error('💥 Stack trace:', error.stack);
+    process.exit(1);
+  }
 }
 
 // Проверка наличия пользователей при запуске
