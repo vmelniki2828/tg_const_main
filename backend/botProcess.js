@@ -1059,15 +1059,33 @@ function setupBotHandlers(bot, blocks, connections) {
 async function updateBotCommands(bot, blocks) {
   const commands = blocks
     .filter(block => block.command)
-    .map(block => ({
-      command: block.command.replace(/^\//, ''),
-      description: (block.description || '').substring(0, 50)
-    }))
+    .map(block => {
+      // Очищаем команду от недопустимых символов
+      let cleanCommand = block.command.replace(/^\//, ''); // Убираем / в начале
+      cleanCommand = cleanCommand.replace(/[^a-zA-Z0-9_]/g, '_'); // Заменяем недопустимые символы на _
+      cleanCommand = cleanCommand.replace(/_+/g, '_'); // Убираем множественные _
+      cleanCommand = cleanCommand.replace(/^_|_$/g, ''); // Убираем _ в начале и конце
+      
+      // Если команда стала пустой или слишком короткой, пропускаем
+      if (!cleanCommand || cleanCommand.length < 2) {
+        console.log(`⚠️ Пропускаем недопустимую команду: "${block.command}" -> "${cleanCommand}"`);
+        return null;
+      }
+      
+      return {
+        command: cleanCommand,
+        description: (block.description || '').substring(0, 50)
+      };
+    })
+    .filter(cmd => cmd !== null) // Убираем null команды
     .sort((a, b) => a.command.localeCompare(b.command));
+    
+  console.log('Обработанные команды:', commands);
+  
   if (commands.length > 0) {
     await bot.telegram.setMyCommands(commands);
     console.log('Меню команд Telegram обновлено:', commands);
-            } else {
+  } else {
     await bot.telegram.setMyCommands([]);
     console.log('Меню команд Telegram очищено');
   }
