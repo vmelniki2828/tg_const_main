@@ -44,6 +44,26 @@ mongoose.connect(MONGO_URI, {
     }, 5000);
   });
 
+// Мониторинг состояния подключения к MongoDB
+mongoose.connection.on('connected', () => {
+  console.log('🔗 MongoDB подключена');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('❌ Ошибка MongoDB:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️ MongoDB отключена');
+});
+
+// Обработка завершения процесса
+process.on('SIGINT', async () => {
+  console.log('🛑 Получен сигнал SIGINT, закрываем подключение к MongoDB...');
+  await mongoose.connection.close();
+  process.exit(0);
+});
+
 // Настройка CORS
 const corsOptions = {
   origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
@@ -490,7 +510,10 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
     console.log(`🎁 Найдено ${promoCodes.length} промокодов в файле`);
 
     // Удаляем старые промокоды для этого квиза и бота
-    await PromoCode.deleteMany({ botId: botId, quizId: quizId });
+    if (!botId || !quizId) {
+      throw new Error('botId и quizId обязательны для удаления промокодов');
+    }
+    await PromoCode.deleteMany({ botId, quizId });
     console.log(`🎁 Удалены старые промокоды для квиза ${quizId}`);
 
     // Сохраняем новые промокоды в MongoDB
@@ -530,9 +553,12 @@ app.delete('/api/quiz-promocodes/:quizId', async (req, res) => {
     console.log(`🎁 Удаляем промокоды для квиза ${quizId} и бота ${botId}`);
     
     // Удаляем промокоды из MongoDB
+    if (!botId || !quizId) {
+      throw new Error('botId и quizId обязательны для удаления промокодов');
+    }
     const result = await PromoCode.deleteMany({ 
-      botId: botId, 
-      quizId: quizId 
+      botId, 
+      quizId 
     });
     
     console.log(`🎁 Удалено ${result.deletedCount} промокодов`);
@@ -662,6 +688,9 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
     console.log(`[LOYALTY] Найдено ${lines.length} строк в CSV файле`);
     
     // Удаляем существующие промокоды для этого периода
+    if (!botId || !period) {
+      throw new Error('botId и period обязательны для удаления промокодов лояльности');
+    }
     const deleteResult = await LoyaltyPromoCode.deleteMany({ botId, period });
     console.log(`[LOYALTY] Удалено ${deleteResult.deletedCount} существующих промокодов`);
     
@@ -703,6 +732,9 @@ app.delete('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
   try {
     const { botId, period } = req.params;
     
+    if (!botId || !period) {
+      throw new Error('botId и period обязательны для удаления промокодов лояльности');
+    }
     await LoyaltyPromoCode.deleteMany({ botId, period });
     
     res.json({ success: true, message: `Промокоды для периода ${period} удалены` });
@@ -1202,13 +1234,25 @@ app.delete('/api/bots/:id', async (req, res) => {
       console.log(`[DELETE] Удаляем данные для бота: ${botId}`);
       
       // Удаляем только данные конкретного бота
+      console.log(`[DELETE] Начинаем удаление данных для бота: ${botId}`);
+      
+      // Дополнительная проверка - убеждаемся, что botId не пустой
+      if (!botId || botId.trim() === '') {
+        throw new Error('botId не может быть пустым');
+      }
+      
+      // Критическая проверка - предотвращаем удаление всех данных
+      if (botId === 'all' || botId === '*' || botId === 'undefined' || botId === 'null') {
+        throw new Error('КРИТИЧЕСКАЯ ОШИБКА: Попытка удалить все данные! Операция заблокирована.');
+      }
+      
       const deleteResults = await Promise.all([
         Bot.deleteOne({ id: botId }),
-        User.deleteMany({ botId: botId }),
-        QuizStats.deleteMany({ botId: botId }),
-        PromoCode.deleteMany({ botId: botId }),
-        Loyalty.deleteMany({ botId: botId }),
-        LoyaltyPromoCode.deleteMany({ botId: botId })
+        User.deleteMany({ botId }),
+        QuizStats.deleteMany({ botId }),
+        PromoCode.deleteMany({ botId }),
+        Loyalty.deleteMany({ botId }),
+        LoyaltyPromoCode.deleteMany({ botId })
       ]);
       
       console.log(`[DELETE] Результаты удаления для бота ${botId}:`, {
