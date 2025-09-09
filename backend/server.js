@@ -522,6 +522,7 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
     if (!botId || !quizId) {
       throw new Error('botId и quizId обязательны для удаления промокодов');
     }
+    protectFromMassDelete('PromoCode.deleteMany', { botId, quizId });
     await PromoCode.deleteMany({ botId, quizId });
     console.log(`🎁 Удалены старые промокоды для квиза ${quizId}`);
 
@@ -565,6 +566,7 @@ app.delete('/api/quiz-promocodes/:quizId', async (req, res) => {
     if (!botId || !quizId) {
       throw new Error('botId и quizId обязательны для удаления промокодов');
     }
+    protectFromMassDelete('PromoCode.deleteMany', { botId, quizId });
     const result = await PromoCode.deleteMany({ 
       botId, 
       quizId 
@@ -700,6 +702,7 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
     if (!botId || !period) {
       throw new Error('botId и period обязательны для удаления промокодов лояльности');
     }
+    protectFromMassDelete('LoyaltyPromoCode.deleteMany', { botId, period });
     const deleteResult = await LoyaltyPromoCode.deleteMany({ botId, period });
     console.log(`[LOYALTY] Удалено ${deleteResult.deletedCount} существующих промокодов`);
     
@@ -744,12 +747,88 @@ app.delete('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
     if (!botId || !period) {
       throw new Error('botId и period обязательны для удаления промокодов лояльности');
     }
+    protectFromMassDelete('LoyaltyPromoCode.deleteMany', { botId, period });
     await LoyaltyPromoCode.deleteMany({ botId, period });
     
     res.json({ success: true, message: `Промокоды для периода ${period} удалены` });
   } catch (error) {
     console.error('❌ Error deleting loyalty promocodes:', error);
     res.status(500).json({ error: 'Failed to delete loyalty promocodes' });
+  }
+});
+
+// Восстановление ботов из резервной копии
+app.post('/api/restore-bots', async (req, res) => {
+  try {
+    console.log('[RESTORE] Запрос на восстановление ботов');
+    
+    // Проверяем текущее состояние
+    const currentBots = await Bot.find({});
+    console.log(`[RESTORE] Текущих ботов в MongoDB: ${currentBots.length}`);
+    
+    if (currentBots.length > 0) {
+      console.log(`[RESTORE] Боты уже есть в MongoDB, восстановление не требуется`);
+      return res.json({ 
+        success: true, 
+        message: `Восстановление не требуется, найдено ${currentBots.length} ботов`,
+        bots: currentBots.map(b => ({ id: b.id, name: b.name, isActive: b.isActive }))
+      });
+    }
+    
+    // Ищем последние резервные копии
+    const backupDir = './backend/backups';
+    const fs = require('fs');
+    
+    if (!fs.existsSync(backupDir)) {
+      return res.status(404).json({ error: 'Папка backups не найдена' });
+    }
+    
+    const backupFiles = fs.readdirSync(backupDir)
+      .filter(file => file.startsWith('backup_') && file.endsWith('.json'))
+      .sort()
+      .reverse(); // Новые файлы сначала
+    
+    console.log(`[RESTORE] Найдено ${backupFiles.length} резервных копий`);
+    
+    if (backupFiles.length === 0) {
+      return res.status(404).json({ error: 'Резервные копии не найдены' });
+    }
+    
+    let restoredBots = 0;
+    
+    // Восстанавливаем из последних резервных копий
+    for (const backupFile of backupFiles.slice(0, 10)) { // Берем последние 10
+      try {
+        const backupPath = path.join(backupDir, backupFile);
+        const backupData = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
+        
+        if (backupData.bot) {
+          // Проверяем, что такого бота еще нет
+          const existingBot = await Bot.findOne({ id: backupData.bot.id });
+          if (!existingBot) {
+            await Bot.create(backupData.bot);
+            console.log(`[RESTORE] ✅ Восстановлен бот ${backupData.bot.id} (${backupData.bot.name})`);
+            restoredBots++;
+          }
+        }
+  } catch (error) {
+        console.error(`[RESTORE] ❌ Ошибка восстановления из ${backupFile}:`, error.message);
+      }
+    }
+    
+    const finalBots = await Bot.find({});
+    console.log(`[RESTORE] Восстановлено ${restoredBots} ботов, всего в MongoDB: ${finalBots.length}`);
+    
+    res.json({ 
+      success: true, 
+      message: `Восстановлено ${restoredBots} ботов`,
+      restoredCount: restoredBots,
+      totalBots: finalBots.length,
+      bots: finalBots.map(b => ({ id: b.id, name: b.name, isActive: b.isActive }))
+    });
+  } catch (error) {
+    console.error('[RESTORE] Ошибка восстановления:', error);
+    res.status(500).json({ error: 'Failed to restore bots', details: error.message });
   }
 });
 
@@ -1136,6 +1215,27 @@ app.post('/api/bots/:id/deactivate', async (req, res) => {
   }
 });
 
+// Функция защиты от массового удаления
+function protectFromMassDelete(operation, filter) {
+  const timestamp = new Date().toISOString();
+  console.log(`[PROTECTION] ${timestamp} - Операция удаления: ${operation}`);
+  console.log(`[PROTECTION] Фильтр:`, filter);
+  
+  // Проверяем, что есть фильтр
+  if (!filter || Object.keys(filter).length === 0) {
+    console.error(`[PROTECTION] ❌ БЛОКИРОВКА: Попытка удаления без фильтра!`);
+    throw new Error('PROTECTION: Mass delete blocked - no filter provided');
+  }
+  
+  // Проверяем, что есть конкретный идентификатор
+  if (!filter.id && !filter._id && !filter.botId) {
+    console.error(`[PROTECTION] ❌ БЛОКИРОВКА: Попытка удаления без конкретного ID!`);
+    throw new Error('PROTECTION: Mass delete blocked - no specific ID provided');
+  }
+  
+  console.log(`[PROTECTION] ✅ Операция разрешена`);
+}
+
 // Проверка состояния MongoDB
 app.get('/api/health', async (req, res) => {
   try {
@@ -1175,6 +1275,23 @@ app.get('/api/bots', async (req, res) => {
     
     const bots = await Bot.find({});
     console.log(`[BOT_GET] Найдено ботов в MongoDB: ${bots.length}`);
+    
+    if (bots.length === 0) {
+      // Проверяем, есть ли вообще коллекция ботов
+      const collections = await mongoose.connection.db.listCollections().toArray();
+      const collectionNames = collections.map(c => c.name);
+      console.log(`[BOT_GET] ⚠️ Ботов нет! Доступные коллекции:`, collectionNames);
+      
+      // Проверяем, есть ли индексы в коллекции ботов
+      try {
+        const indexes = await mongoose.connection.db.collection('bots').indexes();
+        console.log(`[BOT_GET] Индексы в коллекции bots:`, indexes.length);
+      } catch (err) {
+        console.log(`[BOT_GET] Ошибка при проверке индексов:`, err.message);
+      }
+    } else {
+      console.log(`[BOT_GET] Список ботов:`, bots.map(b => ({ id: b.id, name: b.name, isActive: b.isActive })));
+    }
     // Добавляем информацию о том, какие боты реально запущены
     const botsWithStatus = bots.map(bot => ({
       ...bot.toObject(),
@@ -1244,6 +1361,15 @@ app.post('/api/bots', async (req, res) => {
     
     const createdBot = await Bot.create(newBot);
     console.log(`[BOT_CREATE] Бот успешно создан в MongoDB:`, { id: createdBot.id, name: createdBot.name });
+    
+    // Дополнительная проверка что бот действительно сохранился
+    const verifyBot = await Bot.findOne({ id: newBot.id });
+    if (!verifyBot) {
+      console.error(`[BOT_CREATE] КРИТИЧЕСКАЯ ОШИБКА: Бот ${newBot.id} не найден после создания!`);
+      throw new Error('Bot not found after creation');
+    }
+    console.log(`[BOT_CREATE] ✅ Проверка: бот ${newBot.id} действительно сохранён в MongoDB`);
+    
     res.json({ id: newBot.id, name: newBot.name, isActive: newBot.isActive });
   } catch (error) {
     console.error('Failed to create bot:', error);
@@ -1326,6 +1452,14 @@ app.delete('/api/bots/:id', async (req, res) => {
       const backupFile = `${backupDir}/backup_${botId}_${Date.now()}.json`;
       fs.writeFileSync(backupFile, JSON.stringify(backupData, null, 2));
       console.log(`[BACKUP] Резервная копия сохранена: ${backupFile}`);
+      
+      // Используем защиту от массового удаления
+      protectFromMassDelete('Bot.deleteOne', { id: botId });
+      protectFromMassDelete('User.deleteMany', { botId });
+      protectFromMassDelete('QuizStats.deleteMany', { botId });
+      protectFromMassDelete('PromoCode.deleteMany', { botId });
+      protectFromMassDelete('Loyalty.deleteMany', { botId });
+      protectFromMassDelete('LoyaltyPromoCode.deleteMany', { botId });
       
       const deleteResults = await Promise.all([
         Bot.deleteOne({ id: botId }),
