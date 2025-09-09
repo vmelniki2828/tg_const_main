@@ -655,6 +655,15 @@ function setupBotHandlers(bot, blocks, connections) {
           if (nextBlock && nextBlock.type === 'quiz') {
             console.log(`🔍 DEBUG: Button leads to quiz, checking if already completed`);
             
+            // Проверяем в памяти (быстро)
+            const quizKey = `${userId}_${nextBlockId}`;
+            if (completedQuizzes.has(quizKey)) {
+              console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId} (from memory)`);
+              await ctx.reply('Вы уже прошли этот квест!');
+              return;
+            }
+            
+            // Проверяем в MongoDB (надежно)
             try {
               const existingQuizStats = await QuizStats.findOne({
                 botId: botId,
@@ -663,10 +672,12 @@ function setupBotHandlers(bot, blocks, connections) {
               });
               
               if (existingQuizStats) {
-                console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId}`);
+                console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId} (from MongoDB)`);
+                // Добавляем в память для быстрого доступа
+                completedQuizzes.set(quizKey, true);
                 await ctx.reply('Вы уже прошли этот квест!');
-            return;
-          }
+                return;
+              }
             } catch (error) {
               console.error('❌ Error checking existing quiz stats:', error);
             }
@@ -780,6 +791,11 @@ function setupBotHandlers(bot, blocks, connections) {
             );
             
             console.log(`✅ Quiz stats saved to MongoDB for user ${userId}`);
+            
+            // Добавляем в память для быстрого доступа
+            const quizKey = `${userId}_${quizState.blockId}`;
+            completedQuizzes.set(quizKey, true);
+            console.log(`✅ Quiz completion marked in memory: ${quizKey}`);
                   } catch (error) {
             console.error('❌ Error saving quiz stats:', error);
             console.error('❌ Error details:', error.message);
@@ -959,6 +975,33 @@ function setupBotHandlers(bot, blocks, connections) {
       // Если следующий блок - квиз, инициализируем состояние квиза и показываем первый вопрос
       if (nextBlock.type === 'quiz') {
         console.log(`🔍 DEBUG: Starting quiz for user ${userId}`);
+        
+        // Проверяем, не завершил ли пользователь уже этот квиз
+        const quizKey = `${userId}_${nextBlockId}`;
+        if (completedQuizzes.has(quizKey)) {
+          console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId} (from memory)`);
+          await ctx.reply('Вы уже прошли этот квест!');
+          return;
+        }
+        
+        // Проверяем в MongoDB
+        try {
+          const existingQuizStats = await QuizStats.findOne({
+            botId: botId,
+            userId: userId,
+            blockId: nextBlockId
+          });
+          
+          if (existingQuizStats) {
+            console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId} (from MongoDB)`);
+            // Добавляем в память для быстрого доступа
+            completedQuizzes.set(quizKey, true);
+            await ctx.reply('Вы уже прошли этот квест!');
+            return;
+          }
+        } catch (error) {
+          console.error('❌ Error checking existing quiz stats:', error);
+        }
                 
                 // Инициализируем состояние квиза
                 const quizState = {
@@ -1234,6 +1277,25 @@ function startLoyaltyChecker() {
 // Глобальная переменная для бота
 let bot;
 
+// Функция для загрузки завершенных квизов из MongoDB
+async function loadCompletedQuizzes() {
+  try {
+    console.log('=== [BOOT] Загружаем завершенные квизы из MongoDB ===');
+    const completedQuizzesFromDB = await QuizStats.find({ botId });
+    
+    console.log(`=== [BOOT] Найдено ${completedQuizzesFromDB.length} завершенных квизов ===`);
+    
+    for (const quizStat of completedQuizzesFromDB) {
+      const quizKey = `${quizStat.userId}_${quizStat.blockId}`;
+      completedQuizzes.set(quizKey, true);
+    }
+    
+    console.log(`=== [BOOT] Загружено ${completedQuizzes.size} завершенных квизов в память ===`);
+  } catch (error) {
+    console.error('❌ Error loading completed quizzes:', error);
+  }
+}
+
 async function startBot() {
   console.log('=== [BOOT] startBot вызван ===');
   bot = new Telegraf(token);
@@ -1260,6 +1322,9 @@ async function startBot() {
     }, errorWindow);
   };
   
+  // Загружаем завершенные квизы из MongoDB
+  await loadCompletedQuizzes();
+
   // Настраиваем обработчики
   setupBotHandlers(bot, state.blocks, state.connections);
 
