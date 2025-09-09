@@ -665,16 +665,24 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
     const deleteResult = await LoyaltyPromoCode.deleteMany({ botId, period });
     console.log(`[LOYALTY] Удалено ${deleteResult.deletedCount} существующих промокодов`);
     
-    // Добавляем новые промокоды - берем всю строку целиком
+    // Добавляем новые промокоды - берем только первый столбец (Code)
     const promoCodes = lines.map(line => {
-      const code = line.trim(); // Берем всю строку целиком
-      console.log(`[LOYALTY] Обработка строки: "${line.trim()}" -> код: "${code}"`);
+      const trimmedLine = line.trim();
+      // Пропускаем заголовки
+      if (trimmedLine.toLowerCase().includes('code') && trimmedLine.toLowerCase().includes('user')) {
+        console.log(`[LOYALTY] Пропускаем заголовок: "${trimmedLine}"`);
+        return null;
+      }
+      
+      // Берем только первый столбец (до первой запятой)
+      const code = trimmedLine.split(',')[0].trim();
+      console.log(`[LOYALTY] Обработка строки: "${trimmedLine}" -> код: "${code}"`);
       return {
         botId,
         period,
         code: code
       };
-    }).filter(promo => promo.code && promo.code.length > 0); // Фильтруем пустые коды
+    }).filter(promo => promo && promo.code && promo.code.length > 0); // Фильтруем пустые коды и null
     
     console.log(`[LOYALTY] Создано ${promoCodes.length} промокодов для вставки`);
     
