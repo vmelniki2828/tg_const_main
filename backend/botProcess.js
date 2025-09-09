@@ -1,14 +1,3 @@
-// Обработка необработанных ошибок
-process.on('uncaughtException', (error) => {
-  console.error('💥 Uncaught Exception in botProcess.js:', error);
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('💥 Unhandled Rejection in botProcess.js:', reason);
-  process.exit(1);
-});
-
 const { Telegraf } = require('telegraf');
 const { User, QuizStats, PromoCode, Loyalty, LoyaltyConfig, LoyaltyPromoCode } = require('./models');
 const mongoose = require('mongoose');
@@ -47,18 +36,12 @@ if (!token || !botId || !stateJson) {
 // Парсим состояние
 let state;
 try {
-  console.log('=== [BOOT] Парсинг editorState ===');
-  console.log('=== [BOOT] stateJson length:', stateJson ? stateJson.length : 'undefined');
   state = JSON.parse(stateJson);
   if (!state.blocks || !state.connections) {
     throw new Error('Invalid state format');
   }
-  console.log('=== [BOOT] editorState успешно распарсен ===');
-  console.log('=== [BOOT] blocks:', state.blocks.length);
-  console.log('=== [BOOT] connections:', state.connections ? state.connections.length : 0);
 } catch (error) {
-  console.error('=== [BOOT] Ошибка парсинга editorState:', error);
-  console.error('=== [BOOT] stateJson:', stateJson);
+  console.error('Failed to parse state:', error);
   process.exit(1);
 }
 
@@ -422,7 +405,7 @@ function setupBotHandlers(bot, blocks, connections) {
   }
 
   // Карта для отслеживания последней активности пользователей
-  // (объявлена выше в коде)
+  // const userLastActivity = new Map(); // Удалено
 
   // Очистка памяти ОТКЛЮЧЕНА - данные сохраняются навсегда
   // setInterval(cleanupOldUserData, 60 * 60 * 1000);
@@ -1059,33 +1042,15 @@ function setupBotHandlers(bot, blocks, connections) {
 async function updateBotCommands(bot, blocks) {
   const commands = blocks
     .filter(block => block.command)
-    .map(block => {
-      // Очищаем команду от недопустимых символов
-      let cleanCommand = block.command.replace(/^\//, ''); // Убираем / в начале
-      cleanCommand = cleanCommand.replace(/[^a-zA-Z0-9_]/g, '_'); // Заменяем недопустимые символы на _
-      cleanCommand = cleanCommand.replace(/_+/g, '_'); // Убираем множественные _
-      cleanCommand = cleanCommand.replace(/^_|_$/g, ''); // Убираем _ в начале и конце
-      
-      // Если команда стала пустой или слишком короткой, пропускаем
-      if (!cleanCommand || cleanCommand.length < 2) {
-        console.log(`⚠️ Пропускаем недопустимую команду: "${block.command}" -> "${cleanCommand}"`);
-        return null;
-      }
-      
-      return {
-        command: cleanCommand,
-        description: (block.description || '').substring(0, 50)
-      };
-    })
-    .filter(cmd => cmd !== null) // Убираем null команды
+    .map(block => ({
+      command: block.command.replace(/^\//, ''),
+      description: (block.description || '').substring(0, 50)
+    }))
     .sort((a, b) => a.command.localeCompare(b.command));
-    
-  console.log('Обработанные команды:', commands);
-  
   if (commands.length > 0) {
     await bot.telegram.setMyCommands(commands);
     console.log('Меню команд Telegram обновлено:', commands);
-  } else {
+            } else {
     await bot.telegram.setMyCommands([]);
     console.log('Меню команд Telegram очищено');
   }
@@ -1270,9 +1235,8 @@ function startLoyaltyChecker() {
 let bot;
 
 async function startBot() {
-  try {
-    console.log('=== [BOOT] startBot вызван ===');
-    bot = new Telegraf(token);
+  console.log('=== [BOOT] startBot вызван ===');
+  bot = new Telegraf(token);
   
   // Счетчик ошибок для автоматического перезапуска
   let errorCount = 0;
@@ -1416,11 +1380,6 @@ async function startBot() {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
     handleCriticalError(reason);
   });
-  } catch (error) {
-    console.error('💥 Critical error in startBot:', error);
-    console.error('💥 Stack trace:', error.stack);
-    process.exit(1);
-  }
 }
 
 // Проверка наличия пользователей при запуске
