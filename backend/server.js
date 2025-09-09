@@ -1098,12 +1098,32 @@ app.delete('/api/bots/:id', async (req, res) => {
       console.error('Error stopping bot process:', stopError);
     }
     try {
-      await Bot.deleteOne({ id: botId });
-      await User.deleteMany({ botId });
-      await QuizStats.deleteMany({ botId });
-      await PromoCode.deleteMany({ botId });
-      await Loyalty.deleteMany({ botId });
-      console.log('Bot and all related data deleted from MongoDB:', botId);
+      // Проверяем, что botId корректный перед удалением
+      if (!botId || botId === 'undefined' || botId === 'null') {
+        throw new Error('Invalid botId provided');
+      }
+      
+      console.log(`[DELETE] Удаляем данные для бота: ${botId}`);
+      
+      // Удаляем только данные конкретного бота
+      const deleteResults = await Promise.all([
+        Bot.deleteOne({ id: botId }),
+        User.deleteMany({ botId: botId }),
+        QuizStats.deleteMany({ botId: botId }),
+        PromoCode.deleteMany({ botId: botId }),
+        Loyalty.deleteMany({ botId: botId }),
+        LoyaltyPromoCode.deleteMany({ botId: botId })
+      ]);
+      
+      console.log(`[DELETE] Результаты удаления для бота ${botId}:`, {
+        bots: deleteResults[0].deletedCount,
+        users: deleteResults[1].deletedCount,
+        quizStats: deleteResults[2].deletedCount,
+        promoCodes: deleteResults[3].deletedCount,
+        loyalty: deleteResults[4].deletedCount,
+        loyaltyPromoCodes: deleteResults[5].deletedCount
+      });
+      
       res.json({ success: true });
     } catch (deleteError) {
       console.error('Error deleting bot or related data:', deleteError);
