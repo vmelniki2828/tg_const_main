@@ -55,6 +55,15 @@ mongoose.connection.on('error', (err) => {
 
 mongoose.connection.on('disconnected', () => {
   console.warn('⚠️ MongoDB отключена');
+  console.log('🔄 Попытка переподключения к MongoDB...');
+  setTimeout(() => {
+    mongoose.connect(MONGO_URI, { 
+      useNewUrlParser: true, 
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000
+    });
+  }, 5000);
 });
 
 // Обработка завершения процесса
@@ -335,8 +344,8 @@ app.get('/api/quiz-stats', async (req, res) => {
           });
           if (promo) {
             promoCode = promo.code;
-          }
-        } catch (error) {
+    }
+  } catch (error) {
           console.error('❌ Error fetching promo code:', error);
         }
       }
@@ -523,14 +532,14 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
     // Удаляем временный файл
     fs.unlinkSync(filePath);
 
-    res.json({ 
-      success: true, 
-      message: `Файл с промокодами успешно загружен для квиза ${quizId}`,
-      filename: req.file.originalname,
+      res.json({ 
+        success: true, 
+        message: `Файл с промокодами успешно загружен для квиза ${quizId}`,
+        filename: req.file.originalname,
       quizId: quizId,
       botId: botId,
       count: promoCodes.length
-    });
+      });
   } catch (error) {
     console.error('❌ Promo codes upload error:', error);
     res.status(500).json({ error: error.message });
@@ -563,9 +572,9 @@ app.delete('/api/quiz-promocodes/:quizId', async (req, res) => {
     
     console.log(`🎁 Удалено ${result.deletedCount} промокодов`);
     
-    res.json({ 
-      success: true, 
-      message: `Промокоды для квиза ${quizId} успешно удалены`,
+      res.json({ 
+        success: true, 
+        message: `Промокоды для квиза ${quizId} успешно удалены`,
       quizId: quizId,
       botId: botId,
       deletedCount: result.deletedCount
@@ -706,7 +715,7 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
       // Берем только первый столбец (до первой запятой)
       const code = trimmedLine.split(',')[0].trim();
       console.log(`[LOYALTY] Обработка строки: "${trimmedLine}" -> код: "${code}"`);
-      return {
+    return {
         botId,
         period,
         code: code
@@ -1127,17 +1136,54 @@ app.post('/api/bots/:id/deactivate', async (req, res) => {
   }
 });
 
+// Проверка состояния MongoDB
+app.get('/api/health', async (req, res) => {
+  try {
+    const mongoState = mongoose.connection.readyState;
+    const mongoStateText = {
+      0: 'disconnected',
+      1: 'connected', 
+      2: 'connecting',
+      3: 'disconnecting'
+    }[mongoState] || 'unknown';
+    
+    res.json({
+      mongodb: {
+        state: mongoState,
+        stateText: mongoStateText,
+        host: mongoose.connection.host,
+        port: mongoose.connection.port,
+        name: mongoose.connection.name
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Health check failed', details: error.message });
+  }
+});
+
 // Получение списка ботов
 app.get('/api/bots', async (req, res) => {
   try {
+    console.log(`[BOT_GET] Запрос списка ботов`);
+    console.log(`[BOT_GET] Состояние MongoDB: ${mongoose.connection.readyState} (1=connected, 2=connecting, 0=disconnected)`);
+    
+    if (mongoose.connection.readyState !== 1) {
+      console.error('[BOT_GET] MongoDB не подключена!');
+      return res.status(500).json({ error: 'MongoDB not connected' });
+    }
+    
     const bots = await Bot.find({});
+    console.log(`[BOT_GET] Найдено ботов в MongoDB: ${bots.length}`);
     // Добавляем информацию о том, какие боты реально запущены
     const botsWithStatus = bots.map(bot => ({
       ...bot.toObject(),
       isRunning: activeProcesses.has(bot.id)
     }));
+    console.log(`[BOT_GET] Активных процессов: ${activeProcesses.size}`);
     res.json({ bots: botsWithStatus, activeBot: null });
   } catch (error) {
+    console.error('[BOT_GET] Ошибка при получении ботов:', error);
     res.status(500).json({ error: 'Failed to load bots', details: error.message });
   }
 });
@@ -1188,7 +1234,16 @@ app.post('/api/bots', async (req, res) => {
       }
     };
     // Сохраняем только в MongoDB
-    await Bot.create(newBot);
+    console.log(`[BOT_CREATE] Создаем бота с ID: ${newBot.id}`);
+    console.log(`[BOT_CREATE] Состояние MongoDB: ${mongoose.connection.readyState} (1=connected, 2=connecting, 0=disconnected)`);
+    
+    if (mongoose.connection.readyState !== 1) {
+      console.error('[BOT_CREATE] MongoDB не подключена!');
+      return res.status(500).json({ error: 'MongoDB not connected' });
+    }
+    
+    const createdBot = await Bot.create(newBot);
+    console.log(`[BOT_CREATE] Бот успешно создан в MongoDB:`, { id: createdBot.id, name: createdBot.name });
     res.json({ id: newBot.id, name: newBot.name, isActive: newBot.isActive });
   } catch (error) {
     console.error('Failed to create bot:', error);
@@ -1242,9 +1297,35 @@ app.delete('/api/bots/:id', async (req, res) => {
       }
       
       // Критическая проверка - предотвращаем удаление всех данных
-      if (botId === 'all' || botId === '*' || botId === 'undefined' || botId === 'null') {
+      if (botId === 'all' || botId === '*' || botId === 'undefined' || botId === 'null' || !botId) {
         throw new Error('КРИТИЧЕСКАЯ ОШИБКА: Попытка удалить все данные! Операция заблокирована.');
       }
+      
+      // Дополнительная проверка на случайные значения
+      if (botId.length < 10 || botId.includes(' ') || botId.includes('..')) {
+        throw new Error('КРИТИЧЕСКАЯ ОШИБКА: Подозрительный botId! Операция заблокирована.');
+      }
+      
+      // Создаем резервную копию перед удалением
+      console.log(`[BACKUP] Создаем резервную копию данных для бота ${botId}...`);
+      const backupData = {
+        bot: await Bot.findOne({ id: botId }),
+        users: await User.find({ botId }),
+        quizStats: await QuizStats.find({ botId }),
+        promoCodes: await PromoCode.find({ botId }),
+        loyalties: await Loyalty.find({ botId }),
+        loyaltyPromoCodes: await LoyaltyPromoCode.find({ botId })
+      };
+      
+      // Сохраняем резервную копию в файл
+      const fs = require('fs');
+      const backupDir = './backend/backups';
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+      const backupFile = `${backupDir}/backup_${botId}_${Date.now()}.json`;
+      fs.writeFileSync(backupFile, JSON.stringify(backupData, null, 2));
+      console.log(`[BACKUP] Резервная копия сохранена: ${backupFile}`);
       
       const deleteResults = await Promise.all([
         Bot.deleteOne({ id: botId }),
@@ -1264,7 +1345,7 @@ app.delete('/api/bots/:id', async (req, res) => {
         loyaltyPromoCodes: deleteResults[5].deletedCount
       });
       
-      res.json({ success: true });
+    res.json({ success: true });
     } catch (deleteError) {
       console.error('Error deleting bot or related data:', deleteError);
       res.status(500).json({ error: 'Failed to delete bot or related data', details: deleteError.message });
@@ -1417,7 +1498,7 @@ app.post('/api/export-quiz-stats', async (req, res) => {
         ].join(','));
       });
     });
-
+    
     const csvContent = csvSections.join('\r\n');
     const fileName = `quiz-stats-${new Date().toISOString().split('T')[0]}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -1494,7 +1575,7 @@ app.get('/api/health', (req, res) => {
     })
     .catch(err => {
       console.error('Error getting bot count:', err);
-      res.json(health);
+  res.json(health);
     });
 });
 
@@ -1562,7 +1643,7 @@ app.listen(PORT, HOST, async () => {
   await new Promise((resolve) => {
     if (mongoose.connection.readyState === 1) {
       resolve();
-    } else {
+      } else {
       mongoose.connection.once('connected', resolve);
     }
   });

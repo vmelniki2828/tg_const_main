@@ -398,69 +398,19 @@ function setupBotHandlers(bot, blocks, connections) {
   // Карта для отслеживания завершенных квизов пользователей
   // const completedQuizzes = new Map(); // Удалено
 
-  // Функция для очистки старых данных пользователей (оптимизация памяти)
+  // Функция для очистки старых данных пользователей - ОТКЛЮЧЕНА
   function cleanupOldUserData() {
-    const now = Date.now();
-    const maxAge = 24 * 60 * 60 * 1000; // 24 часа
-    
-    console.log(`🧹 Starting memory cleanup...`);
-    console.log(`🧹 Before cleanup - Active users: ${userCurrentBlock.size}, Quiz states: ${userQuizStates.size}, History: ${userNavigationHistory.size}`);
-    
-    // Очищаем старые состояния квизов
-    let cleanedQuizStates = 0;
-    for (const [userId, quizState] of userQuizStates.entries()) {
-      if (now - quizState.startTime > maxAge) {
-        userQuizStates.delete(userId);
-        cleanedQuizStates++;
-      }
-    }
-    
-    // Очищаем неактивных пользователей (не было активности более 30 минут)
-    const inactiveThreshold = 30 * 60 * 1000; // 30 минут
-    let cleanedUsers = 0;
-    for (const [userId, lastActivity] of userLastActivity.entries()) {
-      if (now - lastActivity > inactiveThreshold) {
-        userCurrentBlock.delete(userId);
-        userNavigationHistory.delete(userId);
-        userLastActivity.delete(userId);
-        completedQuizzes.delete(userId);
-        cleanedUsers++;
-      }
-    }
-    
-    // Принудительная очистка если слишком много пользователей
-    if (userCurrentBlock.size > 1000) {
-      console.log(`🧹 Too many users (${userCurrentBlock.size}), forcing cleanup...`);
-      const userArray = Array.from(userCurrentBlock.entries());
-      const toRemove = userArray.slice(0, 500); // Удаляем 500 самых старых
-      
-      for (const [userId] of toRemove) {
-        userCurrentBlock.delete(userId);
-        userNavigationHistory.delete(userId);
-        userLastActivity.delete(userId);
-        completedQuizzes.delete(userId);
-        userQuizStates.delete(userId);
-      }
-      console.log(`🧹 Forced cleanup: removed ${toRemove.length} users`);
-    }
-    
-    console.log(`🧹 Memory cleanup completed. Cleaned: ${cleanedQuizStates} quiz states, ${cleanedUsers} users`);
-    console.log(`🧹 After cleanup - Active users: ${userCurrentBlock.size}, Quiz states: ${userQuizStates.size}, History: ${userNavigationHistory.size}`);
-    
-    // Принудительная сборка мусора
-    if (global.gc) {
-      global.gc();
-      console.log(`🧹 Garbage collection triggered`);
-    }
+    console.log(`🧹 Memory cleanup DISABLED - keeping all user data`);
+    console.log(`📊 Current stats - Active users: ${userCurrentBlock.size}, Quiz states: ${userQuizStates.size}, History: ${userNavigationHistory.size}`);
   }
 
   // Карта для отслеживания последней активности пользователей
   // const userLastActivity = new Map(); // Удалено
 
-  // Запускаем очистку памяти каждые 15 минут (более часто)
-  setInterval(cleanupOldUserData, 15 * 60 * 1000);
+  // Очистка памяти ОТКЛЮЧЕНА - данные сохраняются навсегда
+  // setInterval(cleanupOldUserData, 60 * 60 * 1000);
   
-  // Дополнительная очистка при высоком использовании памяти
+  // Мониторинг памяти БЕЗ очистки - только логирование
   setInterval(() => {
     const memUsage = process.memoryUsage();
     const memPercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
@@ -468,27 +418,28 @@ function setupBotHandlers(bot, blocks, connections) {
     console.log(`📊 Memory usage: ${memPercent.toFixed(1)}% (${Math.round(memUsage.heapUsed / 1024 / 1024)}MB / ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB)`);
     console.log(`📊 Active users: ${userCurrentBlock.size}, Quiz states: ${userQuizStates.size}, History: ${userNavigationHistory.size}`);
     
-    if (memPercent > 80) {
-      console.log(`⚠️ High memory usage: ${memPercent.toFixed(1)}%, triggering cleanup`);
-      cleanupOldUserData();
-    }
+    // Очистка памяти ОТКЛЮЧЕНА - данные сохраняются навсегда
+    // if (memPercent > 80) {
+    //   console.log(`⚠️ High memory usage: ${memPercent.toFixed(1)}%, triggering cleanup`);
+    //   cleanupOldUserData();
+    // }
     
-    // Проверка на утечку памяти
-    if (userCurrentBlock.size > 2000) {
-      console.log(`🚨 Too many users (${userCurrentBlock.size}), forcing aggressive cleanup`);
-      const userArray = Array.from(userCurrentBlock.entries());
-      const toRemove = userArray.slice(0, 1000); // Удаляем 1000 самых старых
-      
-      for (const [userId] of toRemove) {
-        userCurrentBlock.delete(userId);
-        userNavigationHistory.delete(userId);
-        userLastActivity.delete(userId);
-        completedQuizzes.delete(userId);
-        userQuizStates.delete(userId);
-      }
-      console.log(`🧹 Aggressive cleanup: removed ${toRemove.length} users`);
-    }
-  }, 5 * 60 * 1000); // Каждые 5 минут
+    // Очистка памяти ОТКЛЮЧЕНА - данные сохраняются навсегда
+    // if (userCurrentBlock.size > 10000) {
+    //   console.log(`🚨 Too many users (${userCurrentBlock.size}), forcing aggressive cleanup`);
+    //   const userArray = Array.from(userCurrentBlock.entries());
+    //   const toRemove = userArray.slice(0, 2000);
+    //   
+    //   for (const [userId] of toRemove) {
+    //     userCurrentBlock.delete(userId);
+    //     userNavigationHistory.delete(userId);
+    //     userLastActivity.delete(userId);
+    //     completedQuizzes.delete(userId);
+    //     userQuizStates.delete(userId);
+    //   }
+    //   console.log(`🧹 Aggressive cleanup: removed ${toRemove.length} users`);
+    // }
+  }, 30 * 60 * 1000); // Каждые 30 минут - только мониторинг
 
   // Функция для создания клавиатуры с кнопкой "Назад"
   function createKeyboardWithBack(buttons, userId, currentBlockId) {
@@ -914,11 +865,10 @@ function setupBotHandlers(bot, blocks, connections) {
         console.log(`🔍 DEBUG: Current block type: ${currentBlock.type}`);
         console.log(`🔍 DEBUG: User history:`, userNavigationHistory.get(userId));
         
-        // Если пользователь в квизе, очищаем состояние квиза
+        // Если пользователь в квизе, НЕ очищаем состояние квиза (сохраняем для продолжения)
         const quizState = userQuizStates.get(userId);
         if (quizState && !quizState.isCompleted) {
-          console.log(`🔍 DEBUG: Exiting quiz, clearing quiz state`);
-                  userQuizStates.delete(userId);
+          console.log(`🔍 DEBUG: User in quiz, keeping quiz state for continuation`);
         }
         
         const userHistory = userNavigationHistory.get(userId);
