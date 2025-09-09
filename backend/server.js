@@ -665,9 +665,9 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
     const deleteResult = await LoyaltyPromoCode.deleteMany({ botId, period });
     console.log(`[LOYALTY] Удалено ${deleteResult.deletedCount} существующих промокодов`);
     
-    // Добавляем новые промокоды с правильной обработкой CSV (как в квизах)
+    // Добавляем новые промокоды - берем всю строку целиком
     const promoCodes = lines.map(line => {
-      const [code] = line.split(',').map(field => field.trim());
+      const code = line.trim(); // Берем всю строку целиком
       console.log(`[LOYALTY] Обработка строки: "${line.trim()}" -> код: "${code}"`);
       return {
         botId,
