@@ -757,6 +757,102 @@ app.delete('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
   }
 });
 
+// Просмотр активных процессов ботов
+app.get('/api/active-processes', async (req, res) => {
+  try {
+    const processes = Array.from(activeProcesses.entries()).map(([botId, process]) => ({
+      botId,
+      isRunning: !process.killed && process.exitCode === null,
+      killed: process.killed,
+      exitCode: process.exitCode,
+      pid: process.pid
+    }));
+    
+    res.json({
+      success: true,
+      totalProcesses: activeProcesses.size,
+      processes: processes
+    });
+  } catch (error) {
+    console.error('[ACTIVE_PROCESSES] Ошибка получения процессов:', error);
+    res.status(500).json({ error: 'Failed to get active processes', details: error.message });
+  }
+});
+
+// Остановка всех ботов и очистка процессов
+app.post('/api/stop-all-bots', async (req, res) => {
+  try {
+    console.log('[STOP_ALL] Запрос на остановку всех ботов');
+    
+    const activeProcessesCount = activeProcesses.size;
+    console.log(`[STOP_ALL] Найдено ${activeProcessesCount} активных процессов`);
+    
+    if (activeProcessesCount === 0) {
+      return res.json({ 
+        success: true, 
+        message: 'Нет активных процессов для остановки',
+        stoppedCount: 0
+      });
+    }
+    
+    let stoppedCount = 0;
+    const stopPromises = [];
+    
+    // Останавливаем все активные процессы
+    for (const [botId, process] of activeProcesses.entries()) {
+      console.log(`[STOP_ALL] Останавливаем бота ${botId}...`);
+      
+      const stopPromise = new Promise((resolve) => {
+        if (process.killed || process.exitCode !== null) {
+          console.log(`[STOP_ALL] Бот ${botId} уже остановлен`);
+          activeProcesses.delete(botId);
+          stoppedCount++;
+          resolve();
+          return;
+        }
+        
+        // Останавливаем процесс
+        process.kill('SIGTERM');
+        
+        // Ждем завершения процесса
+        const timeout = setTimeout(() => {
+          console.log(`[STOP_ALL] Бот ${botId} не остановился, принудительно завершаем`);
+          process.kill('SIGKILL');
+          activeProcesses.delete(botId);
+          stoppedCount++;
+          resolve();
+        }, 5000);
+        
+        process.on('exit', (code) => {
+          clearTimeout(timeout);
+          activeProcesses.delete(botId);
+          console.log(`[STOP_ALL] Бот ${botId} остановлен с кодом ${code}`);
+          stoppedCount++;
+          resolve();
+        });
+      });
+      
+      stopPromises.push(stopPromise);
+    }
+    
+    // Ждем остановки всех процессов
+    await Promise.all(stopPromises);
+    
+    console.log(`[STOP_ALL] Остановлено ${stoppedCount} ботов`);
+    console.log(`[STOP_ALL] Осталось активных процессов: ${activeProcesses.size}`);
+    
+    res.json({ 
+      success: true, 
+      message: `Остановлено ${stoppedCount} ботов`,
+      stoppedCount: stoppedCount,
+      remainingProcesses: activeProcesses.size
+    });
+  } catch (error) {
+    console.error('[STOP_ALL] Ошибка остановки ботов:', error);
+    res.status(500).json({ error: 'Failed to stop bots', details: error.message });
+  }
+});
+
 // Восстановление ботов из резервной копии
 app.post('/api/restore-bots', async (req, res) => {
   try {
