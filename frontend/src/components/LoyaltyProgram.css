@@ -268,6 +268,23 @@
   background: #5a6268;
 }
 
+.export-btn {
+  background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.export-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(23, 162, 184, 0.3);
+}
+
 .error-message {
   background: #f8d7da;
   color: #721c24;
@@ -616,7 +633,7 @@
     flex-direction: column;
   }
   
-  .save-btn, .cancel-btn {
+  .export-btn, .save-btn, .cancel-btn {
     width: 100%;
   }
   

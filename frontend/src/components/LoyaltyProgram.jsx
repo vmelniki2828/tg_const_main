@@ -139,6 +139,30 @@ const LoyaltyProgram = ({ botId, onClose }) => {
     }
   };
 
+  const handleExportStats = async () => {
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/export-loyalty-stats/${botId}`);
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `loyalty-stats-${botId}-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        alert('✅ Статистика программы лояльности скачана!');
+      } else {
+        const errorData = await response.json();
+        alert('Ошибка: ' + errorData.error);
+      }
+    } catch (error) {
+      alert('Ошибка скачивания: ' + error.message);
+    }
+  };
+
   const getPeriodLabel = (period) => {
     const labels = {
       '1m': '1 минута',
@@ -271,6 +295,12 @@ const LoyaltyProgram = ({ botId, onClose }) => {
           </div>
 
           <div className="loyalty-actions">
+            <button 
+              className="export-btn" 
+              onClick={handleExportStats}
+            >
+              📊 Скачать статистику CSV
+            </button>
             <button 
               className="save-btn" 
               onClick={handleSave}

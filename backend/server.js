@@ -712,6 +712,94 @@ app.delete('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
   }
 });
 
+// Эндпоинт для экспорта статистики программы лояльности в CSV
+app.get('/api/export-loyalty-stats/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    console.log(`[LOYALTY] Экспорт статистики программы лояльности для бота ${botId}`);
+    
+    // Получаем всех пользователей с их данными лояльности
+    const users = await User.find({ botId });
+    const loyaltyRecords = await Loyalty.find({ botId });
+    const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+    
+    // Создаем Map для быстрого поиска записей лояльности по userId
+    const loyaltyMap = new Map();
+    loyaltyRecords.forEach(record => {
+      loyaltyMap.set(record.userId, record);
+    });
+    
+    // Формируем CSV данные
+    let csvContent = 'User ID,Username,First Name,Last Name,Subscribed At,First Subscribed At,Is Subscribed,1m Reward,24h Reward,7d Reward,30d Reward,90d Reward,180d Reward,360d Reward\n';
+    
+    users.forEach(user => {
+      const loyaltyRecord = loyaltyMap.get(user.userId) || { rewards: {} };
+      
+      const row = [
+        user.userId || '',
+        (user.username || '').replace(/,/g, ';'), // Заменяем запятые на точку с запятой
+        (user.firstName || '').replace(/,/g, ';'),
+        (user.lastName || '').replace(/,/g, ';'),
+        user.subscribedAt ? new Date(user.subscribedAt).toISOString() : '',
+        user.firstSubscribedAt ? new Date(user.firstSubscribedAt).toISOString() : '',
+        user.isSubscribed ? 'Да' : 'Нет',
+        loyaltyRecord.rewards['1m'] ? 'Да' : 'Нет',
+        loyaltyRecord.rewards['24h'] ? 'Да' : 'Нет',
+        loyaltyRecord.rewards['7d'] ? 'Да' : 'Нет',
+        loyaltyRecord.rewards['30d'] ? 'Да' : 'Нет',
+        loyaltyRecord.rewards['90d'] ? 'Да' : 'Нет',
+        loyaltyRecord.rewards['180d'] ? 'Да' : 'Нет',
+        loyaltyRecord.rewards['360d'] ? 'Да' : 'Нет'
+      ].join(',');
+      
+      csvContent += row + '\n';
+    });
+    
+    // Добавляем статистику по промокодам
+    csvContent += '\n\nПромокоды программы лояльности:\n';
+    csvContent += 'Period,Total Codes,Available Codes,Used Codes\n';
+    
+    const periods = ['1m', '24h', '7d', '30d', '90d', '180d', '360d'];
+    for (const period of periods) {
+      const promoCodes = await LoyaltyPromoCode.find({ botId, period });
+      const total = promoCodes.length;
+      const available = promoCodes.filter(p => !p.activated).length;
+      const used = promoCodes.filter(p => p.activated).length;
+      
+      csvContent += `${period},${total},${available},${used}\n`;
+    }
+    
+    // Добавляем информацию о конфигурации
+    if (loyaltyConfig) {
+      csvContent += '\n\nКонфигурация программы лояльности:\n';
+      csvContent += 'Period,Enabled,Message\n';
+      
+      periods.forEach(period => {
+        const config = loyaltyConfig.messages[period];
+        if (config) {
+          const message = (config.message || '').replace(/,/g, ';').replace(/\n/g, ' ');
+          csvContent += `${period},${config.enabled ? 'Да' : 'Нет'},"${message}"\n`;
+        }
+      });
+    }
+    
+    // Устанавливаем заголовки для скачивания файла
+    const filename = `loyalty-stats-${botId}-${new Date().toISOString().split('T')[0]}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    
+    // Отправляем CSV файл
+    res.send('\ufeff' + csvContent); // BOM для корректного отображения кириллицы в Excel
+    
+    console.log(`[LOYALTY] Статистика экспортирована: ${users.length} пользователей, ${loyaltyRecords.length} записей лояльности`);
+    
+  } catch (error) {
+    console.error('❌ Error exporting loyalty stats:', error);
+    res.status(500).json({ error: 'Failed to export loyalty statistics' });
+  }
+});
+
 // Старые функции удалены - теперь используется MongoDB напрямую
 
 // Функция для восстановления статистики из бэкапа
