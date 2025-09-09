@@ -714,8 +714,8 @@ function setupBotHandlers(bot, blocks, connections) {
               if (existingQuizStats) {
                 console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId}`);
                 await ctx.reply('Вы уже прошли этот квест!');
-                return;
-              }
+            return;
+          }
             } catch (error) {
               console.error('❌ Error checking existing quiz stats:', error);
             }
@@ -734,10 +734,10 @@ function setupBotHandlers(bot, blocks, connections) {
         const quizBlock = dialogMap.get(quizState.blockId);
         if (!quizBlock || quizBlock.type !== 'quiz') {
           console.log(`❌ Quiz block not found or not a quiz: ${quizState.blockId}`);
-          userQuizStates.delete(userId);
-          return;
-        }
-        
+            userQuizStates.delete(userId);
+            return;
+          }
+          
         const questions = quizBlock.questions || [];
         const currentQuestion = questions[quizState.currentQuestionIndex];
         
@@ -753,7 +753,7 @@ function setupBotHandlers(bot, blocks, connections) {
         
         if (alreadyAnswered) {
           console.log(`⚠️ User already answered question ${quizState.currentQuestionIndex}, ignoring duplicate`);
-          return;
+              return;
         }
         
         // Ищем кнопку с ответом
@@ -761,12 +761,12 @@ function setupBotHandlers(bot, blocks, connections) {
         if (!answerButton) {
           console.log(`❌ Answer button not found for: ${messageText}`);
           await ctx.reply('Пожалуйста, выберите один из предложенных вариантов ответа');
-          return;
-        }
-        
+            return;
+          }
+          
         console.log(`🔍 DEBUG: Answer button found:`, answerButton);
-        
-        // Сохраняем ответ
+          
+              // Сохраняем ответ
         quizState.answers.push({
           questionIndex: quizState.currentQuestionIndex,
           answer: messageText,
@@ -829,7 +829,7 @@ function setupBotHandlers(bot, blocks, connections) {
             );
             
             console.log(`✅ Quiz stats saved to MongoDB for user ${userId}`);
-          } catch (error) {
+                  } catch (error) {
             console.error('❌ Error saving quiz stats:', error);
             console.error('❌ Error details:', error.message);
           }
@@ -858,7 +858,7 @@ function setupBotHandlers(bot, blocks, connections) {
                  
                  promoCode = availablePromo.code;
                  console.log(`🎁 Выдан промокод ${promoCode} пользователю ${userId} за квиз ${quizState.blockId}`);
-               } else {
+                      } else {
                  console.log(`🎁 Нет доступных промокодов для квиза ${quizState.blockId}`);
                }
              } catch (error) {
@@ -875,7 +875,7 @@ function setupBotHandlers(bot, blocks, connections) {
              const promoMessage = promoCode ? `\n\n🎁 **Ваш промокод:** \`${promoCode}\`` : '';
              
              finalMessage = successMessage + statsMessage + promoMessage;
-           } else {
+                  } else {
              // Не все ответы правильные - показываем сообщение о неудаче
              finalMessage = `${quizBlock.finalFailureMessage || '❌ Квест завершен. Попробуйте еще раз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
            }
@@ -918,7 +918,7 @@ function setupBotHandlers(bot, blocks, connections) {
         const quizState = userQuizStates.get(userId);
         if (quizState && !quizState.isCompleted) {
           console.log(`🔍 DEBUG: Exiting quiz, clearing quiz state`);
-          userQuizStates.delete(userId);
+                  userQuizStates.delete(userId);
         }
         
         const userHistory = userNavigationHistory.get(userId);
@@ -939,12 +939,12 @@ function setupBotHandlers(bot, blocks, connections) {
           } else {
             console.log(`❌ Previous block ${previousBlockId} not found in dialogMap`);
           }
-        } else {
+                  } else {
           console.log(`❌ No user history found`);
-        }
-        
+                  }
+                  
         await ctx.reply('Нет предыдущего блока');
-        return;
+                  return;
       }
       
       // Обработка обычных блоков с кнопками
@@ -998,27 +998,27 @@ function setupBotHandlers(bot, blocks, connections) {
       // Добавляем текущий блок в историю (только если следующий блок не квиз)
       if (nextBlock.type !== 'quiz') {
               let userHistory = userNavigationHistory.get(userId) || [];
-        userHistory.push(currentBlockId);
+              userHistory.push(currentBlockId);
               userNavigationHistory.set(userId, userHistory);
       }
-      
-      // Обновляем текущий блок пользователя
-      userCurrentBlock.set(userId, nextBlockId);
+              
+              // Обновляем текущий блок пользователя
+              userCurrentBlock.set(userId, nextBlockId);
       console.log(`🔍 DEBUG: Updated user current block to: ${nextBlockId}`);
       
       // Если следующий блок - квиз, инициализируем состояние квиза и показываем первый вопрос
       if (nextBlock.type === 'quiz') {
         console.log(`🔍 DEBUG: Starting quiz for user ${userId}`);
-        
-        // Инициализируем состояние квиза
-        const quizState = {
+                
+                // Инициализируем состояние квиза
+                const quizState = {
           blockId: nextBlockId,
-          currentQuestionIndex: 0,
+                  currentQuestionIndex: 0,
           startTime: Date.now(),
-          answers: [],
+                  answers: [],
           isCompleted: false
-        };
-        userQuizStates.set(userId, quizState);
+                };
+                userQuizStates.set(userId, quizState);
         console.log(`🔍 DEBUG: Quiz state initialized:`, quizState);
         
         // Показываем первый вопрос квиза
@@ -1100,7 +1100,7 @@ async function updateBotCommands(bot, blocks) {
   if (commands.length > 0) {
     await bot.telegram.setMyCommands(commands);
     console.log('Меню команд Telegram обновлено:', commands);
-  } else {
+            } else {
     await bot.telegram.setMyCommands([]);
     console.log('Меню команд Telegram очищено');
   }
@@ -1131,8 +1131,8 @@ function startLoyaltyChecker() {
     // Проверяем, что бот инициализирован
     if (!bot) {
       console.log('[LOYALTY] Бот еще не инициализирован, пропускаем проверку');
-      return;
-    }
+              return;
+            }
     try {
       console.log('[LOYALTY] Периодическая проверка программы лояльности');
       
@@ -1144,8 +1144,8 @@ function startLoyaltyChecker() {
       }
       if (!loyaltyConfig.isEnabled) {
         console.log('[LOYALTY] Программа лояльности отключена');
-        return;
-      }
+                return;
+              }
       
       console.log('[LOYALTY] Программа лояльности включена, проверяем пользователей');
       

@@ -192,35 +192,35 @@ const LoyaltyProgram = ({ botId, onClose }) => {
             <div className="loyalty-periods">
               <h3>Настройка автосообщений по периодам подписки:</h3>
               
-              {Object.entries(loyaltyConfig.messages).map(([period, config]) => (
-                <div key={period} className="period-config">
-                  <div className="period-header">
-                    <label className="period-toggle">
-                      <input
-                        type="checkbox"
-                        checked={config.enabled}
-                        onChange={(e) => handleMessageChange(period, 'enabled', e.target.checked)}
-                      />
-                      <span className="period-label">{getPeriodLabel(period)}</span>
-                    </label>
-                  </div>
-
-                  {config.enabled && (
-                    <div className="period-settings">
-                      <div className="message-field">
-                        <label>Сообщение поздравления:</label>
-                        <textarea
-                          value={config.message}
-                          onChange={(e) => handleMessageChange(period, 'message', e.target.value)}
-                          placeholder={`Поздравляем! Вы с нами уже ${getPeriodLabel(period)}! 🎉`}
-                          rows={3}
+              <div className="periods-grid">
+                {Object.entries(loyaltyConfig.messages).map(([period, config]) => (
+                  <div key={period} className="period-card">
+                    <div className="period-header">
+                      <label className="period-toggle">
+                        <input
+                          type="checkbox"
+                          checked={config.enabled}
+                          onChange={(e) => handleMessageChange(period, 'enabled', e.target.checked)}
                         />
-                      </div>
+                        <span className="period-label">{getPeriodLabel(period)}</span>
+                      </label>
+                    </div>
 
-                      <div className="promocode-section">
-                        <div className="promocode-header">
-                          <label>Промокоды для подарка:</label>
-                          <div className="promocode-actions">
+                    {config.enabled && (
+                      <div className="period-settings">
+                        <div className="message-field">
+                          <label>Сообщение поздравления:</label>
+                          <textarea
+                            value={config.message}
+                            onChange={(e) => handleMessageChange(period, 'message', e.target.value)}
+                            placeholder={`Поздравляем! Вы с нами уже ${getPeriodLabel(period)}! 🎉`}
+                            rows={3}
+                          />
+                        </div>
+
+                        <div className="promocode-section">
+                          <div className="promocode-header">
+                            <label>Промокоды для подарка:</label>
                             <button
                               type="button"
                               className="manage-promocodes-btn"
@@ -229,32 +229,34 @@ const LoyaltyProgram = ({ botId, onClose }) => {
                                 fetchLoyaltyPromoCodes(period);
                               }}
                             >
-                              Управление промокодами
+                              🎁 Управление
                             </button>
                           </div>
+                          
+                          {loyaltyPromoCodes[period] && (
+                            <div className="promocode-stats">
+                              <div className="stats-row">
+                                <div className="stat-item">
+                                  <span className="stat-label">Всего:</span>
+                                  <span className="stat-value">{loyaltyPromoCodes[period].stats.total}</span>
+                                </div>
+                                <div className="stat-item">
+                                  <span className="stat-label">Доступно:</span>
+                                  <span className="stat-value available">{loyaltyPromoCodes[period].stats.available}</span>
+                                </div>
+                                <div className="stat-item">
+                                  <span className="stat-label">Использовано:</span>
+                                  <span className="stat-value used">{loyaltyPromoCodes[period].stats.used}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        
-                        {loyaltyPromoCodes[period] && (
-                          <div className="promocode-stats">
-                            <div className="stat-item">
-                              <span className="stat-label">Всего:</span>
-                              <span className="stat-value">{loyaltyPromoCodes[period].stats.total}</span>
-                            </div>
-                            <div className="stat-item">
-                              <span className="stat-label">Доступно:</span>
-                              <span className="stat-value available">{loyaltyPromoCodes[period].stats.available}</span>
-                            </div>
-                            <div className="stat-item">
-                              <span className="stat-label">Использовано:</span>
-                              <span className="stat-value used">{loyaltyPromoCodes[period].stats.used}</span>
-                            </div>
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -301,6 +303,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
 // Компонент для управления промокодами
 const LoyaltyPromoCodeManager = ({ botId, period, periodLabel, onClose, onUpload, onDelete, promoCodes }) => {
   const [file, setFile] = useState(null);
+  const [showPromoCodes, setShowPromoCodes] = useState(false);
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
@@ -315,7 +318,7 @@ const LoyaltyPromoCodeManager = ({ botId, period, periodLabel, onClose, onUpload
 
   return (
     <div className="loyalty-overlay">
-      <div className="loyalty-modal">
+      <div className="loyalty-modal promocode-manager-modal">
         <div className="loyalty-header">
           <h2>🎁 Промокоды для {periodLabel}</h2>
           <button className="close-btn" onClick={onClose}>✕</button>
@@ -323,26 +326,28 @@ const LoyaltyPromoCodeManager = ({ botId, period, periodLabel, onClose, onUpload
 
         <div className="loyalty-content">
           <div className="promocode-upload">
-            <h3>Загрузить промокоды</h3>
+            <h3>📤 Загрузить промокоды</h3>
             <p>Загрузите CSV файл с промокодами (один промокод на строку)</p>
-            <input
-              type="file"
-              accept=".csv"
-              onChange={handleFileChange}
-              className="file-input"
-            />
-            <button 
-              onClick={handleUpload}
-              disabled={!file}
-              className="upload-btn"
-            >
-              Загрузить
-            </button>
+            <div className="upload-section">
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileChange}
+                className="file-input"
+              />
+              <button 
+                onClick={handleUpload}
+                disabled={!file}
+                className="upload-btn"
+              >
+                {file ? `📁 Загрузить ${file.name}` : '📁 Выберите файл'}
+              </button>
+            </div>
           </div>
 
           {promoCodes && (
             <div className="promocode-stats">
-              <h3>Статистика промокодов</h3>
+              <h3>📊 Статистика промокодов</h3>
               <div className="stats-grid">
                 <div className="stat-card">
                   <div className="stat-number">{promoCodes.stats.total}</div>
@@ -357,6 +362,36 @@ const LoyaltyPromoCodeManager = ({ botId, period, periodLabel, onClose, onUpload
                   <div className="stat-label">Использовано</div>
                 </div>
               </div>
+              
+              <div className="promocode-list-section">
+                <div className="promocode-list-header">
+                  <h4>📋 Список промокодов</h4>
+                  <button 
+                    className="toggle-list-btn"
+                    onClick={() => setShowPromoCodes(!showPromoCodes)}
+                  >
+                    {showPromoCodes ? '🔼 Скрыть' : '🔽 Показать'}
+                  </button>
+                </div>
+                
+                {showPromoCodes && promoCodes.promoCodes && (
+                  <div className="promocode-list">
+                    {promoCodes.promoCodes.map((promo, index) => (
+                      <div key={index} className={`promocode-item ${promo.activated ? 'used' : 'available'}`}>
+                        <span className="promocode-code">{promo.code}</span>
+                        <span className="promocode-status">
+                          {promo.activated ? '✅ Использован' : '🆕 Доступен'}
+                        </span>
+                        {promo.activated && (
+                          <span className="promocode-user">
+                            Пользователь: {promo.activatedBy}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -365,7 +400,7 @@ const LoyaltyPromoCodeManager = ({ botId, period, periodLabel, onClose, onUpload
               onClick={onDelete}
               className="delete-btn"
             >
-              Удалить все промокоды
+              🗑️ Удалить все промокоды
             </button>
             <button 
               onClick={onClose}

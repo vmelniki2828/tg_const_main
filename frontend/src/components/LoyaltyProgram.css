@@ -101,11 +101,25 @@
   padding-bottom: 10px;
 }
 
-.period-config {
-  margin-bottom: 20px;
+.periods-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.period-card {
   border: 1px solid #e9ecef;
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.period-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
 .period-header {
@@ -308,20 +322,27 @@
 }
 
 .promocode-stats {
-  display: flex;
-  gap: 20px;
   margin-top: 15px;
+}
+
+.stats-row {
+  display: flex;
+  gap: 15px;
+  margin-top: 15px;
+  flex-wrap: wrap;
 }
 
 .stat-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 10px;
+  padding: 12px;
   background: white;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid #dee2e6;
   min-width: 80px;
+  flex: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .stat-label {
@@ -345,12 +366,23 @@
 }
 
 /* Стили для модального окна промокодов */
+.promocode-manager-modal {
+  max-width: 900px;
+  width: 95%;
+}
+
 .promocode-upload {
   margin-bottom: 30px;
   padding: 20px;
   background: #f8f9fa;
   border-radius: 8px;
   border: 1px solid #e9ecef;
+}
+
+.upload-section {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
 }
 
 .promocode-upload h3 {
@@ -457,6 +489,110 @@
   background: #c82333;
 }
 
+/* Стили для списка промокодов */
+.promocode-list-section {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.promocode-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.promocode-list-header h4 {
+  margin: 0;
+  color: #495057;
+  font-size: 16px;
+}
+
+.toggle-list-btn {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.toggle-list-btn:hover {
+  background: #5a6268;
+}
+
+.promocode-list {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  background: white;
+}
+
+.promocode-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 15px;
+  border-bottom: 1px solid #f1f3f4;
+  transition: background-color 0.2s;
+}
+
+.promocode-item:last-child {
+  border-bottom: none;
+}
+
+.promocode-item:hover {
+  background: #f8f9fa;
+}
+
+.promocode-item.available {
+  border-left: 4px solid #28a745;
+}
+
+.promocode-item.used {
+  border-left: 4px solid #dc3545;
+  background: #fff5f5;
+}
+
+.promocode-code {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  font-size: 14px;
+  color: #495057;
+  background: #e9ecef;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.promocode-status {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.promocode-item.available .promocode-status {
+  color: #28a745;
+  background: #d4edda;
+}
+
+.promocode-item.used .promocode-status {
+  color: #dc3545;
+  background: #f8d7da;
+}
+
+.promocode-user {
+  font-size: 11px;
+  color: #6c757d;
+  font-style: italic;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .loyalty-modal {
@@ -484,7 +620,11 @@
     width: 100%;
   }
   
-  .promocode-stats {
+  .periods-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .stats-row {
     flex-direction: column;
     gap: 10px;
   }
@@ -495,5 +635,17 @@
   
   .promocode-actions {
     flex-direction: column;
+  }
+  
+  .promocode-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .promocode-list-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
   }
 }
