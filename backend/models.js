@@ -85,6 +85,14 @@ const LoyaltySchema = new mongoose.Schema({
 const LoyaltyConfigSchema = new mongoose.Schema({
   botId: { type: String, required: true, unique: true },
   isEnabled: { type: Boolean, default: false },
+  // Настройки канала для проверки подписки
+  channelSettings: {
+    isRequired: { type: Boolean, default: false }, // Требуется ли подписка на канал
+    channelId: { type: String, default: '' }, // ID канала (например: @channel_username или -1001234567890)
+    channelUsername: { type: String, default: '' }, // Username канала (например: @channel_username)
+    channelTitle: { type: String, default: '' }, // Название канала
+    notSubscribedMessage: { type: String, default: 'Для участия в программе лояльности необходимо подписаться на наш канал!' }
+  },
   messages: {
     '1m': {
       enabled: { type: Boolean, default: false },

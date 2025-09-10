@@ -604,38 +604,78 @@ function setupBotHandlers(bot, blocks, connections) {
     return Math.max(0, totalTime); // Не может быть отрицательным
   }
 
+  // Функция для проверки подписки пользователя на канал
+  async function checkChannelSubscription(userId, channelId) {
+    try {
+      console.log(`🔍 Проверяем подписку пользователя ${userId} на канал ${channelId}`);
+      
+      if (!channelId) {
+        console.log('❌ ID канала не указан');
+        return false;
+      }
+      
+      // Проверяем подписку через Telegram API
+      const chatMember = await bot.telegram.getChatMember(channelId, userId);
+      console.log(`🔍 Статус подписки: ${chatMember.status}`);
+      
+      // Статусы, которые считаются подпиской
+      const subscribedStatuses = ['member', 'administrator', 'creator'];
+      const isSubscribed = subscribedStatuses.includes(chatMember.status);
+      
+      console.log(`✅ Пользователь ${userId} ${isSubscribed ? 'подписан' : 'не подписан'} на канал ${channelId}`);
+      return isSubscribed;
+      
+    } catch (error) {
+      console.error(`❌ Ошибка проверки подписки пользователя ${userId} на канал ${channelId}:`, error);
+      
+      // Если канал не найден или пользователь заблокировал бота
+      if (error.response && error.response.error_code === 400) {
+        console.log('❌ Канал не найден или пользователь заблокировал бота');
+        return false;
+      }
+      
+      // Если пользователь не найден в канале
+      if (error.response && error.response.error_code === 400 && error.response.description.includes('user not found')) {
+        console.log('❌ Пользователь не найден в канале');
+        return false;
+      }
+      
+      return false;
+    }
+  }
+
   // Функция для создания клавиатуры с кнопкой "Назад"
   async function createKeyboardWithBack(buttons, userId, currentBlockId) {
     try {
       console.log(`🔍 DEBUG: createKeyboardWithBack called for user ${userId}, block ${currentBlockId}`);
       
-      const keyboard = [];
-      const inlineKeyboard = [];
-      
-      // Добавляем кнопки по 2 в ряд
-      if (buttons && buttons.length > 0) {
-        for (let i = 0; i < buttons.length; i += 2) {
-          const row = [];
-          row.push({ text: buttons[i].text });
-          
-          // Добавляем вторую кнопку в ряд, если она есть
-          if (i + 1 < buttons.length) {
-            row.push({ text: buttons[i + 1].text });
-          }
-          
-          keyboard.push(row);
+    const keyboard = [];
+    const inlineKeyboard = [];
+    
+    // Добавляем кнопки по 2 в ряд
+    if (buttons && buttons.length > 0) {
+      for (let i = 0; i < buttons.length; i += 2) {
+        const row = [];
+        row.push({ text: buttons[i].text });
+        
+        // Добавляем вторую кнопку в ряд, если она есть
+        if (i + 1 < buttons.length) {
+          row.push({ text: buttons[i + 1].text });
         }
+        
+        keyboard.push(row);
       }
-      
-      // Добавляем кнопку "Назад" если это не стартовый блок и не квиз
-      const currentBlock = blocks.find(b => b.id === currentBlockId);
-      if (currentBlockId !== 'start' && currentBlock && currentBlock.type !== 'quiz') {
-        const userHistory = userNavigationHistory.get(userId);
-        if (userHistory && userHistory.length > 0) {
-          keyboard.push([{ text: '⬅️ Назад' }]);
-        }
+    }
+    
+    // Добавляем кнопку "Назад" если это не стартовый блок и не квиз
+    const currentBlock = blocks.find(b => b.id === currentBlockId);
+    if (currentBlockId !== 'start' && currentBlock && currentBlock.type !== 'quiz') {
+      const userHistory = userNavigationHistory.get(userId);
+      if (userHistory && userHistory.length > 0) {
+        keyboard.push([{ text: '⬅️ Назад' }]);
       }
-      
+    }
+    
       // Проверяем, включена ли программа лояльности для главного блока
       if (currentBlockId === 'start') {
         try {
@@ -649,7 +689,7 @@ function setupBotHandlers(bot, blocks, connections) {
       }
       
       console.log(`🔍 DEBUG: createKeyboardWithBack completed, keyboard length: ${keyboard.length}`);
-      return { keyboard, inlineKeyboard };
+    return { keyboard, inlineKeyboard };
     } catch (error) {
       console.error('❌ Ошибка в createKeyboardWithBack:', error);
       console.error('❌ Stack trace:', error.stack);
@@ -675,6 +715,26 @@ function setupBotHandlers(bot, blocks, connections) {
       const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
       if (!loyaltyConfig || !loyaltyConfig.isEnabled) {
         return '❌ Программа лояльности не настроена';
+      }
+
+      // Проверяем подписку на канал, если требуется
+      if (loyaltyConfig.channelSettings && loyaltyConfig.channelSettings.isRequired) {
+        const channelId = loyaltyConfig.channelSettings.channelId;
+        if (channelId) {
+          const isSubscribed = await checkChannelSubscription(userId, channelId);
+          if (!isSubscribed) {
+            const channelUsername = loyaltyConfig.channelSettings.channelUsername || channelId;
+            const notSubscribedMessage = loyaltyConfig.channelSettings.notSubscribedMessage || 
+              'Для участия в программе лояльности необходимо подписаться на наш канал!';
+            
+            let message = '🔒 **ДОСТУП ОГРАНИЧЕН**\n\n';
+            message += `${notSubscribedMessage}\n\n`;
+            message += `📢 **Канал:** ${channelUsername}\n\n`;
+            message += '💡 **Подпишитесь на канал и попробуйте снова!**';
+            
+            return message;
+          }
+        }
       }
 
       const loyalty = await Loyalty.findOne({ botId, userId });
@@ -1445,7 +1505,7 @@ async function updateBotCommands(bot, blocks) {
   if (commands.length > 0) {
     await bot.telegram.setMyCommands(commands);
     console.log('Меню команд Telegram обновлено:', commands);
-            } else {
+          } else {
     await bot.telegram.setMyCommands([]);
     console.log('Меню команд Telegram очищено');
   }

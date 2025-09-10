@@ -1850,6 +1850,274 @@ app.get('/api/system-stats', async (req, res) => {
 // Endpoint /api/bots/:id/full уже реализует правильную агрегацию по botId:
 // Возвращает bot, users, quizStats, promoCodes, loyalties — все по botId
 
+// Endpoint для загрузки промокодов лояльности
+app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single('file'), async (req, res) => {
+  try {
+    const { botId, period } = req.params;
+    
+    console.log(`[LOYALTY_PROMO] Загрузка промокодов для бота ${botId}, период ${period}`);
+    
+    // Проверяем валидность периода
+    const validPeriods = ['1m', '24h', '7d', '30d', '90d', '180d', '360d'];
+    if (!validPeriods.includes(period)) {
+      return res.status(400).json({ error: 'Неверный период лояльности' });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'Файл не загружен' });
+    }
+    
+    // Проверяем, что файл - CSV
+    if (!req.file.originalname.endsWith('.csv')) {
+      return res.status(400).json({ error: 'Поддерживаются только CSV файлы' });
+    }
+    
+    // Читаем содержимое файла
+    const fileContent = req.file.buffer.toString('utf8');
+    console.log(`[LOYALTY_PROMO] Содержимое файла (первые 200 символов):`, fileContent.substring(0, 200));
+    
+    // Парсим CSV
+    const lines = fileContent.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    
+    if (lines.length === 0) {
+      return res.status(400).json({ error: 'Файл пустой' });
+    }
+    
+    // Удаляем существующие промокоды для этого периода (разрешаем перезагрузку)
+    await LoyaltyPromoCode.deleteMany({ botId, period });
+    console.log(`[LOYALTY_PROMO] Удалены существующие промокоды для периода ${period}`);
+    
+    const promoCodes = [];
+    let skippedCount = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Пропускаем заголовок (если есть) и пустые строки
+      if (i === 0 && (line.toLowerCase().includes('code') || line.toLowerCase().includes('промокод'))) {
+        console.log(`[LOYALTY_PROMO] Пропускаем заголовок: ${line}`);
+        continue;
+      }
+      
+      if (!line) {
+        continue;
+      }
+      
+      // Извлекаем только код промокода (первая часть до запятой)
+      const code = line.split(',')[0].trim();
+      
+      if (!code || code.length === 0) {
+        console.log(`[LOYALTY_PROMO] Пропускаем пустой код в строке ${i + 1}: "${line}"`);
+        skippedCount++;
+        continue;
+      }
+      
+      try {
+        // Создаем промокод лояльности
+        const promoCode = new LoyaltyPromoCode({
+          botId,
+          period,
+          code,
+          activated: false
+        });
+        
+        promoCodes.push(promoCode);
+        console.log(`[LOYALTY_PROMO] Добавлен код: ${code}`);
+      } catch (error) {
+        console.error(`[LOYALTY_PROMO] Ошибка обработки строки ${i + 1}: "${line}"`, error);
+        skippedCount++;
+      }
+    }
+    
+    if (promoCodes.length === 0) {
+      return res.status(400).json({ error: 'Не найдено валидных промокодов' });
+    }
+    
+    // Сохраняем все промокоды в базу данных
+    try {
+      await LoyaltyPromoCode.insertMany(promoCodes);
+      console.log(`[LOYALTY_PROMO] Сохранено ${promoCodes.length} промокодов в MongoDB`);
+      
+      res.json({
+        success: true,
+        message: `Успешно загружено ${promoCodes.length} промокодов для периода ${period}`,
+        totalCodes: promoCodes.length,
+        skippedCodes: skippedCount,
+        period: period
+      });
+      
+    } catch (saveError) {
+      console.error('[LOYALTY_PROMO] Ошибка сохранения в MongoDB:', saveError);
+      
+      // Если это ошибка дублирования, объясняем пользователю
+      if (saveError.code === 11000) {
+        return res.status(400).json({ 
+          error: 'Некоторые промокоды уже существуют для этого периода',
+          details: 'Дублирующиеся промокоды не были добавлены'
+        });
+      }
+      
+      return res.status(500).json({ 
+        error: 'Ошибка сохранения промокодов в базу данных',
+        details: saveError.message 
+      });
+    }
+    
+  } catch (error) {
+    console.error('[LOYALTY_PROMO] Ошибка загрузки промокодов лояльности:', error);
+    res.status(500).json({ 
+      error: 'Не удалось загрузить промокоды лояльности',
+      details: error.message 
+    });
+  }
+});
+
+// Endpoint для получения промокодов лояльности для конкретного периода
+app.get('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
+  try {
+    const { botId, period } = req.params;
+    
+    // Проверяем валидность периода
+    const validPeriods = ['1m', '24h', '7d', '30d', '90d', '180d', '360d'];
+    if (!validPeriods.includes(period)) {
+      return res.status(400).json({ error: 'Неверный период лояльности' });
+    }
+    
+    const promoCodes = await LoyaltyPromoCode.find({ botId, period }).sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      period: period,
+      total: promoCodes.length,
+      available: promoCodes.filter(p => !p.activated).length,
+      activated: promoCodes.filter(p => p.activated).length,
+      codes: promoCodes.map(p => ({
+        code: p.code,
+        activated: p.activated,
+        activatedBy: p.activatedBy,
+        activatedAt: p.activatedAt,
+        createdAt: p.createdAt
+      }))
+    });
+    
+  } catch (error) {
+    console.error('Ошибка получения промокодов лояльности:', error);
+    res.status(500).json({ 
+      error: 'Не удалось получить промокоды лояльности',
+      details: error.message 
+    });
+  }
+});
+
+// Endpoint для настройки канала программы лояльности
+app.post('/api/loyalty-channel/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { 
+      isRequired, 
+      channelId, 
+      channelUsername, 
+      channelTitle, 
+      notSubscribedMessage 
+    } = req.body;
+    
+    console.log(`[LOYALTY_CHANNEL] Настройка канала для бота ${botId}:`, {
+      isRequired,
+      channelId,
+      channelUsername,
+      channelTitle
+    });
+    
+    // Находим или создаем конфигурацию лояльности
+    let loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+    
+    if (!loyaltyConfig) {
+      loyaltyConfig = new LoyaltyConfig({
+        botId,
+        isEnabled: false,
+        channelSettings: {
+          isRequired: false,
+          channelId: '',
+          channelUsername: '',
+          channelTitle: '',
+          notSubscribedMessage: 'Для участия в программе лояльности необходимо подписаться на наш канал!'
+        }
+      });
+    }
+    
+    // Обновляем настройки канала
+    if (!loyaltyConfig.channelSettings) {
+      loyaltyConfig.channelSettings = {};
+    }
+    
+    loyaltyConfig.channelSettings.isRequired = isRequired || false;
+    loyaltyConfig.channelSettings.channelId = channelId || '';
+    loyaltyConfig.channelSettings.channelUsername = channelUsername || '';
+    loyaltyConfig.channelSettings.channelTitle = channelTitle || '';
+    loyaltyConfig.channelSettings.notSubscribedMessage = notSubscribedMessage || 
+      'Для участия в программе лояльности необходимо подписаться на наш канал!';
+    
+    loyaltyConfig.updatedAt = new Date();
+    
+    await loyaltyConfig.save();
+    
+    console.log(`[LOYALTY_CHANNEL] Настройки канала сохранены для бота ${botId}`);
+    
+    res.json({
+      success: true,
+      message: 'Настройки канала успешно сохранены',
+      channelSettings: loyaltyConfig.channelSettings
+    });
+    
+  } catch (error) {
+    console.error('[LOYALTY_CHANNEL] Ошибка настройки канала:', error);
+    res.status(500).json({ 
+      error: 'Не удалось сохранить настройки канала',
+      details: error.message 
+    });
+  }
+});
+
+// Endpoint для получения настроек канала программы лояльности
+app.get('/api/loyalty-channel/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    
+    const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+    
+    if (!loyaltyConfig) {
+      return res.json({
+        success: true,
+        channelSettings: {
+          isRequired: false,
+          channelId: '',
+          channelUsername: '',
+          channelTitle: '',
+          notSubscribedMessage: 'Для участия в программе лояльности необходимо подписаться на наш канал!'
+        }
+      });
+    }
+    
+    res.json({
+      success: true,
+      channelSettings: loyaltyConfig.channelSettings || {
+        isRequired: false,
+        channelId: '',
+        channelUsername: '',
+        channelTitle: '',
+        notSubscribedMessage: 'Для участия в программе лояльности необходимо подписаться на наш канал!'
+      }
+    });
+    
+  } catch (error) {
+    console.error('Ошибка получения настроек канала:', error);
+    res.status(500).json({ 
+      error: 'Не удалось получить настройки канала',
+      details: error.message 
+    });
+  }
+});
+
 // Обработка завершения сервера
 async function shutdownServer(signal) {
   console.log(`Received ${signal}, shutting down...`);
