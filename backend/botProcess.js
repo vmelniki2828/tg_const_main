@@ -443,46 +443,56 @@ function setupBotHandlers(bot, blocks, connections) {
 
   // Функция для создания клавиатуры с кнопкой "Назад"
   async function createKeyboardWithBack(buttons, userId, currentBlockId) {
-    const keyboard = [];
-    const inlineKeyboard = [];
-    
-    // Добавляем кнопки по 2 в ряд
-    if (buttons && buttons.length > 0) {
-      for (let i = 0; i < buttons.length; i += 2) {
-        const row = [];
-        row.push({ text: buttons[i].text });
-        
-        // Добавляем вторую кнопку в ряд, если она есть
-        if (i + 1 < buttons.length) {
-          row.push({ text: buttons[i + 1].text });
+    try {
+      console.log(`🔍 DEBUG: createKeyboardWithBack called for user ${userId}, block ${currentBlockId}`);
+      
+      const keyboard = [];
+      const inlineKeyboard = [];
+      
+      // Добавляем кнопки по 2 в ряд
+      if (buttons && buttons.length > 0) {
+        for (let i = 0; i < buttons.length; i += 2) {
+          const row = [];
+          row.push({ text: buttons[i].text });
+          
+          // Добавляем вторую кнопку в ряд, если она есть
+          if (i + 1 < buttons.length) {
+            row.push({ text: buttons[i + 1].text });
+          }
+          
+          keyboard.push(row);
         }
-        
-        keyboard.push(row);
       }
-    }
-    
-    // Добавляем кнопку "Назад" если это не стартовый блок и не квиз
-    const currentBlock = blocks.find(b => b.id === currentBlockId);
-    if (currentBlockId !== 'start' && currentBlock && currentBlock.type !== 'quiz') {
-      const userHistory = userNavigationHistory.get(userId);
-      if (userHistory && userHistory.length > 0) {
-        keyboard.push([{ text: '⬅️ Назад' }]);
-      }
-    }
-    
-    // Проверяем, включена ли программа лояльности для главного блока
-    if (currentBlockId === 'start') {
-      try {
-        const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
-        if (loyaltyConfig && loyaltyConfig.isEnabled) {
-          keyboard.push([{ text: '🎁 СИСТЕМА ЛОЯЛЬНОСТИ' }]);
+      
+      // Добавляем кнопку "Назад" если это не стартовый блок и не квиз
+      const currentBlock = blocks.find(b => b.id === currentBlockId);
+      if (currentBlockId !== 'start' && currentBlock && currentBlock.type !== 'quiz') {
+        const userHistory = userNavigationHistory.get(userId);
+        if (userHistory && userHistory.length > 0) {
+          keyboard.push([{ text: '⬅️ Назад' }]);
         }
-      } catch (error) {
-        console.error('❌ Ошибка при проверке программы лояльности:', error);
       }
+      
+      // Проверяем, включена ли программа лояльности для главного блока
+      if (currentBlockId === 'start') {
+        try {
+          const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+          if (loyaltyConfig && loyaltyConfig.isEnabled) {
+            keyboard.push([{ text: '🎁 СИСТЕМА ЛОЯЛЬНОСТИ' }]);
+          }
+        } catch (error) {
+          console.error('❌ Ошибка при проверке программы лояльности:', error);
+        }
+      }
+      
+      console.log(`🔍 DEBUG: createKeyboardWithBack completed, keyboard length: ${keyboard.length}`);
+      return { keyboard, inlineKeyboard };
+    } catch (error) {
+      console.error('❌ Ошибка в createKeyboardWithBack:', error);
+      console.error('❌ Stack trace:', error.stack);
+      // Возвращаем пустую клавиатуру в caso ошибки
+      return { keyboard: [], inlineKeyboard: [] };
     }
-    
-    return { keyboard, inlineKeyboard };
   }
 
   // Функция для создания клавиатуры с кнопкой лояльности
@@ -993,7 +1003,7 @@ function setupBotHandlers(bot, blocks, connections) {
         } else {
           // Следующий вопрос
           const nextQuestion = questions[quizState.currentQuestionIndex];
-          const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextQuestion.buttons, userId, quizState.blockId);
+          const { keyboard, inlineKeyboard } = await createKeyboardWithBack(nextQuestion.buttons, userId, quizState.blockId);
           await sendMediaMessage(ctx, nextQuestion.message, nextQuestion.mediaFiles, keyboard, inlineKeyboard);
         }
         
@@ -1166,7 +1176,7 @@ function setupBotHandlers(bot, blocks, connections) {
         if (questions.length > 0) {
           const firstQuestion = questions[0];
           console.log(`🔍 DEBUG: Showing first question: ${firstQuestion.message}`);
-          const { keyboard, inlineKeyboard } = createKeyboardWithBack(firstQuestion.buttons, userId, nextBlockId);
+          const { keyboard, inlineKeyboard } = await createKeyboardWithBack(firstQuestion.buttons, userId, nextBlockId);
           await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles, keyboard, inlineKeyboard);
         } else {
           console.log(`❌ No questions found in quiz block`);
@@ -1174,7 +1184,7 @@ function setupBotHandlers(bot, blocks, connections) {
         }
       } else {
         // Отправляем следующий блок (только для не-квизов)
-        const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
+        const { keyboard, inlineKeyboard } = await createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
         await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
       }
       
@@ -1199,6 +1209,12 @@ function setupBotHandlers(bot, blocks, connections) {
       // Попытка отправить сообщение об ошибке пользователю
       try {
         console.log(`🔍 DEBUG: Attempting to send error message to user`);
+        console.log(`🔍 DEBUG: Error details:`, {
+          message: error.message,
+          name: error.name,
+          code: error.code,
+          stack: error.stack
+        });
         await ctx.reply('Произошла ошибка. Попробуйте еще раз или нажмите /start для перезапуска.');
         console.log(`🔍 DEBUG: Error message sent successfully`);
       } catch (replyError) {
