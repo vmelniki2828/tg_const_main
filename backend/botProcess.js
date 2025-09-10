@@ -529,23 +529,23 @@ function setupBotHandlers(bot, blocks, connections) {
 
       // Вычисляем время подписки
       const subscriptionTime = Date.now() - user.firstSubscribedAt.getTime();
-      const minutes = Math.floor(subscriptionTime / (1000 * 60));
-      const hours = Math.floor(subscriptionTime / (1000 * 60 * 60));
-      const days = Math.floor(subscriptionTime / (1000 * 60 * 60 * 24));
+      const totalMinutes = Math.floor(subscriptionTime / (1000 * 60));
+      const totalHours = Math.floor(subscriptionTime / (1000 * 60 * 60));
+      const totalDays = Math.floor(subscriptionTime / (1000 * 60 * 60 * 24));
 
       let message = '🎁 **СИСТЕМА ЛОЯЛЬНОСТИ**\n\n';
-      message += `📅 **Вы с нами:** ${days} дней, ${hours % 24} часов, ${minutes % 60} минут\n\n`;
+      message += `📅 **Вы с нами:** ${totalDays} дней, ${totalHours % 24} часов, ${totalMinutes % 60} минут\n\n`;
       message += '⏰ **До следующих наград:**\n\n';
 
-      // Периоды лояльности
+      // Периоды лояльности (все в минутах для точности)
       const periods = [
-        { key: '1m', label: '1 минута', minutes: 1 },
-        { key: '24h', label: '24 часа', hours: 24 },
-        { key: '7d', label: '7 дней', days: 7 },
-        { key: '30d', label: '30 дней', days: 30 },
-        { key: '90d', label: '90 дней', days: 90 },
-        { key: '180d', label: '180 дней', days: 180 },
-        { key: '360d', label: '360 дней', days: 360 }
+        { key: '1m', label: '1 минута', totalMinutes: 1 },
+        { key: '24h', label: '24 часа', totalMinutes: 24 * 60 },
+        { key: '7d', label: '7 дней', totalMinutes: 7 * 24 * 60 },
+        { key: '30d', label: '30 дней', totalMinutes: 30 * 24 * 60 },
+        { key: '90d', label: '90 дней', totalMinutes: 90 * 24 * 60 },
+        { key: '180d', label: '180 дней', totalMinutes: 180 * 24 * 60 },
+        { key: '360d', label: '360 дней', totalMinutes: 360 * 24 * 60 }
       ];
 
       for (const period of periods) {
@@ -555,10 +555,7 @@ function setupBotHandlers(bot, blocks, connections) {
         }
 
         // Проверяем, достиг ли пользователь этого периода
-        let hasReachedPeriod = false;
-        if (period.minutes && minutes >= period.minutes) hasReachedPeriod = true;
-        if (period.hours && hours >= period.hours) hasReachedPeriod = true;
-        if (period.days && days >= period.days) hasReachedPeriod = true;
+        const hasReachedPeriod = totalMinutes >= period.totalMinutes;
 
         if (hasReachedPeriod) {
           if (loyaltyRecord.rewards[period.key]) {
@@ -567,26 +564,28 @@ function setupBotHandlers(bot, blocks, connections) {
             message += `🎁 ${period.label} - **ДОСТУПНО СЕЙЧАС!**\n`;
           }
         } else {
-          // Вычисляем оставшееся время
-          let remainingTime = '';
-          if (period.minutes) {
-            const remainingMinutes = period.minutes - minutes;
-            if (remainingMinutes > 0) {
-              remainingTime = `${remainingMinutes} мин`;
-            }
-          } else if (period.hours) {
-            const remainingHours = period.hours - hours;
-            if (remainingHours > 0) {
-              remainingTime = `${remainingHours} ч`;
-            }
-          } else if (period.days) {
-            const remainingDays = period.days - days;
-            if (remainingDays > 0) {
-              remainingTime = `${remainingDays} дн`;
-            }
-          }
+          // Вычисляем оставшееся время в минутах
+          const remainingMinutes = period.totalMinutes - totalMinutes;
           
-          if (remainingTime) {
+          if (remainingMinutes > 0) {
+            let remainingTime = '';
+            
+            if (remainingMinutes < 60) {
+              // Меньше часа - показываем минуты
+              remainingTime = `${remainingMinutes} мин`;
+            } else if (remainingMinutes < 24 * 60) {
+              // Меньше дня - показываем часы и минуты
+              const hours = Math.floor(remainingMinutes / 60);
+              const mins = remainingMinutes % 60;
+              remainingTime = `${hours} ч ${mins} мин`;
+            } else {
+              // Больше дня - показываем дни, часы и минуты
+              const days = Math.floor(remainingMinutes / (24 * 60));
+              const hours = Math.floor((remainingMinutes % (24 * 60)) / 60);
+              const mins = remainingMinutes % 60;
+              remainingTime = `${days} дн ${hours} ч ${mins} мин`;
+            }
+            
             message += `⏳ ${period.label} - через ${remainingTime}\n`;
           }
         }
