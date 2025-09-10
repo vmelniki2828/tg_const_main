@@ -441,6 +441,169 @@ function setupBotHandlers(bot, blocks, connections) {
     // }
   }, 30 * 60 * 1000); // Каждые 30 минут - только мониторинг
 
+  // Функция для сохранения пользователя в MongoDB
+  async function saveUserToMongo(ctx) {
+    try {
+      const userId = ctx.from?.id;
+      if (!userId) {
+        console.log('❌ No user ID in context');
+        return;
+      }
+
+      const userData = {
+        botId,
+        userId,
+        username: ctx.from?.username,
+        firstName: ctx.from?.first_name,
+        lastName: ctx.from?.last_name,
+        isSubscribed: true, // Предполагаем, что пользователь подписан при взаимодействии с ботом
+        firstSubscribedAt: new Date(),
+        lastSubscribedAt: new Date()
+      };
+
+      // Проверяем, существует ли пользователь
+      let user = await User.findOne({ botId, userId });
+      
+      if (!user) {
+        // Создаем нового пользователя
+        user = new User(userData);
+        console.log(`✅ Создан новый пользователь: ${userId}`);
+      } else {
+        // Обновляем существующего пользователя
+        user.username = userData.username;
+        user.firstName = userData.firstName;
+        user.lastName = userData.lastName;
+        user.isSubscribed = true;
+        user.lastSubscribedAt = new Date();
+        
+        // Если это первая подписка, устанавливаем firstSubscribedAt
+        if (!user.firstSubscribedAt) {
+          user.firstSubscribedAt = new Date();
+        }
+        
+        console.log(`✅ Обновлен пользователь: ${userId}`);
+      }
+
+      await user.save();
+      console.log(`✅ Пользователь ${userId} сохранен в MongoDB`);
+    } catch (error) {
+      console.error('❌ Ошибка при сохранении пользователя в MongoDB:', error);
+    }
+  }
+
+  // Функция для обработки подписки пользователя
+  async function handleUserSubscription(userId) {
+    try {
+      console.log(`🔔 Обработка подписки пользователя: ${userId}`);
+      
+      let user = await User.findOne({ botId, userId });
+      const now = new Date();
+      
+      if (!user) {
+        // Создаем нового пользователя
+        user = new User({
+          botId,
+          userId,
+          isSubscribed: true,
+          firstSubscribedAt: now,
+          lastSubscribedAt: now,
+          totalSubscribedTime: 0,
+          pausedTime: 0
+        });
+        console.log(`✅ Создан новый подписчик: ${userId}`);
+      } else {
+        // Обновляем существующего пользователя
+        user.isSubscribed = true;
+        user.lastSubscribedAt = now;
+        
+        // Если пользователь был отписан, добавляем время паузы
+        if (user.lastUnsubscribedAt) {
+          const pauseDuration = now.getTime() - user.lastUnsubscribedAt.getTime();
+          user.pausedTime += pauseDuration;
+          user.lastUnsubscribedAt = null;
+          console.log(`⏸️ Добавлено время паузы: ${Math.round(pauseDuration / 1000 / 60)} минут`);
+        }
+        
+        // Если это первая подписка, устанавливаем firstSubscribedAt
+        if (!user.firstSubscribedAt) {
+          user.firstSubscribedAt = now;
+        }
+        
+        console.log(`✅ Обновлен подписчик: ${userId}`);
+      }
+
+      // Добавляем запись в историю подписок
+      if (!user.subscriptionHistory) {
+        user.subscriptionHistory = [];
+      }
+      
+      user.subscriptionHistory.push({
+        subscribedAt: now
+      });
+
+      await user.save();
+      console.log(`✅ Подписка пользователя ${userId} обработана`);
+    } catch (error) {
+      console.error('❌ Ошибка при обработке подписки:', error);
+    }
+  }
+
+  // Функция для обработки отписки пользователя
+  async function handleUserUnsubscription(userId) {
+    try {
+      console.log(`🔕 Обработка отписки пользователя: ${userId}`);
+      
+      const user = await User.findOne({ botId, userId });
+      if (!user) {
+        console.log(`❌ Пользователь ${userId} не найден`);
+        return;
+      }
+
+      const now = new Date();
+      user.isSubscribed = false;
+      user.lastUnsubscribedAt = now;
+
+      // Обновляем последнюю запись в истории подписок
+      if (user.subscriptionHistory && user.subscriptionHistory.length > 0) {
+        const lastRecord = user.subscriptionHistory[user.subscriptionHistory.length - 1];
+        if (!lastRecord.unsubscribedAt) {
+          lastRecord.unsubscribedAt = now;
+          
+          // Добавляем время подписки к общему времени
+          if (lastRecord.subscribedAt) {
+            const subscriptionDuration = now.getTime() - lastRecord.subscribedAt.getTime();
+            user.totalSubscribedTime += subscriptionDuration;
+            console.log(`⏱️ Добавлено время подписки: ${Math.round(subscriptionDuration / 1000 / 60)} минут`);
+          }
+        }
+      }
+
+      await user.save();
+      console.log(`✅ Отписка пользователя ${userId} обработана`);
+    } catch (error) {
+      console.error('❌ Ошибка при обработке отписки:', error);
+    }
+  }
+
+  // Функция для получения эффективного времени подписки (с учетом пауз)
+  function getEffectiveSubscriptionTime(user) {
+    if (!user) return 0;
+    
+    const now = new Date();
+    let totalTime = user.totalSubscribedTime || 0;
+    
+    // Если пользователь сейчас подписан, добавляем время с последней подписки
+    if (user.isSubscribed && user.lastSubscribedAt) {
+      const currentSubscriptionTime = now.getTime() - user.lastSubscribedAt.getTime();
+      totalTime += currentSubscriptionTime;
+    }
+    
+    // Вычитаем время паузы
+    totalTime -= (user.pausedTime || 0);
+    
+    return Math.max(0, totalTime); // Не может быть отрицательным
+  }
+
   // Функция для создания клавиатуры с кнопкой "Назад"
   async function createKeyboardWithBack(buttons, userId, currentBlockId) {
     try {
@@ -504,97 +667,66 @@ function setupBotHandlers(bot, blocks, connections) {
   // Функция для получения информации о лояльности пользователя
   async function getLoyaltyInfo(userId) {
     try {
-      // Получаем пользователя
       const user = await User.findOne({ botId, userId });
       if (!user) {
         return '❌ Пользователь не найден';
       }
 
-      // Получаем конфигурацию лояльности
       const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
       if (!loyaltyConfig || !loyaltyConfig.isEnabled) {
-        return '❌ Программа лояльности отключена';
+        return '❌ Программа лояльности не настроена';
       }
 
-      // Получаем запись лояльности
-      let loyaltyRecord = await Loyalty.findOne({ botId, userId });
-      if (!loyaltyRecord) {
-        loyaltyRecord = new Loyalty({
-          botId,
-          userId,
-          rewards: {
-            '1m': false,
-            '24h': false,
-            '7d': false,
-            '30d': false,
-            '90d': false,
-            '180d': false,
-            '360d': false
-          }
-        });
-        await loyaltyRecord.save();
+      const loyalty = await Loyalty.findOne({ botId, userId });
+      if (!loyalty) {
+        return '❌ Информация о лояльности не найдена';
       }
 
-      // Вычисляем время подписки
-      const subscriptionTime = Date.now() - user.firstSubscribedAt.getTime();
-      const totalMinutes = Math.floor(subscriptionTime / (1000 * 60));
-      const totalHours = Math.floor(subscriptionTime / (1000 * 60 * 60));
-      const totalDays = Math.floor(subscriptionTime / (1000 * 60 * 60 * 24));
+      // Используем эффективное время подписки (с учетом пауз)
+      const effectiveTime = getEffectiveSubscriptionTime(user);
+      const totalDays = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
+      const totalHours = Math.floor(effectiveTime / (1000 * 60 * 60));
+      const totalMinutes = Math.floor(effectiveTime / (1000 * 60));
 
       let message = '🎁 **СИСТЕМА ЛОЯЛЬНОСТИ**\n\n';
       message += `📅 **Вы с нами:** ${totalDays} дней, ${totalHours % 24} часов, ${totalMinutes % 60} минут\n\n`;
+      
+      // Показываем статус подписки
+      if (user.isSubscribed) {
+        message += `🟢 **Статус:** Подписан\n\n`;
+      } else {
+        message += `🔴 **Статус:** Отписан (время на паузе)\n\n`;
+      }
+      
       message += '⏰ **До следующих наград:**\n\n';
 
-      // Периоды лояльности (все в минутах для точности)
+      // Периоды лояльности
       const periods = [
-        { key: '1m', label: '1 минута', totalMinutes: 1 },
-        { key: '24h', label: '24 часа', totalMinutes: 24 * 60 },
-        { key: '7d', label: '7 дней', totalMinutes: 7 * 24 * 60 },
-        { key: '30d', label: '30 дней', totalMinutes: 30 * 24 * 60 },
-        { key: '90d', label: '90 дней', totalMinutes: 90 * 24 * 60 },
-        { key: '180d', label: '180 дней', totalMinutes: 180 * 24 * 60 },
-        { key: '360d', label: '360 дней', totalMinutes: 360 * 24 * 60 }
+        { key: '1m', name: '1 минута', minutes: 1 },
+        { key: '24h', name: '24 часа', minutes: 24 * 60 },
+        { key: '7d', name: '7 дней', minutes: 7 * 24 * 60 },
+        { key: '30d', name: '30 дней', minutes: 30 * 24 * 60 },
+        { key: '90d', name: '90 дней', minutes: 90 * 24 * 60 },
+        { key: '180d', name: '180 дней', minutes: 180 * 24 * 60 },
+        { key: '360d', name: '360 дней', minutes: 360 * 24 * 60 }
       ];
 
       for (const period of periods) {
-        const config = loyaltyConfig.messages[period.key];
-        if (!config || !config.enabled) {
-          continue;
-        }
-
-        // Проверяем, достиг ли пользователь этого периода
-        const hasReachedPeriod = totalMinutes >= period.totalMinutes;
-
-        if (hasReachedPeriod) {
-          if (loyaltyRecord.rewards[period.key]) {
-            message += `✅ ${period.label} - **ПОЛУЧЕНО**\n`;
-          } else {
-            message += `🎁 ${period.label} - **ДОСТУПНО СЕЙЧАС!**\n`;
-          }
-        } else {
-          // Вычисляем оставшееся время в минутах
-          const remainingMinutes = period.totalMinutes - totalMinutes;
+        if (loyaltyConfig.messages[period.key]?.enabled) {
+          const isRewarded = loyalty.rewards[period.key] || false;
+          const currentMinutes = Math.floor(effectiveTime / (1000 * 60));
           
-          if (remainingMinutes > 0) {
-            let remainingTime = '';
+          if (isRewarded) {
+            message += `✅ **${period.name}** - Получено\n`;
+          } else if (currentMinutes >= period.minutes) {
+            message += `🎁 **${period.name}** - Доступно сейчас!\n`;
+          } else {
+            const remainingMinutes = period.minutes - currentMinutes;
+            const remainingDays = Math.floor(remainingMinutes / (24 * 60));
+            const remainingHours = Math.floor((remainingMinutes % (24 * 60)) / 60);
+            const remainingMins = remainingMinutes % 60;
             
-            if (remainingMinutes < 60) {
-              // Меньше часа - показываем минуты
-              remainingTime = `${remainingMinutes} мин`;
-            } else if (remainingMinutes < 24 * 60) {
-              // Меньше дня - показываем часы и минуты
-              const hours = Math.floor(remainingMinutes / 60);
-              const mins = remainingMinutes % 60;
-              remainingTime = `${hours} ч ${mins} мин`;
-            } else {
-              // Больше дня - показываем дни, часы и минуты
-              const days = Math.floor(remainingMinutes / (24 * 60));
-              const hours = Math.floor((remainingMinutes % (24 * 60)) / 60);
-              const mins = remainingMinutes % 60;
-              remainingTime = `${days} дн ${hours} ч ${mins} мин`;
-            }
-            
-            message += `⏳ ${period.label} - через ${remainingTime}\n`;
+            message += `⏳ **${period.name}** - через ${remainingDays}д ${remainingHours}ч ${remainingMins}м\n`;
           }
         }
       }
@@ -625,8 +757,13 @@ function setupBotHandlers(bot, blocks, connections) {
     console.log('[DEBUG] /start ctx.from:', ctx.from);
     await saveUserToMongo(ctx);
     
-    // Очищаем историю навигации пользователя
+    // Обрабатываем подписку пользователя
     const userId = ctx.from?.id;
+    if (userId) {
+      await handleUserSubscription(userId);
+    }
+    
+    // Очищаем историю навигации пользователя
     userNavigationHistory.delete(userId);
     
     // Очищаем состояние квиза пользователя
@@ -649,7 +786,12 @@ function setupBotHandlers(bot, blocks, connections) {
     console.log('[DEBUG] /help ctx:', JSON.stringify(ctx, null, 2));
     console.log('[DEBUG] /help ctx.from:', ctx.from);
     await saveUserToMongo(ctx);
+    
+    // Обрабатываем подписку пользователя
     const userId = ctx.from?.id;
+    if (userId) {
+      await handleUserSubscription(userId);
+    }
     let currentBlockId = userCurrentBlock.get(userId);
     
     let helpMessage = '🤖 **Помощь по использованию бота:**\n\n';
@@ -691,7 +833,13 @@ function setupBotHandlers(bot, blocks, connections) {
       const commandName = block.command.replace(/^\//, '');
       bot.command(commandName, async (ctx) => {
         await saveUserToMongo(ctx);
+        
+        // Обрабатываем подписку пользователя
         const userId = ctx.from?.id;
+        if (userId) {
+          await handleUserSubscription(userId);
+        }
+        
         userCurrentBlock.set(userId, block.id);
         const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(block.buttons, userId, block.id);
         await sendMediaMessage(ctx, block.message, block.mediaFiles, keyboard, inlineKeyboard);
@@ -715,6 +863,9 @@ function setupBotHandlers(bot, blocks, connections) {
         console.log('❌ No user ID, ignoring message');
         return;
       }
+      
+      // Обрабатываем подписку пользователя
+      await handleUserSubscription(userId);
       
       if (!messageText || messageText.length < 1) {
         console.log('❌ Empty message, ignoring');
@@ -1240,6 +1391,13 @@ function setupBotHandlers(bot, blocks, connections) {
     console.log('[DEBUG] on callback_query ctx:', JSON.stringify(ctx, null, 2));
     console.log('[DEBUG] on callback_query ctx.from:', ctx.from);
     await saveUserToMongo(ctx);
+    
+    // Обрабатываем подписку пользователя
+    const userId = ctx.from?.id;
+    if (userId) {
+      await handleUserSubscription(userId);
+    }
+    
     // ... твоя логика обработки callback
   });
 }

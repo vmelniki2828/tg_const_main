@@ -24,7 +24,12 @@ const UserSchema = new mongoose.Schema({
       unsubscribedAt: Date
     }
   ],
+  // Поля для отслеживания паузы времени подписки
+  totalSubscribedTime: { type: Number, default: 0 }, // Общее время подписки в миллисекундах
+  lastUnsubscribedAt: Date, // Время последней отписки
+  pausedTime: { type: Number, default: 0 }, // Время на паузе в миллисекундах
   loyaltyRewards: {
+    '1m': { type: Boolean, default: false },
     '24h': { type: Boolean, default: false },
     '7d': { type: Boolean, default: false },
     '30d': { type: Boolean, default: false },
