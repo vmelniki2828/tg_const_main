@@ -697,10 +697,8 @@ function setupBotHandlers(bot, blocks, connections) {
       } else {
         message += `🔴 **Статус:** Отписан (время на паузе)\n\n`;
       }
-      
-      message += '⏰ **До следующих наград:**\n\n';
 
-      // Периоды лояльности
+      // Периоды лояльности (отсортированы по времени)
       const periods = [
         { key: '1m', name: '1 минута', minutes: 1 },
         { key: '24h', name: '24 часа', minutes: 24 * 60 },
@@ -711,27 +709,60 @@ function setupBotHandlers(bot, blocks, connections) {
         { key: '360d', name: '360 дней', minutes: 360 * 24 * 60 }
       ];
 
-      for (const period of periods) {
-        if (loyaltyConfig.messages[period.key]?.enabled) {
-          const isRewarded = loyalty.rewards[period.key] || false;
-          const currentMinutes = Math.floor(effectiveTime / (1000 * 60));
-          
-          if (isRewarded) {
-            message += `✅ **${period.name}** - Получено\n`;
-          } else if (currentMinutes >= period.minutes) {
-            message += `🎁 **${period.name}** - Доступно сейчас!\n`;
+      // Фильтруем только включенные периоды
+      const enabledPeriods = periods.filter(period => loyaltyConfig.messages[period.key]?.enabled);
+      
+      if (enabledPeriods.length === 0) {
+        message += '❌ **Программа лояльности не настроена**';
+        return message;
+      }
+
+      const currentMinutes = Math.floor(effectiveTime / (1000 * 60));
+      
+      // Находим следующий доступный бонус
+      let nextBonus = null;
+      let allRewarded = true;
+      
+      for (const period of enabledPeriods) {
+        const isRewarded = loyalty.rewards[period.key] || false;
+        
+        if (!isRewarded) {
+          allRewarded = false;
+          if (currentMinutes >= period.minutes) {
+            // Бонус доступен сейчас
+            message += `🎁 **Следующий бонус:** ${period.name} - **ДОСТУПЕН СЕЙЧАС!**\n\n`;
+            message += '💡 **Награда придет автоматически!**';
+            return message;
           } else {
-            const remainingMinutes = period.minutes - currentMinutes;
-            const remainingDays = Math.floor(remainingMinutes / (24 * 60));
-            const remainingHours = Math.floor((remainingMinutes % (24 * 60)) / 60);
-            const remainingMins = remainingMinutes % 60;
-            
-            message += `⏳ **${period.name}** - через ${remainingDays}д ${remainingHours}ч ${remainingMins}м\n`;
+            // Бонус еще не доступен
+            if (!nextBonus || period.minutes < nextBonus.minutes) {
+              nextBonus = period;
+            }
           }
         }
       }
 
-      message += '\n💡 **Награды приходят автоматически!**';
+      if (allRewarded) {
+        message += '🎉 **Поздравляем! Вы получили все доступные награды!**\n\n';
+        message += '💡 **Следите за обновлениями программы лояльности!**';
+      } else if (nextBonus) {
+        const remainingMinutes = nextBonus.minutes - currentMinutes;
+        const remainingDays = Math.floor(remainingMinutes / (24 * 60));
+        const remainingHours = Math.floor((remainingMinutes % (24 * 60)) / 60);
+        const remainingMins = remainingMinutes % 60;
+        
+        message += `⏳ **До следующего бонуса:** ${nextBonus.name}\n\n`;
+        
+        if (remainingDays > 0) {
+          message += `📅 **Осталось:** ${remainingDays} дней, ${remainingHours} часов, ${remainingMins} минут`;
+        } else if (remainingHours > 0) {
+          message += `⏰ **Осталось:** ${remainingHours} часов, ${remainingMins} минут`;
+        } else {
+          message += `⏰ **Осталось:** ${remainingMins} минут`;
+        }
+        
+        message += '\n\n💡 **Награда придет автоматически!**';
+      }
 
       return message;
     } catch (error) {
