@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   # MongoDB сервис
   mongodb:
     image: mongo:7.0
     container_name: tg_const_mongodb
     ports:
-      - "27017:27017"
+      - "27018:27017"
     environment:
       - MONGO_INITDB_ROOT_USERNAME=admin
       - MONGO_INITDB_ROOT_PASSWORD=password123
