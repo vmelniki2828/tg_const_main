@@ -483,8 +483,13 @@ function setupBotHandlers(bot, blocks, connections) {
       if (loyaltyConfig && loyaltyConfig.isEnabled) {
         // Добавляем кнопку "СИСТЕМА ЛОЯЛЬНОСТИ" только в главный блок
         if (currentBlockId === 'start') {
+          console.log(`🎁 Добавляем кнопку "СИСТЕМА ЛОЯЛЬНОСТИ" для блока ${currentBlockId}`);
           keyboard.push([{ text: '🎁 СИСТЕМА ЛОЯЛЬНОСТИ' }]);
+        } else {
+          console.log(`ℹ️ Кнопка лояльности не добавляется для блока ${currentBlockId} (не главный блок)`);
         }
+      } else {
+        console.log(`ℹ️ Программа лояльности отключена для бота ${botId}`);
       }
     } catch (error) {
       console.error('❌ Ошибка при проверке программы лояльности:', error);
@@ -995,7 +1000,7 @@ function setupBotHandlers(bot, blocks, connections) {
         } else {
           // Следующий вопрос
           const nextQuestion = questions[quizState.currentQuestionIndex];
-          const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextQuestion.buttons, userId, quizState.blockId);
+          const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(nextQuestion.buttons, userId, quizState.blockId);
           await sendMediaMessage(ctx, nextQuestion.message, nextQuestion.mediaFiles, keyboard, inlineKeyboard);
         }
         
@@ -1047,7 +1052,7 @@ function setupBotHandlers(bot, blocks, connections) {
             userCurrentBlock.set(userId, previousBlockId);
             userNavigationHistory.set(userId, userHistory);
             
-            const { keyboard, inlineKeyboard } = createKeyboardWithBack(prevBlock.buttons, userId, previousBlockId);
+            const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(prevBlock.buttons, userId, previousBlockId);
             await sendMediaMessage(ctx, prevBlock.message, prevBlock.mediaFiles, keyboard, inlineKeyboard);
             console.log(`✅ Navigated back to block ${previousBlockId}`);
             return;
@@ -1168,7 +1173,7 @@ function setupBotHandlers(bot, blocks, connections) {
         if (questions.length > 0) {
           const firstQuestion = questions[0];
           console.log(`🔍 DEBUG: Showing first question: ${firstQuestion.message}`);
-          const { keyboard, inlineKeyboard } = createKeyboardWithBack(firstQuestion.buttons, userId, nextBlockId);
+          const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(firstQuestion.buttons, userId, nextBlockId);
           await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles, keyboard, inlineKeyboard);
         } else {
           console.log(`❌ No questions found in quiz block`);
@@ -1176,7 +1181,7 @@ function setupBotHandlers(bot, blocks, connections) {
         }
       } else {
         // Отправляем следующий блок (только для не-квизов)
-        const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
+        const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(nextBlock.buttons, userId, nextBlockId);
         await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
       }
       
