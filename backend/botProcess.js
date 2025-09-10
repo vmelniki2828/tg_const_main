@@ -360,6 +360,86 @@ const userQuizStates = new Map();
 const userLastActivity = new Map();
 const completedQuizzes = new Map();
 
+// Глобальная переменная для бота
+let bot;
+
+// Функция для проверки подписки пользователя на канал (глобальная)
+async function checkChannelSubscription(userId, channelId) {
+  try {
+    console.log(`🔍 Проверяем подписку пользователя ${userId} на канал ${channelId}`);
+    
+    if (!channelId) {
+      console.log('❌ ID канала не указан');
+      return false;
+    }
+    
+    // Нормализуем ID канала - убираем лишние пробелы и приводим к строке
+    let normalizedChannelId = String(channelId).trim();
+    console.log(`🔍 Исходный ID канала: "${channelId}"`);
+    console.log(`🔍 Нормализованный ID канала: "${normalizedChannelId}"`);
+    
+    // Если ID начинается с @, оставляем как есть
+    // Если ID начинается с цифры, добавляем @
+    // Если ID начинается с -, оставляем как есть (это правильный формат для супергрупп)
+    if (normalizedChannelId.startsWith('@')) {
+      console.log(`🔍 ID канала уже содержит @: ${normalizedChannelId}`);
+    } else if (normalizedChannelId.startsWith('-')) {
+      console.log(`🔍 ID канала начинается с - (супергруппа): ${normalizedChannelId}`);
+    } else if (/^\d+$/.test(normalizedChannelId)) {
+      // Если это только цифры, добавляем @
+      normalizedChannelId = '@' + normalizedChannelId;
+      console.log(`🔍 Добавили @ к числовому ID: ${normalizedChannelId}`);
+    } else {
+      console.log(`🔍 ID канала в неизвестном формате: ${normalizedChannelId}`);
+    }
+    
+    console.log(`🔍 Финальный ID для проверки: "${normalizedChannelId}"`);
+    
+    // Проверяем подписку через Telegram API
+    const chatMember = await bot.telegram.getChatMember(normalizedChannelId, userId);
+    console.log(`🔍 Статус подписки: ${chatMember.status}`);
+    console.log(`🔍 Полная информация о членстве:`, JSON.stringify(chatMember, null, 2));
+    
+    // Статусы, которые считаются подпиской
+    const subscribedStatuses = ['member', 'administrator', 'creator'];
+    const isSubscribed = subscribedStatuses.includes(chatMember.status);
+    
+    console.log(`✅ Пользователь ${userId} ${isSubscribed ? 'подписан' : 'не подписан'} на канал ${normalizedChannelId}`);
+    return isSubscribed;
+    
+  } catch (error) {
+    console.error(`❌ Ошибка проверки подписки пользователя ${userId} на канал ${channelId}:`, error);
+    console.error(`❌ Детали ошибки:`, {
+      message: error.message,
+      code: error.code,
+      response: error.response ? {
+        error_code: error.response.error_code,
+        description: error.response.description
+      } : null
+    });
+    
+    // Если канал не найден или пользователь заблокировал бота
+    if (error.response && error.response.error_code === 400) {
+      console.log('❌ Канал не найден или пользователь заблокировал бота');
+      return false;
+    }
+    
+    // Если пользователь не найден в канале
+    if (error.response && error.response.error_code === 400 && error.response.description && error.response.description.includes('user not found')) {
+      console.log('❌ Пользователь не найден в канале');
+      return false;
+    }
+    
+    // Если канал не найден
+    if (error.response && error.response.error_code === 400 && error.response.description && error.response.description.includes('chat not found')) {
+      console.log('❌ Канал не найден');
+      return false;
+    }
+    
+    return false;
+  }
+}
+
 function setupBotHandlers(bot, blocks, connections) {
   console.log('=== [BOOT] setupBotHandlers вызван ===');
   // Создаем карту диалогов для быстрого доступа
@@ -604,82 +684,6 @@ function setupBotHandlers(bot, blocks, connections) {
     return Math.max(0, totalTime); // Не может быть отрицательным
   }
 
-  // Функция для проверки подписки пользователя на канал
-  async function checkChannelSubscription(userId, channelId) {
-    try {
-      console.log(`🔍 Проверяем подписку пользователя ${userId} на канал ${channelId}`);
-      
-      if (!channelId) {
-        console.log('❌ ID канала не указан');
-        return false;
-      }
-      
-      // Нормализуем ID канала - убираем лишние пробелы и приводим к строке
-      let normalizedChannelId = String(channelId).trim();
-      console.log(`🔍 Исходный ID канала: "${channelId}"`);
-      console.log(`🔍 Нормализованный ID канала: "${normalizedChannelId}"`);
-      
-      // Если ID начинается с @, оставляем как есть
-      // Если ID начинается с цифры, добавляем @
-      // Если ID начинается с -, оставляем как есть (это правильный формат для супергрупп)
-      if (normalizedChannelId.startsWith('@')) {
-        console.log(`🔍 ID канала уже содержит @: ${normalizedChannelId}`);
-      } else if (normalizedChannelId.startsWith('-')) {
-        console.log(`🔍 ID канала начинается с - (супергруппа): ${normalizedChannelId}`);
-      } else if (/^\d+$/.test(normalizedChannelId)) {
-        // Если это только цифры, добавляем @
-        normalizedChannelId = '@' + normalizedChannelId;
-        console.log(`🔍 Добавили @ к числовому ID: ${normalizedChannelId}`);
-      } else {
-        console.log(`🔍 ID канала в неизвестном формате: ${normalizedChannelId}`);
-      }
-      
-      console.log(`🔍 Финальный ID для проверки: "${normalizedChannelId}"`);
-      
-      // Проверяем подписку через Telegram API
-      const chatMember = await bot.telegram.getChatMember(normalizedChannelId, userId);
-      console.log(`🔍 Статус подписки: ${chatMember.status}`);
-      console.log(`🔍 Полная информация о членстве:`, JSON.stringify(chatMember, null, 2));
-      
-      // Статусы, которые считаются подпиской
-      const subscribedStatuses = ['member', 'administrator', 'creator'];
-      const isSubscribed = subscribedStatuses.includes(chatMember.status);
-      
-      console.log(`✅ Пользователь ${userId} ${isSubscribed ? 'подписан' : 'не подписан'} на канал ${normalizedChannelId}`);
-      return isSubscribed;
-      
-    } catch (error) {
-      console.error(`❌ Ошибка проверки подписки пользователя ${userId} на канал ${channelId}:`, error);
-      console.error(`❌ Детали ошибки:`, {
-        message: error.message,
-        code: error.code,
-        response: error.response ? {
-          error_code: error.response.error_code,
-          description: error.response.description
-        } : null
-      });
-      
-      // Если канал не найден или пользователь заблокировал бота
-      if (error.response && error.response.error_code === 400) {
-        console.log('❌ Канал не найден или пользователь заблокировал бота');
-        return false;
-      }
-      
-      // Если пользователь не найден в канале
-      if (error.response && error.response.error_code === 400 && error.response.description && error.response.description.includes('user not found')) {
-        console.log('❌ Пользователь не найден в канале');
-        return false;
-      }
-      
-      // Если канал не найден
-      if (error.response && error.response.error_code === 400 && error.response.description && error.response.description.includes('chat not found')) {
-        console.log('❌ Канал не найден');
-        return false;
-      }
-      
-      return false;
-    }
-  }
 
   // Функция для создания клавиатуры с кнопкой "Назад"
   async function createKeyboardWithBack(buttons, userId, currentBlockId) {
@@ -1745,9 +1749,6 @@ function startLoyaltyChecker() {
     }
   }, 10000); // Проверяем каждые 10 секунд для тестирования
 }
-
-// Глобальная переменная для бота
-let bot;
 
 // Функция для загрузки завершенных квизов из MongoDB
 async function loadCompletedQuizzes() {
