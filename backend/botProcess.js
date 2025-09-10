@@ -483,13 +483,16 @@ function setupBotHandlers(bot, blocks, connections) {
       if (loyaltyConfig && loyaltyConfig.isEnabled) {
         // Добавляем кнопку "СИСТЕМА ЛОЯЛЬНОСТИ" только в главный блок
         if (currentBlockId === 'start') {
-          console.log(`🎁 Добавляем кнопку "СИСТЕМА ЛОЯЛЬНОСТИ" для блока ${currentBlockId}`);
-          keyboard.push([{ text: '🎁 СИСТЕМА ЛОЯЛЬНОСТИ' }]);
-        } else {
-          console.log(`ℹ️ Кнопка лояльности не добавляется для блока ${currentBlockId} (не главный блок)`);
+          // Проверяем, что кнопка еще не добавлена
+          const hasLoyaltyButton = keyboard.some(row => 
+            row.some(button => button.text === '🎁 СИСТЕМА ЛОЯЛЬНОСТИ')
+          );
+          
+          if (!hasLoyaltyButton) {
+            keyboard.push([{ text: '🎁 СИСТЕМА ЛОЯЛЬНОСТИ' }]);
+            console.log(`🎁 Добавлена кнопка "СИСТЕМА ЛОЯЛЬНОСТИ" для блока ${currentBlockId}`);
+          }
         }
-      } else {
-        console.log(`ℹ️ Программа лояльности отключена для бота ${botId}`);
       }
     } catch (error) {
       console.error('❌ Ошибка при проверке программы лояльности:', error);
@@ -792,8 +795,8 @@ function setupBotHandlers(bot, blocks, connections) {
             if (completedQuizzes.has(quizKey)) {
               console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId} (from memory)`);
               await ctx.reply('Вы уже прошли этот квест!');
-              return;
-            }
+            return;
+          }
             
             // Проверяем в MongoDB (надежно)
             try {
@@ -808,8 +811,8 @@ function setupBotHandlers(bot, blocks, connections) {
                 // Добавляем в память для быстрого доступа
                 completedQuizzes.set(quizKey, true);
                 await ctx.reply('Вы уже прошли этот квест!');
-                return;
-              }
+            return;
+          }
             } catch (error) {
               console.error('❌ Error checking existing quiz stats:', error);
             }
@@ -1010,14 +1013,17 @@ function setupBotHandlers(bot, blocks, connections) {
       // Обработка кнопки "СИСТЕМА ЛОЯЛЬНОСТИ"
       if (messageText === '🎁 СИСТЕМА ЛОЯЛЬНОСТИ') {
         console.log(`🔍 DEBUG: Processing "СИСТЕМА ЛОЯЛЬНОСТИ" button`);
+        console.log(`🔍 DEBUG: Current block: ${currentBlockId}`);
         
         try {
           const loyaltyInfo = await getLoyaltyInfo(userId);
           await ctx.reply(loyaltyInfo, { parse_mode: 'Markdown' });
           
           // Возвращаемся к главному блоку
+          userCurrentBlock.set(userId, 'start');
           const startBlock = dialogMap.get('start');
           if (startBlock) {
+            console.log(`🔍 DEBUG: Returning to start block with loyalty button`);
             const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
             await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
           }
@@ -1478,7 +1484,7 @@ async function startBot() {
   
   // Загружаем завершенные квизы из MongoDB
   await loadCompletedQuizzes();
-
+  
   // Настраиваем обработчики
   setupBotHandlers(bot, state.blocks, state.connections);
 
