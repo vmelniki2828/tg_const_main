@@ -133,6 +133,9 @@ const LoyaltyPromoCodeSchema = new mongoose.Schema({
 // Индекс для быстрого поиска доступных промокодов
 LoyaltyPromoCodeSchema.index({ botId: 1, period: 1, activated: 1 });
 
+// Индекс для уникальности промокода в рамках периода (разрешаем дублирование между периодами)
+LoyaltyPromoCodeSchema.index({ botId: 1, period: 1, code: 1 }, { unique: true });
+
 module.exports = {
   Bot: mongoose.model('Bot', BotSchema),
   User: mongoose.model('User', UserSchema),
