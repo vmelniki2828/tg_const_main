@@ -5,6 +5,13 @@ import config from '../config';
 const LoyaltyProgram = ({ botId, onClose }) => {
   const [loyaltyConfig, setLoyaltyConfig] = useState({
     isEnabled: false,
+    channelSettings: {
+      isRequired: false,
+      channelId: '',
+      channelUsername: '',
+      channelTitle: '',
+      notSubscribedMessage: 'Для участия в программе лояльности необходимо подписаться на наш канал!'
+    },
     messages: {
       '1m': { enabled: false, message: '' },
       '24h': { enabled: false, message: '' },
@@ -23,6 +30,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
 
   useEffect(() => {
     fetchLoyaltyConfig();
+    fetchChannelSettings();
   }, [botId]);
 
   const fetchLoyaltyConfig = async () => {
@@ -30,12 +38,31 @@ const LoyaltyProgram = ({ botId, onClose }) => {
       const response = await fetch(`${config.API_BASE_URL}/api/loyalty-config/${botId}`);
       if (response.ok) {
         const config = await response.json();
-        setLoyaltyConfig(config);
+        setLoyaltyConfig(prev => ({
+          ...prev,
+          ...config,
+          channelSettings: config.channelSettings || prev.channelSettings
+        }));
       }
     } catch (error) {
       console.error('Error fetching loyalty config:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchChannelSettings = async () => {
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-channel/${botId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setLoyaltyConfig(prev => ({
+          ...prev,
+          channelSettings: data.channelSettings || prev.channelSettings
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching channel settings:', error);
     }
   };
 
@@ -59,7 +86,8 @@ const LoyaltyProgram = ({ botId, onClose }) => {
     setError(null);
     
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-config/${botId}`, {
+      // Сохраняем основную конфигурацию лояльности
+      const loyaltyResponse = await fetch(`${config.API_BASE_URL}/api/loyalty-config/${botId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -67,10 +95,19 @@ const LoyaltyProgram = ({ botId, onClose }) => {
         body: JSON.stringify(loyaltyConfig),
       });
 
-      if (response.ok) {
+      // Сохраняем настройки канала
+      const channelResponse = await fetch(`${config.API_BASE_URL}/api/loyalty-channel/${botId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(loyaltyConfig.channelSettings),
+      });
+
+      if (loyaltyResponse.ok && channelResponse.ok) {
         alert('✅ Настройки программы лояльности сохранены!');
       } else {
-        const errorData = await response.json();
+        const errorData = await loyaltyResponse.json();
         setError(errorData.error || 'Ошибка при сохранении');
       }
     } catch (error) {
@@ -89,6 +126,16 @@ const LoyaltyProgram = ({ botId, onClose }) => {
           ...prev.messages[period],
           [field]: value
         }
+      }
+    }));
+  };
+
+  const handleChannelSettingChange = (field, value) => {
+    setLoyaltyConfig(prev => ({
+      ...prev,
+      channelSettings: {
+        ...prev.channelSettings,
+        [field]: value
       }
     }));
   };
@@ -211,6 +258,63 @@ const LoyaltyProgram = ({ botId, onClose }) => {
               <span className="toggle-text">Включить программу лояльности</span>
             </label>
           </div>
+
+          {loyaltyConfig.isEnabled && (
+            <div className="channel-settings">
+              <h3>🔒 Настройки проверки подписки на канал</h3>
+              
+              <div className="channel-toggle">
+                <label className="toggle-label">
+                  <input
+                    type="checkbox"
+                    checked={loyaltyConfig.channelSettings.isRequired}
+                    onChange={(e) => handleChannelSettingChange('isRequired', e.target.checked)}
+                  />
+                  <span className="toggle-text">Требовать подписку на канал</span>
+                </label>
+              </div>
+
+              {loyaltyConfig.channelSettings.isRequired && (
+                <div className="channel-config">
+                  <div className="form-group">
+                    <label>ID канала или @username:</label>
+                    <input
+                      type="text"
+                      value={loyaltyConfig.channelSettings.channelId}
+                      onChange={(e) => handleChannelSettingChange('channelId', e.target.value)}
+                      placeholder="@my_channel или -1001234567890"
+                      className="form-input"
+                    />
+                    <small className="form-hint">
+                      Укажите ID канала (например: @my_channel) или числовой ID (например: -1001234567890)
+                    </small>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Название канала (для отображения):</label>
+                    <input
+                      type="text"
+                      value={loyaltyConfig.channelSettings.channelTitle}
+                      onChange={(e) => handleChannelSettingChange('channelTitle', e.target.value)}
+                      placeholder="Мой канал"
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Сообщение для неподписанных пользователей:</label>
+                    <textarea
+                      value={loyaltyConfig.channelSettings.notSubscribedMessage}
+                      onChange={(e) => handleChannelSettingChange('notSubscribedMessage', e.target.value)}
+                      placeholder="Для участия в программе лояльности необходимо подписаться на наш канал!"
+                      rows={3}
+                      className="form-textarea"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {loyaltyConfig.isEnabled && (
             <div className="loyalty-periods">
