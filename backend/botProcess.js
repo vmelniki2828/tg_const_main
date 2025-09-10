@@ -442,7 +442,7 @@ function setupBotHandlers(bot, blocks, connections) {
   }, 30 * 60 * 1000); // Каждые 30 минут - только мониторинг
 
   // Функция для создания клавиатуры с кнопкой "Назад"
-  function createKeyboardWithBack(buttons, userId, currentBlockId) {
+  async function createKeyboardWithBack(buttons, userId, currentBlockId) {
     const keyboard = [];
     const inlineKeyboard = [];
     
@@ -470,35 +470,25 @@ function setupBotHandlers(bot, blocks, connections) {
       }
     }
     
+    // Проверяем, включена ли программа лояльности для главного блока
+    if (currentBlockId === 'start') {
+      try {
+        const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+        if (loyaltyConfig && loyaltyConfig.isEnabled) {
+          keyboard.push([{ text: '🎁 СИСТЕМА ЛОЯЛЬНОСТИ' }]);
+        }
+      } catch (error) {
+        console.error('❌ Ошибка при проверке программы лояльности:', error);
+      }
+    }
+    
     return { keyboard, inlineKeyboard };
   }
 
   // Функция для создания клавиатуры с кнопкой лояльности
   async function createKeyboardWithLoyalty(buttons, userId, currentBlockId) {
-    const { keyboard, inlineKeyboard } = createKeyboardWithBack(buttons, userId, currentBlockId);
-    
-    // Проверяем, включена ли программа лояльности
-    try {
-      const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
-      if (loyaltyConfig && loyaltyConfig.isEnabled) {
-        // Добавляем кнопку "СИСТЕМА ЛОЯЛЬНОСТИ" только в главный блок
-        if (currentBlockId === 'start') {
-          // Проверяем, что кнопка еще не добавлена
-          const hasLoyaltyButton = keyboard.some(row => 
-            row.some(button => button.text === '🎁 СИСТЕМА ЛОЯЛЬНОСТИ')
-          );
-          
-          if (!hasLoyaltyButton) {
-            keyboard.push([{ text: '🎁 СИСТЕМА ЛОЯЛЬНОСТИ' }]);
-            console.log(`🎁 Добавлена кнопка "СИСТЕМА ЛОЯЛЬНОСТИ" для блока ${currentBlockId}`);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('❌ Ошибка при проверке программы лояльности:', error);
-    }
-    
-    return { keyboard, inlineKeyboard };
+    // Теперь createKeyboardWithBack уже включает проверку лояльности
+    return await createKeyboardWithBack(buttons, userId, currentBlockId);
   }
 
   // Функция для получения информации о лояльности пользователя
@@ -1003,7 +993,7 @@ function setupBotHandlers(bot, blocks, connections) {
         } else {
           // Следующий вопрос
           const nextQuestion = questions[quizState.currentQuestionIndex];
-          const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(nextQuestion.buttons, userId, quizState.blockId);
+          const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextQuestion.buttons, userId, quizState.blockId);
           await sendMediaMessage(ctx, nextQuestion.message, nextQuestion.mediaFiles, keyboard, inlineKeyboard);
         }
         
@@ -1013,22 +1003,19 @@ function setupBotHandlers(bot, blocks, connections) {
       // Обработка кнопки "СИСТЕМА ЛОЯЛЬНОСТИ"
       if (messageText === '🎁 СИСТЕМА ЛОЯЛЬНОСТИ') {
         console.log(`🔍 DEBUG: Processing "СИСТЕМА ЛОЯЛЬНОСТИ" button`);
-        console.log(`🔍 DEBUG: Current block: ${currentBlockId}`);
         
         try {
           const loyaltyInfo = await getLoyaltyInfo(userId);
           await ctx.reply(loyaltyInfo, { parse_mode: 'Markdown' });
           
           // Возвращаемся к главному блоку
-          userCurrentBlock.set(userId, 'start');
           const startBlock = dialogMap.get('start');
           if (startBlock) {
-            console.log(`🔍 DEBUG: Returning to start block with loyalty button`);
             const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
             await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
           }
           return;
-        } catch (error) {
+                } catch (error) {
           console.error('❌ Ошибка при обработке системы лояльности:', error);
           await ctx.reply('❌ Ошибка при получении информации о лояльности');
           return;
@@ -1058,7 +1045,7 @@ function setupBotHandlers(bot, blocks, connections) {
             userCurrentBlock.set(userId, previousBlockId);
             userNavigationHistory.set(userId, userHistory);
             
-            const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(prevBlock.buttons, userId, previousBlockId);
+            const { keyboard, inlineKeyboard } = await createKeyboardWithBack(prevBlock.buttons, userId, previousBlockId);
             await sendMediaMessage(ctx, prevBlock.message, prevBlock.mediaFiles, keyboard, inlineKeyboard);
             console.log(`✅ Navigated back to block ${previousBlockId}`);
             return;
@@ -1179,7 +1166,7 @@ function setupBotHandlers(bot, blocks, connections) {
         if (questions.length > 0) {
           const firstQuestion = questions[0];
           console.log(`🔍 DEBUG: Showing first question: ${firstQuestion.message}`);
-          const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(firstQuestion.buttons, userId, nextBlockId);
+          const { keyboard, inlineKeyboard } = createKeyboardWithBack(firstQuestion.buttons, userId, nextBlockId);
           await sendMediaMessage(ctx, firstQuestion.message, firstQuestion.mediaFiles, keyboard, inlineKeyboard);
         } else {
           console.log(`❌ No questions found in quiz block`);
@@ -1187,7 +1174,7 @@ function setupBotHandlers(bot, blocks, connections) {
         }
       } else {
         // Отправляем следующий блок (только для не-квизов)
-        const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(nextBlock.buttons, userId, nextBlockId);
+        const { keyboard, inlineKeyboard } = createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
         await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
       }
       
