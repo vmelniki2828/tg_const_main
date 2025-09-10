@@ -39,7 +39,7 @@ mongoose.connect(MONGO_URI, {
         socketTimeoutMS: 45000
       }).catch(retryErr => {
         console.error('❌ MongoDB retry failed:', retryErr);
-        process.exit(1);
+    process.exit(1);
       });
     }, 5000);
   });
@@ -71,7 +71,7 @@ process.on('SIGINT', async () => {
   console.log('🛑 Получен сигнал SIGINT, закрываем подключение к MongoDB...');
   await mongoose.connection.close();
   process.exit(0);
-});
+  });
 
 // Настройка CORS
 const corsOptions = {
@@ -580,7 +580,7 @@ app.delete('/api/quiz-promocodes/:quizId', async (req, res) => {
       quizId: quizId,
       botId: botId,
       deletedCount: result.deletedCount
-    });
+      });
   } catch (error) {
     console.error('❌ Promo codes deletion error:', error);
     res.status(500).json({ error: error.message });
@@ -1575,7 +1575,7 @@ app.delete('/api/bots/:id', async (req, res) => {
         loyaltyPromoCodes: deleteResults[5].deletedCount
       });
       
-    res.json({ success: true });
+      res.json({ success: true });
     } catch (deleteError) {
       console.error('Error deleting bot or related data:', deleteError);
       res.status(500).json({ error: 'Failed to delete bot or related data', details: deleteError.message });
@@ -1728,7 +1728,7 @@ app.post('/api/export-quiz-stats', async (req, res) => {
         ].join(','));
       });
     });
-    
+
     const csvContent = csvSections.join('\r\n');
     const fileName = `quiz-stats-${new Date().toISOString().split('T')[0]}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

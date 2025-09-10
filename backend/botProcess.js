@@ -20,7 +20,7 @@ mongoose.connect(MONGO_URI, {
         socketTimeoutMS: 45000
       }).catch(retryErr => {
         console.error('❌ MongoDB retry failed:', retryErr);
-        process.exit(1);
+    process.exit(1);
       });
     }, 5000);
   });
@@ -315,9 +315,9 @@ async function saveUserToMongo(ctx) {
     
     if (existingUser) {
       // Обновляем существующего пользователя
-      const updateResult = await User.updateOne(
-        { botId, userId },
-        {
+    const updateResult = await User.updateOne(
+      { botId, userId },
+      {
           $set: {
             lastSubscribedAt: new Date(),
             isSubscribed: true,
@@ -331,13 +331,13 @@ async function saveUserToMongo(ctx) {
     } else {
       // Создаем нового пользователя
       const newUser = new User({
-        botId,
-        userId,
-        username: ctx.from.username,
-        firstName: ctx.from.first_name,
-        lastName: ctx.from.last_name,
-        firstSubscribedAt: new Date(),
-        lastSubscribedAt: new Date(),
+          botId,
+          userId,
+          username: ctx.from.username,
+          firstName: ctx.from.first_name,
+          lastName: ctx.from.last_name,
+          firstSubscribedAt: new Date(),
+          lastSubscribedAt: new Date(),
         isSubscribed: true,
         subscriptionHistory: [{ subscribedAt: new Date() }]
       });
@@ -380,18 +380,18 @@ async function checkChannelSubscription(userId, channelId) {
     
     // Если ID начинается с @, оставляем как есть
     // Если ID начинается с -, оставляем как есть (это правильный формат для супергрупп)
-    // Если ID начинается с 100, добавляем - (это супергруппа)
+    // Если ID начинается с 1001, добавляем - (это супергруппа)
     // Если ID начинается с другими цифрами, добавляем @
     if (normalizedChannelId.startsWith('@')) {
       console.log(`🔍 ID канала уже содержит @: ${normalizedChannelId}`);
     } else if (normalizedChannelId.startsWith('-')) {
       console.log(`🔍 ID канала начинается с - (супергруппа): ${normalizedChannelId}`);
-    } else if (normalizedChannelId.startsWith('100')) {
-      // Если ID начинается с 100, это супергруппа - добавляем минус
+    } else if (normalizedChannelId.startsWith('1001')) {
+      // Если ID начинается с 1001, это супергруппа - добавляем минус
       normalizedChannelId = '-' + normalizedChannelId;
       console.log(`🔍 Добавили - к ID супергруппы: ${normalizedChannelId}`);
     } else if (/^\d+$/.test(normalizedChannelId)) {
-      // Если это только цифры (не начинается с 100), добавляем @
+      // Если это только цифры (не начинается с 1001), добавляем @
       normalizedChannelId = '@' + normalizedChannelId;
       console.log(`🔍 Добавили @ к числовому ID: ${normalizedChannelId}`);
     } else {
@@ -1282,12 +1282,12 @@ function setupBotHandlers(bot, blocks, connections) {
           // Если настроено возвращение в начало
           if (quizBlock.returnToStartOnComplete) {
             console.log(`🔍 DEBUG: Returning to start after quiz completion`);
-            userCurrentBlock.set(userId, 'start');
+                  userCurrentBlock.set(userId, 'start');
             userQuizStates.delete(userId);
             userNavigationHistory.delete(userId);
-            
-            const startBlock = dialogMap.get('start');
-            if (startBlock) {
+                  
+                  const startBlock = dialogMap.get('start');
+                  if (startBlock) {
               const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
               await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
               console.log(`✅ Returned to start block after quiz completion`);
@@ -1295,14 +1295,14 @@ function setupBotHandlers(bot, blocks, connections) {
           }
           
           return;
-        } else {
+                  } else {
           // Следующий вопрос
           const nextQuestion = questions[quizState.currentQuestionIndex];
           const { keyboard, inlineKeyboard } = await createKeyboardWithBack(nextQuestion.buttons, userId, quizState.blockId);
           await sendMediaMessage(ctx, nextQuestion.message, nextQuestion.mediaFiles, keyboard, inlineKeyboard);
         }
         
-        return;
+                  return;
       }
       
       // Обработка кнопки "СИСТЕМА ЛОЯЛЬНОСТИ"
@@ -1314,18 +1314,18 @@ function setupBotHandlers(bot, blocks, connections) {
           await ctx.reply(loyaltyInfo, { parse_mode: 'Markdown' });
           
           // Возвращаемся к главному блоку
-          const startBlock = dialogMap.get('start');
-          if (startBlock) {
+                const startBlock = dialogMap.get('start');
+                if (startBlock) {
             const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
-            await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-          }
+                  await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+                }
           return;
                 } catch (error) {
           console.error('❌ Ошибка при обработке системы лояльности:', error);
           await ctx.reply('❌ Ошибка при получении информации о лояльности');
-          return;
-        }
-      }
+                return;
+              }
+            }
 
       // Обработка кнопки "Назад"
       if (messageText === '⬅️ Назад') {
@@ -1480,7 +1480,7 @@ function setupBotHandlers(bot, blocks, connections) {
       } else {
         // Отправляем следующий блок (только для не-квизов)
         const { keyboard, inlineKeyboard } = await createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
-        await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
+              await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
       }
       
       console.log(`✅ Successfully navigated to block ${nextBlockId}`);
@@ -1558,7 +1558,7 @@ async function updateBotCommands(bot, blocks) {
   if (commands.length > 0) {
     await bot.telegram.setMyCommands(commands);
     console.log('Меню команд Telegram обновлено:', commands);
-          } else {
+  } else {
     await bot.telegram.setMyCommands([]);
     console.log('Меню команд Telegram очищено');
   }
@@ -1818,7 +1818,7 @@ async function startBot() {
     console.log('[EVENT] User ID:', ctx.from?.id);
     return next();
   });
-  
+
   // Обработчик ошибок бота
   bot.catch((err, ctx) => {
     console.error('❌ Bot error:', err);
@@ -1861,8 +1861,8 @@ async function startBot() {
   }
 
   // Запускаем бота в polling режиме
-  console.log('=== [BOOT] Запускаем bot.launch() в polling режиме... ===');
-  
+    console.log('=== [BOOT] Запускаем bot.launch() в polling режиме... ===');
+    
   // Запускаем бота синхронно
   console.log('=== [BOOT] Запускаем bot.launch() синхронно... ===');
   
@@ -1883,7 +1883,7 @@ async function startBot() {
     }).catch((altError) => {
       console.error('=== [BOOT] Alternative launch failed:', altError);
     });
-  }
+    }
     
     // Сброс счетчика ошибок при успешном запуске
     errorCount = 0;
