@@ -614,19 +614,50 @@ function setupBotHandlers(bot, blocks, connections) {
         return false;
       }
       
+      // Нормализуем ID канала - убираем лишние пробелы и приводим к строке
+      let normalizedChannelId = String(channelId).trim();
+      console.log(`🔍 Исходный ID канала: "${channelId}"`);
+      console.log(`🔍 Нормализованный ID канала: "${normalizedChannelId}"`);
+      
+      // Если ID начинается с @, оставляем как есть
+      // Если ID начинается с цифры, добавляем @
+      // Если ID начинается с -, оставляем как есть (это правильный формат для супергрупп)
+      if (normalizedChannelId.startsWith('@')) {
+        console.log(`🔍 ID канала уже содержит @: ${normalizedChannelId}`);
+      } else if (normalizedChannelId.startsWith('-')) {
+        console.log(`🔍 ID канала начинается с - (супергруппа): ${normalizedChannelId}`);
+      } else if (/^\d+$/.test(normalizedChannelId)) {
+        // Если это только цифры, добавляем @
+        normalizedChannelId = '@' + normalizedChannelId;
+        console.log(`🔍 Добавили @ к числовому ID: ${normalizedChannelId}`);
+      } else {
+        console.log(`🔍 ID канала в неизвестном формате: ${normalizedChannelId}`);
+      }
+      
+      console.log(`🔍 Финальный ID для проверки: "${normalizedChannelId}"`);
+      
       // Проверяем подписку через Telegram API
-      const chatMember = await bot.telegram.getChatMember(channelId, userId);
+      const chatMember = await bot.telegram.getChatMember(normalizedChannelId, userId);
       console.log(`🔍 Статус подписки: ${chatMember.status}`);
+      console.log(`🔍 Полная информация о членстве:`, JSON.stringify(chatMember, null, 2));
       
       // Статусы, которые считаются подпиской
       const subscribedStatuses = ['member', 'administrator', 'creator'];
       const isSubscribed = subscribedStatuses.includes(chatMember.status);
       
-      console.log(`✅ Пользователь ${userId} ${isSubscribed ? 'подписан' : 'не подписан'} на канал ${channelId}`);
+      console.log(`✅ Пользователь ${userId} ${isSubscribed ? 'подписан' : 'не подписан'} на канал ${normalizedChannelId}`);
       return isSubscribed;
       
     } catch (error) {
       console.error(`❌ Ошибка проверки подписки пользователя ${userId} на канал ${channelId}:`, error);
+      console.error(`❌ Детали ошибки:`, {
+        message: error.message,
+        code: error.code,
+        response: error.response ? {
+          error_code: error.response.error_code,
+          description: error.response.description
+        } : null
+      });
       
       // Если канал не найден или пользователь заблокировал бота
       if (error.response && error.response.error_code === 400) {
@@ -635,8 +666,14 @@ function setupBotHandlers(bot, blocks, connections) {
       }
       
       // Если пользователь не найден в канале
-      if (error.response && error.response.error_code === 400 && error.response.description.includes('user not found')) {
+      if (error.response && error.response.error_code === 400 && error.response.description && error.response.description.includes('user not found')) {
         console.log('❌ Пользователь не найден в канале');
+        return false;
+      }
+      
+      // Если канал не найден
+      if (error.response && error.response.error_code === 400 && error.response.description && error.response.description.includes('chat not found')) {
+        console.log('❌ Канал не найден');
         return false;
       }
       
@@ -720,6 +757,9 @@ function setupBotHandlers(bot, blocks, connections) {
       // ВСЕГДА перепроверяем подписку на канал при каждом нажатии
       if (loyaltyConfig.channelSettings && loyaltyConfig.channelSettings.isRequired) {
         const channelId = loyaltyConfig.channelSettings.channelId;
+        console.log(`🔍 LoyaltyConfig channelSettings:`, JSON.stringify(loyaltyConfig.channelSettings, null, 2));
+        console.log(`🔍 Channel ID from config: "${channelId}" (type: ${typeof channelId})`);
+        
         if (channelId) {
           console.log(`🔄 Перепроверяем подписку пользователя ${userId} на канал ${channelId}`);
           const isSubscribed = await checkChannelSubscription(userId, channelId);
