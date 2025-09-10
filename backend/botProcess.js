@@ -717,11 +717,13 @@ function setupBotHandlers(bot, blocks, connections) {
         return '❌ Программа лояльности не настроена';
       }
 
-      // Проверяем подписку на канал, если требуется
+      // ВСЕГДА перепроверяем подписку на канал при каждом нажатии
       if (loyaltyConfig.channelSettings && loyaltyConfig.channelSettings.isRequired) {
         const channelId = loyaltyConfig.channelSettings.channelId;
         if (channelId) {
+          console.log(`🔄 Перепроверяем подписку пользователя ${userId} на канал ${channelId}`);
           const isSubscribed = await checkChannelSubscription(userId, channelId);
+          
           if (!isSubscribed) {
             const channelUsername = loyaltyConfig.channelSettings.channelUsername || channelId;
             const notSubscribedMessage = loyaltyConfig.channelSettings.notSubscribedMessage || 
@@ -733,6 +735,8 @@ function setupBotHandlers(bot, blocks, connections) {
             message += '💡 **Подпишитесь на канал и попробуйте снова!**';
             
             return message;
+          } else {
+            console.log(`✅ Пользователь ${userId} подписан на канал ${channelId} - доступ разрешен`);
           }
         }
       }
@@ -1560,6 +1564,22 @@ function startLoyaltyChecker() {
       
       for (const user of users) {
         try {
+          // Перепроверяем подписку на канал, если требуется
+          if (loyaltyConfig.channelSettings && loyaltyConfig.channelSettings.isRequired) {
+            const channelId = loyaltyConfig.channelSettings.channelId;
+            if (channelId) {
+              console.log(`[LOYALTY] Перепроверяем подписку пользователя ${user.userId} на канал ${channelId}`);
+              const isSubscribed = await checkChannelSubscription(user.userId, channelId);
+              
+              if (!isSubscribed) {
+                console.log(`[LOYALTY] Пользователь ${user.userId} не подписан на канал ${channelId}, пропускаем`);
+                continue; // Пропускаем этого пользователя
+              } else {
+                console.log(`[LOYALTY] Пользователь ${user.userId} подписан на канал ${channelId}, продолжаем`);
+              }
+            }
+          }
+          
           // Получаем или создаем запись лояльности
           let loyaltyRecord = await Loyalty.findOne({ botId, userId: user.userId });
           if (!loyaltyRecord) {
