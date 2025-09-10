@@ -473,6 +473,134 @@ function setupBotHandlers(bot, blocks, connections) {
     return { keyboard, inlineKeyboard };
   }
 
+  // Функция для создания клавиатуры с кнопкой лояльности
+  async function createKeyboardWithLoyalty(buttons, userId, currentBlockId) {
+    const { keyboard, inlineKeyboard } = createKeyboardWithBack(buttons, userId, currentBlockId);
+    
+    // Проверяем, включена ли программа лояльности
+    try {
+      const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+      if (loyaltyConfig && loyaltyConfig.isEnabled) {
+        // Добавляем кнопку "СИСТЕМА ЛОЯЛЬНОСТИ" только в главный блок
+        if (currentBlockId === 'start') {
+          keyboard.push([{ text: '🎁 СИСТЕМА ЛОЯЛЬНОСТИ' }]);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Ошибка при проверке программы лояльности:', error);
+    }
+    
+    return { keyboard, inlineKeyboard };
+  }
+
+  // Функция для получения информации о лояльности пользователя
+  async function getLoyaltyInfo(userId) {
+    try {
+      // Получаем пользователя
+      const user = await User.findOne({ botId, userId });
+      if (!user) {
+        return '❌ Пользователь не найден';
+      }
+
+      // Получаем конфигурацию лояльности
+      const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+      if (!loyaltyConfig || !loyaltyConfig.isEnabled) {
+        return '❌ Программа лояльности отключена';
+      }
+
+      // Получаем запись лояльности
+      let loyaltyRecord = await Loyalty.findOne({ botId, userId });
+      if (!loyaltyRecord) {
+        loyaltyRecord = new Loyalty({
+          botId,
+          userId,
+          rewards: {
+            '1m': false,
+            '24h': false,
+            '7d': false,
+            '30d': false,
+            '90d': false,
+            '180d': false,
+            '360d': false
+          }
+        });
+        await loyaltyRecord.save();
+      }
+
+      // Вычисляем время подписки
+      const subscriptionTime = Date.now() - user.firstSubscribedAt.getTime();
+      const minutes = Math.floor(subscriptionTime / (1000 * 60));
+      const hours = Math.floor(subscriptionTime / (1000 * 60 * 60));
+      const days = Math.floor(subscriptionTime / (1000 * 60 * 60 * 24));
+
+      let message = '🎁 **СИСТЕМА ЛОЯЛЬНОСТИ**\n\n';
+      message += `📅 **Вы с нами:** ${days} дней, ${hours % 24} часов, ${minutes % 60} минут\n\n`;
+      message += '⏰ **До следующих наград:**\n\n';
+
+      // Периоды лояльности
+      const periods = [
+        { key: '1m', label: '1 минута', minutes: 1 },
+        { key: '24h', label: '24 часа', hours: 24 },
+        { key: '7d', label: '7 дней', days: 7 },
+        { key: '30d', label: '30 дней', days: 30 },
+        { key: '90d', label: '90 дней', days: 90 },
+        { key: '180d', label: '180 дней', days: 180 },
+        { key: '360d', label: '360 дней', days: 360 }
+      ];
+
+      for (const period of periods) {
+        const config = loyaltyConfig.messages[period.key];
+        if (!config || !config.enabled) {
+          continue;
+        }
+
+        // Проверяем, достиг ли пользователь этого периода
+        let hasReachedPeriod = false;
+        if (period.minutes && minutes >= period.minutes) hasReachedPeriod = true;
+        if (period.hours && hours >= period.hours) hasReachedPeriod = true;
+        if (period.days && days >= period.days) hasReachedPeriod = true;
+
+        if (hasReachedPeriod) {
+          if (loyaltyRecord.rewards[period.key]) {
+            message += `✅ ${period.label} - **ПОЛУЧЕНО**\n`;
+          } else {
+            message += `🎁 ${period.label} - **ДОСТУПНО СЕЙЧАС!**\n`;
+          }
+        } else {
+          // Вычисляем оставшееся время
+          let remainingTime = '';
+          if (period.minutes) {
+            const remainingMinutes = period.minutes - minutes;
+            if (remainingMinutes > 0) {
+              remainingTime = `${remainingMinutes} мин`;
+            }
+          } else if (period.hours) {
+            const remainingHours = period.hours - hours;
+            if (remainingHours > 0) {
+              remainingTime = `${remainingHours} ч`;
+            }
+          } else if (period.days) {
+            const remainingDays = period.days - days;
+            if (remainingDays > 0) {
+              remainingTime = `${remainingDays} дн`;
+            }
+          }
+          
+          if (remainingTime) {
+            message += `⏳ ${period.label} - через ${remainingTime}\n`;
+          }
+        }
+      }
+
+      message += '\n💡 **Награды приходят автоматически!**';
+
+      return message;
+    } catch (error) {
+      console.error('❌ Ошибка при получении информации о лояльности:', error);
+      return '❌ Ошибка при получении информации о лояльности';
+    }
+  }
+
   // Создаем карту соединений для быстрого доступа
   const connectionMap = new Map();
   console.log(`[BOOT] Creating connectionMap from ${connections.length} connections:`);
@@ -502,7 +630,7 @@ function setupBotHandlers(bot, blocks, connections) {
     
     const startBlock = dialogMap.get('start');
     if (startBlock) {
-      const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+      const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
       await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
     } else {
       await ctx.reply('Бот не настроен');
@@ -534,7 +662,7 @@ function setupBotHandlers(bot, blocks, connections) {
     if (currentBlockId) {
       const currentBlock = dialogMap.get(currentBlockId);
       if (currentBlock) {
-        const { keyboard, inlineKeyboard } = createKeyboardWithBack(currentBlock.buttons, userId, currentBlockId);
+        const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(currentBlock.buttons, userId, currentBlockId);
         
         await ctx.reply(helpMessage, {
           parse_mode: 'Markdown',
@@ -558,7 +686,7 @@ function setupBotHandlers(bot, blocks, connections) {
         await saveUserToMongo(ctx);
         const userId = ctx.from?.id;
         userCurrentBlock.set(userId, block.id);
-        const { keyboard, inlineKeyboard } = createKeyboardWithBack(block.buttons, userId, block.id);
+        const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(block.buttons, userId, block.id);
         await sendMediaMessage(ctx, block.message, block.mediaFiles, keyboard, inlineKeyboard);
       });
     }
@@ -616,7 +744,7 @@ function setupBotHandlers(bot, blocks, connections) {
         // Отправляем приветственное сообщение
         const startBlock = dialogMap.get('start');
         if (startBlock) {
-          const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+          const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
           await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
           console.log(`✅ Welcome message sent to user ${userId}`);
           return;
@@ -633,7 +761,7 @@ function setupBotHandlers(bot, blocks, connections) {
             userCurrentBlock.set(userId, 'start');
             const startBlock = dialogMap.get('start');
             if (startBlock) {
-              const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+              const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
               await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
             }
             return;
@@ -858,7 +986,7 @@ function setupBotHandlers(bot, blocks, connections) {
             
             const startBlock = dialogMap.get('start');
             if (startBlock) {
-              const { keyboard, inlineKeyboard } = createKeyboardWithBack(startBlock.buttons, userId, 'start');
+              const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
               await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
               console.log(`✅ Returned to start block after quiz completion`);
             }
@@ -875,6 +1003,28 @@ function setupBotHandlers(bot, blocks, connections) {
         return;
       }
       
+      // Обработка кнопки "СИСТЕМА ЛОЯЛЬНОСТИ"
+      if (messageText === '🎁 СИСТЕМА ЛОЯЛЬНОСТИ') {
+        console.log(`🔍 DEBUG: Processing "СИСТЕМА ЛОЯЛЬНОСТИ" button`);
+        
+        try {
+          const loyaltyInfo = await getLoyaltyInfo(userId);
+          await ctx.reply(loyaltyInfo, { parse_mode: 'Markdown' });
+          
+          // Возвращаемся к главному блоку
+          const startBlock = dialogMap.get('start');
+          if (startBlock) {
+            const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
+            await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+          }
+          return;
+        } catch (error) {
+          console.error('❌ Ошибка при обработке системы лояльности:', error);
+          await ctx.reply('❌ Ошибка при получении информации о лояльности');
+          return;
+        }
+      }
+
       // Обработка кнопки "Назад"
       if (messageText === '⬅️ Назад') {
         console.log(`🔍 DEBUG: Processing "Назад" button`);
