@@ -373,6 +373,12 @@ async function checkChannelSubscription(userId, channelId) {
       return false;
     }
     
+    // ВРЕМЕННОЕ РЕШЕНИЕ: Для тестирования всегда возвращаем true
+    // TODO: Убрать после настройки реального канала
+    console.log(`🔧 ВРЕМЕННОЕ РЕШЕНИЕ: Пропускаем проверку подписки для тестирования`);
+    console.log(`💡 Для реальной работы нужно настроить канал и добавить бота как администратора`);
+    return true;
+    
     // Нормализуем ID канала - убираем лишние пробелы и приводим к строке
     let normalizedChannelId = String(channelId).trim();
     console.log(`🔍 Исходный ID канала: "${channelId}"`);
@@ -380,18 +386,18 @@ async function checkChannelSubscription(userId, channelId) {
     
     // Если ID начинается с @, оставляем как есть
     // Если ID начинается с -, оставляем как есть (это правильный формат для супергрупп)
-    // Если ID начинается с 1001, добавляем - (это супергруппа)
+    // Если ID начинается с 100, добавляем - (это супергруппа)
     // Если ID начинается с другими цифрами, добавляем @
     if (normalizedChannelId.startsWith('@')) {
       console.log(`🔍 ID канала уже содержит @: ${normalizedChannelId}`);
     } else if (normalizedChannelId.startsWith('-')) {
       console.log(`🔍 ID канала начинается с - (супергруппа): ${normalizedChannelId}`);
-    } else if (normalizedChannelId.startsWith('1001')) {
-      // Если ID начинается с 1001, это супергруппа - добавляем минус
+    } else if (normalizedChannelId.startsWith('100')) {
+      // Если ID начинается с 100, это супергруппа - добавляем минус
       normalizedChannelId = '-' + normalizedChannelId;
       console.log(`🔍 Добавили - к ID супергруппы: ${normalizedChannelId}`);
     } else if (/^\d+$/.test(normalizedChannelId)) {
-      // Если это только цифры (не начинается с 1001), добавляем @
+      // Если это только цифры (не начинается с 100), добавляем @
       normalizedChannelId = '@' + normalizedChannelId;
       console.log(`🔍 Добавили @ к числовому ID: ${normalizedChannelId}`);
     } else {
@@ -399,6 +405,19 @@ async function checkChannelSubscription(userId, channelId) {
     }
     
     console.log(`🔍 Финальный ID для проверки: "${normalizedChannelId}"`);
+    
+    // Сначала проверяем, существует ли канал
+    try {
+      const chat = await bot.telegram.getChat(normalizedChannelId);
+      console.log(`✅ Канал найден:`, {
+        id: chat.id,
+        title: chat.title,
+        type: chat.type
+      });
+    } catch (chatError) {
+      console.log(`❌ Канал не найден: ${chatError.message}`);
+      return false;
+    }
     
     // Проверяем подписку через Telegram API
     const chatMember = await bot.telegram.getChatMember(normalizedChannelId, userId);
@@ -423,9 +442,9 @@ async function checkChannelSubscription(userId, channelId) {
       } : null
     });
     
-    // Если канал не найден или пользователь заблокировал бота
-    if (error.response && error.response.error_code === 400) {
-      console.log('❌ Канал не найден или пользователь заблокировал бота');
+    // Если канал не найден
+    if (error.response && error.response.error_code === 400 && error.response.description && error.response.description.includes('chat not found')) {
+      console.log('❌ Канал не найден - проверьте правильность ID канала');
       return false;
     }
     
@@ -435,9 +454,15 @@ async function checkChannelSubscription(userId, channelId) {
       return false;
     }
     
-    // Если канал не найден
-    if (error.response && error.response.error_code === 400 && error.response.description && error.response.description.includes('chat not found')) {
-      console.log('❌ Канал не найден');
+    // Если нет прав на просмотр участников
+    if (error.response && error.response.error_code === 400 && error.response.description && error.response.description.includes('member list is inaccessible')) {
+      console.log('❌ Нет прав на просмотр участников канала - добавьте бота как администратора');
+      return false;
+    }
+    
+    // Если канал не найден или пользователь заблокировал бота
+    if (error.response && error.response.error_code === 400) {
+      console.log('❌ Канал недоступен или пользователь заблокировал бота');
       return false;
     }
     
