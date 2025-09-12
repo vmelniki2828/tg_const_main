@@ -1012,53 +1012,35 @@ function setupBotHandlers(bot, blocks, connections) {
 
   // Обработка текстовых сообщений
   bot.on('text', async (ctx) => {
-    console.log('=== [EVENT] Получено текстовое сообщение ===');
-    console.log('[EVENT] ctx.from:', ctx.from);
-    
     try {
       const userId = ctx.from?.id;
       const messageText = ctx.message.text;
       
-      console.log(`🔍 DEBUG: Message: "${messageText}" from user ${userId}`);
-      
-      // Валидация входных данных
-      if (!userId) {
-        console.log('❌ No user ID, ignoring message');
+      // Быстрая валидация входных данных
+      if (!userId || !messageText || messageText.startsWith('/')) {
         return;
       }
       
-      // Обрабатываем подписку пользователя
-      await handleUserSubscription(userId);
+      console.log(`💬 ${userId}: "${messageText}"`);
       
-      if (!messageText || messageText.length < 1) {
-        console.log('❌ Empty message, ignoring');
-        return;
-      }
-      
-      if (messageText.startsWith('/')) {
-        console.log('❌ Command message, ignoring (handled by command handlers)');
-        return;
-      }
-      
-      // Сохраняем пользователя в MongoDB
-      try {
-        await saveUserToMongo(ctx);
-        console.log('✅ User saved to MongoDB');
-      } catch (error) {
-        console.error('❌ Error saving user:', error);
-        // Продолжаем работу даже если не удалось сохранить пользователя
-      }
+      // Асинхронно обрабатываем подписку и сохранение (не блокируем ответ)
+      setImmediate(async () => {
+        try {
+          await handleUserSubscription(userId);
+          await saveUserToMongo(ctx);
+        } catch (error) {
+          console.error('❌ Background error:', error);
+        }
+      });
       
       // Отслеживаем активность пользователя
       userLastActivity.set(userId, Date.now());
       
       // Получаем текущий блок пользователя
       let currentBlockId = userCurrentBlock.get(userId);
-      console.log(`🔍 DEBUG: Current block: ${currentBlockId}`);
       
       // Инициализация пользователя если нужно
       if (!currentBlockId) {
-        console.log(`🔍 DEBUG: Initializing new user ${userId}`);
         userCurrentBlock.set(userId, 'start');
         currentBlockId = 'start';
         
@@ -1067,7 +1049,6 @@ function setupBotHandlers(bot, blocks, connections) {
         if (startBlock) {
           const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
           await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-          console.log(`✅ Welcome message sent to user ${userId}`);
           return;
         } else {
           await ctx.reply('Бот не настроен');
@@ -1078,21 +1059,50 @@ function setupBotHandlers(bot, blocks, connections) {
       // Получаем текущий блок
       const currentBlock = dialogMap.get(currentBlockId);
       if (!currentBlock) {
-        console.log(`❌ Current block ${currentBlockId} not found, resetting to start`);
-            userCurrentBlock.set(userId, 'start');
-            const startBlock = dialogMap.get('start');
-            if (startBlock) {
-              const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
-              await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-            }
-            return;
-          }
+        userCurrentBlock.set(userId, 'start');
+        const startBlock = dialogMap.get('start');
+        if (startBlock) {
+          const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
+          await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+        }
+        return;
+      }
       
-      console.log(`🔍 DEBUG: Processing in block ${currentBlockId} (type: ${currentBlock.type})`);
+      // Обработка кнопки "Назад"
+      if (messageText === '⬅️ Назад') {
+        const history = userNavigationHistory.get(userId) || [];
+        if (history.length > 0) {
+          const previousBlockId = history.pop();
+          userNavigationHistory.set(userId, history);
+          userCurrentBlock.set(userId, previousBlockId);
+          
+          const previousBlock = dialogMap.get(previousBlockId);
+          if (previousBlock) {
+            const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(previousBlock.buttons, userId, previousBlockId);
+            await sendMediaMessage(ctx, previousBlock.message, previousBlock.mediaFiles, keyboard, inlineKeyboard);
+          }
+        } else {
+          // Если нет истории, возвращаемся к началу
+          userCurrentBlock.set(userId, 'start');
+          const startBlock = dialogMap.get('start');
+          if (startBlock) {
+            const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
+            await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+          }
+        }
+        return;
+      }
       
       // Проверяем, не пытается ли пользователь пройти квест повторно
       if (currentBlockId === 'start') {
-        console.log(`🔍 DEBUG: User in start block, checking if trying to start quiz`);
+        
+        // Обработка кнопки "СИСТЕМА ЛОЯЛЬНОСТИ"
+        if (messageText === '🎁 СИСТЕМА ЛОЯЛЬНОСТИ') {
+          const loyaltyInfo = await getLoyaltyInfo(userId);
+          const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(currentBlock.buttons, userId, currentBlockId);
+          await sendMediaMessage(ctx, loyaltyInfo, [], keyboard, inlineKeyboard);
+          return;
+        }
         
         // Находим кнопку и проверяем, ведет ли она к квизу
         const button = currentBlock.buttons?.find(btn => btn.text === messageText);
@@ -1102,15 +1112,12 @@ function setupBotHandlers(bot, blocks, connections) {
           const nextBlock = dialogMap.get(nextBlockId);
           
           if (nextBlock && nextBlock.type === 'quiz') {
-            console.log(`🔍 DEBUG: Button leads to quiz, checking if already completed`);
-            
             // Проверяем в памяти (быстро)
             const quizKey = `${userId}_${nextBlockId}`;
             if (completedQuizzes.has(quizKey)) {
-              console.log(`🔍 DEBUG: User ${userId} already completed quiz ${nextBlockId} (from memory)`);
               await ctx.reply('Вы уже прошли этот квест!');
-            return;
-          }
+              return;
+            }
             
             // Проверяем в MongoDB (надежно)
             try {
@@ -1137,17 +1144,12 @@ function setupBotHandlers(bot, blocks, connections) {
       // Проверяем, находится ли пользователь в квизе (по состоянию, а не по блоку)
       const quizState = userQuizStates.get(userId);
       if (quizState && !quizState.isCompleted) {
-        console.log(`🔍 DEBUG: User is in quiz, processing answer`);
-        console.log(`🔍 DEBUG: Quiz state:`, quizState);
-        console.log(`🔍 DEBUG: Message text: "${messageText}"`);
-        
         // Получаем блок квиза
         const quizBlock = dialogMap.get(quizState.blockId);
         if (!quizBlock || quizBlock.type !== 'quiz') {
-          console.log(`❌ Quiz block not found or not a quiz: ${quizState.blockId}`);
-            userQuizStates.delete(userId);
-            return;
-          }
+          userQuizStates.delete(userId);
+          return;
+        }
           
         const questions = quizBlock.questions || [];
         const currentQuestion = questions[quizState.currentQuestionIndex];
@@ -1399,35 +1401,24 @@ function setupBotHandlers(bot, blocks, connections) {
               return;
       }
       
-      console.log(`✅ Button "${messageText}" found, processing...`);
-            
-            // Проверяем, является ли кнопка ссылкой
-            if (button.url && button.url.trim() !== '') {
-        console.log(`🔗 Link button: ${button.url}`);
-              await ctx.reply(`🔗 ${button.text}`, {
-                reply_markup: {
-                  inline_keyboard: [[{ text: button.text, url: button.url.trim() }]]
-                }
-              });
-              return;
-            }
-            
+      // Проверяем, является ли кнопка ссылкой
+      if (button.url && button.url.trim() !== '') {
+        await ctx.reply(`🔗 ${button.text}`, {
+          reply_markup: {
+            inline_keyboard: [[{ text: button.text, url: button.url.trim() }]]
+          }
+        });
+        return;
+      }
+      
       // Обычная кнопка - переход к следующему блоку
       const connectionKey = `${String(currentBlockId)}_${String(button.id)}`;
       const nextBlockId = connectionMap.get(connectionKey);
       
-      console.log(`🔍 DEBUG: Connection key: ${connectionKey}`);
-      console.log(`🔍 DEBUG: Next block ID: ${nextBlockId}`);
-      console.log(`🔍 DEBUG: Available connections:`, Array.from(connectionMap.entries()));
-      console.log(`🔍 DEBUG: Available blocks:`, Array.from(dialogMap.keys()));
-      
       if (!nextBlockId || !dialogMap.has(nextBlockId)) {
-        console.log(`❌ No valid next block found`);
-        console.log(`❌ Connection key "${connectionKey}" not found in connectionMap`);
-        console.log(`❌ Next block ID "${nextBlockId}" not found in dialogMap`);
         await ctx.reply('Ошибка маршрутизации: не найден следующий блок.');
-                return;
-              }
+        return;
+      }
             
       // Переходим к следующему блоку
               const nextBlock = dialogMap.get(nextBlockId);
@@ -1551,17 +1542,21 @@ function setupBotHandlers(bot, blocks, connections) {
 
   // Обработка любых callback_query (нажатий на inline-кнопки)
   bot.on('callback_query', async (ctx) => {
-    console.log('[DEBUG] on callback_query ctx:', JSON.stringify(ctx, null, 2));
-    console.log('[DEBUG] on callback_query ctx.from:', ctx.from);
-    await saveUserToMongo(ctx);
-    
-    // Обрабатываем подписку пользователя
     const userId = ctx.from?.id;
-    if (userId) {
-      await handleUserSubscription(userId);
-    }
+    if (!userId) return;
     
-    // ... твоя логика обработки callback
+    // Асинхронно обрабатываем подписку и сохранение (не блокируем ответ)
+    setImmediate(async () => {
+      try {
+        await handleUserSubscription(userId);
+        await saveUserToMongo(ctx);
+      } catch (error) {
+        console.error('❌ Background callback error:', error);
+      }
+    });
+    
+    // Отвечаем на callback_query для предотвращения повторных запросов
+    await ctx.answerCbQuery();
   });
 }
 
@@ -1828,13 +1823,10 @@ async function startBot() {
   // Обновляем меню команд Telegram
   await updateBotCommands(bot, state.blocks);
   
-  // Глобальный логгер для всех апдейтов Telegram (всегда включен)
+  // Оптимизированный логгер для всех апдейтов Telegram
   bot.use((ctx, next) => {
-    console.log('=== [EVENT] Incoming update ===');
-    console.log('[EVENT] Update type:', ctx.updateType);
-    console.log('[EVENT] Update:', JSON.stringify(ctx.update, null, 2));
-    console.log('[EVENT] Message text:', ctx.message?.text);
-    console.log('[EVENT] User ID:', ctx.from?.id);
+    // Логируем только основную информацию для производительности
+    console.log(`📨 ${ctx.updateType} from ${ctx.from?.id || 'unknown'}: ${ctx.message?.text || 'no text'}`);
     return next();
   });
 
