@@ -314,18 +314,23 @@ async function saveUserToMongo(ctx) {
     const existingUser = await User.findOne({ botId, userId });
     
     if (existingUser) {
-      // Обновляем существующего пользователя
-    const updateResult = await User.updateOne(
-      { botId, userId },
-      {
-          $set: {
-            lastSubscribedAt: new Date(),
-            isSubscribed: true,
-            username: ctx.from.username,
-            firstName: ctx.from.first_name,
-            lastName: ctx.from.last_name
-          }
-        }
+      // Обновляем существующего пользователя (НЕ сбрасываем время подписки)
+      const updateData = {
+        isSubscribed: true,
+        username: ctx.from.username,
+        firstName: ctx.from.first_name,
+        lastName: ctx.from.last_name
+      };
+      
+      // Обновляем lastSubscribedAt только если пользователь был отписан
+      if (!existingUser.isSubscribed) {
+        updateData.lastSubscribedAt = new Date();
+        console.log('[MongoDB] saveUserToMongo: пользователь переподписался, обновляем время');
+      }
+      
+      const updateResult = await User.updateOne(
+        { botId, userId },
+        { $set: updateData }
       );
       console.log('[MongoDB] saveUserToMongo: пользователь обновлен:', updateResult);
     } else {
@@ -694,18 +699,19 @@ function setupBotHandlers(bot, blocks, connections) {
     if (!user) return 0;
     
     const now = new Date();
-    let totalTime = user.totalSubscribedTime || 0;
     
-    // Если пользователь сейчас подписан, добавляем время с последней подписки
-    if (user.isSubscribed && user.lastSubscribedAt) {
-      const currentSubscriptionTime = now.getTime() - user.lastSubscribedAt.getTime();
-      totalTime += currentSubscriptionTime;
+    // Если пользователь сейчас подписан, рассчитываем время с первой подписки
+    if (user.isSubscribed && user.firstSubscribedAt) {
+      let totalTime = now.getTime() - user.firstSubscribedAt.getTime();
+      
+      // Вычитаем время паузы (если пользователь отписывался)
+      totalTime -= (user.pausedTime || 0);
+      
+      return Math.max(0, totalTime); // Не может быть отрицательным
     }
     
-    // Вычитаем время паузы
-    totalTime -= (user.pausedTime || 0);
-    
-    return Math.max(0, totalTime); // Не может быть отрицательным
+    // Если пользователь отписан, возвращаем сохраненное время
+    return Math.max(0, (user.totalSubscribedTime || 0) - (user.pausedTime || 0));
   }
 
 
@@ -1059,14 +1065,14 @@ function setupBotHandlers(bot, blocks, connections) {
       // Получаем текущий блок
       const currentBlock = dialogMap.get(currentBlockId);
       if (!currentBlock) {
-        userCurrentBlock.set(userId, 'start');
-        const startBlock = dialogMap.get('start');
-        if (startBlock) {
+            userCurrentBlock.set(userId, 'start');
+            const startBlock = dialogMap.get('start');
+            if (startBlock) {
           const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
-          await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
-        }
-        return;
-      }
+              await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+            }
+            return;
+          }
       
       // Обработка кнопки "Назад"
       if (messageText === '⬅️ Назад') {
@@ -1109,15 +1115,15 @@ function setupBotHandlers(bot, blocks, connections) {
         if (button) {
           const connectionKey = `${String(currentBlockId)}_${String(button.id)}`;
           const nextBlockId = connectionMap.get(connectionKey);
-          const nextBlock = dialogMap.get(nextBlockId);
+            const nextBlock = dialogMap.get(nextBlockId);
           
           if (nextBlock && nextBlock.type === 'quiz') {
             // Проверяем в памяти (быстро)
             const quizKey = `${userId}_${nextBlockId}`;
             if (completedQuizzes.has(quizKey)) {
               await ctx.reply('Вы уже прошли этот квест!');
-              return;
-            }
+            return;
+          }
             
             // Проверяем в MongoDB (надежно)
             try {
@@ -1147,9 +1153,9 @@ function setupBotHandlers(bot, blocks, connections) {
         // Получаем блок квиза
         const quizBlock = dialogMap.get(quizState.blockId);
         if (!quizBlock || quizBlock.type !== 'quiz') {
-          userQuizStates.delete(userId);
-          return;
-        }
+            userQuizStates.delete(userId);
+            return;
+          }
           
         const questions = quizBlock.questions || [];
         const currentQuestion = questions[quizState.currentQuestionIndex];
@@ -1400,25 +1406,25 @@ function setupBotHandlers(bot, blocks, connections) {
         await ctx.reply('Я вас не понимаю, воспользуйтесь пожалуйста кнопками.');
               return;
       }
-      
-      // Проверяем, является ли кнопка ссылкой
-      if (button.url && button.url.trim() !== '') {
-        await ctx.reply(`🔗 ${button.text}`, {
-          reply_markup: {
-            inline_keyboard: [[{ text: button.text, url: button.url.trim() }]]
-          }
-        });
-        return;
-      }
-      
+            
+            // Проверяем, является ли кнопка ссылкой
+            if (button.url && button.url.trim() !== '') {
+              await ctx.reply(`🔗 ${button.text}`, {
+                reply_markup: {
+                  inline_keyboard: [[{ text: button.text, url: button.url.trim() }]]
+                }
+              });
+              return;
+            }
+            
       // Обычная кнопка - переход к следующему блоку
       const connectionKey = `${String(currentBlockId)}_${String(button.id)}`;
       const nextBlockId = connectionMap.get(connectionKey);
       
       if (!nextBlockId || !dialogMap.has(nextBlockId)) {
         await ctx.reply('Ошибка маршрутизации: не найден следующий блок.');
-        return;
-      }
+                return;
+              }
             
       // Переходим к следующему блоку
               const nextBlock = dialogMap.get(nextBlockId);
@@ -1549,7 +1555,7 @@ function setupBotHandlers(bot, blocks, connections) {
     setImmediate(async () => {
       try {
         await handleUserSubscription(userId);
-        await saveUserToMongo(ctx);
+    await saveUserToMongo(ctx);
       } catch (error) {
         console.error('❌ Background callback error:', error);
       }
