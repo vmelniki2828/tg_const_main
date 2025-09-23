@@ -526,9 +526,29 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
     await PromoCode.deleteMany({ botId, quizId });
     console.log(`🎁 Удалены старые промокоды для квиза ${quizId}`);
 
-    // Сохраняем новые промокоды в MongoDB
-    await PromoCode.insertMany(promoCodes);
-    console.log(`🎁 Сохранено ${promoCodes.length} промокодов в MongoDB`);
+    // Сохраняем новые промокоды в MongoDB с обработкой дубликатов
+    try {
+      await PromoCode.insertMany(promoCodes, { ordered: false });
+      console.log(`🎁 Сохранено ${promoCodes.length} промокодов в MongoDB`);
+    } catch (error) {
+      if (error.code === 11000) {
+        // Ошибка дублирования - некоторые промокоды уже существуют
+        console.log(`⚠️ Некоторые промокоды уже существуют, пропускаем дубликаты`);
+        
+        // Подсчитываем успешно добавленные промокоды
+        const insertedCount = promoCodes.length - error.writeErrors.length;
+        console.log(`🎁 Успешно добавлено ${insertedCount} новых промокодов`);
+        
+        if (insertedCount === 0) {
+          return res.status(400).json({ 
+            error: 'Все промокоды уже существуют в базе данных',
+            details: 'Попробуйте загрузить другие промокоды'
+          });
+        }
+      } else {
+        throw error;
+      }
+    }
 
     // Удаляем временный файл
     fs.unlinkSync(filePath);
