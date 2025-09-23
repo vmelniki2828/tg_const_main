@@ -328,8 +328,8 @@ async function saveUserToMongo(ctx) {
         console.log('[MongoDB] saveUserToMongo: пользователь переподписался, обновляем время');
       }
       
-      const updateResult = await User.updateOne(
-        { botId, userId },
+    const updateResult = await User.updateOne(
+      { botId, userId },
         { $set: updateData }
       );
       console.log('[MongoDB] saveUserToMongo: пользователь обновлен:', updateResult);

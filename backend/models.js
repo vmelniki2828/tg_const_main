@@ -67,9 +67,6 @@ const PromoCodeSchema = new mongoose.Schema({
   activatedAt: Date
 });
 
-// Создаем индекс для уникальности промокода в рамках бота
-PromoCodeSchema.index({ botId: 1, code: 1 }, { unique: true });
-
 const LoyaltySchema = new mongoose.Schema({
   botId: { type: String, required: true },
   userId: { type: Number, required: true },
