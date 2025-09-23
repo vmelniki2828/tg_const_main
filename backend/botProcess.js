@@ -700,9 +700,9 @@ function setupBotHandlers(bot, blocks, connections) {
     
     const now = new Date();
     
-    // Если пользователь сейчас подписан, рассчитываем время с первой подписки
-    if (user.isSubscribed && user.firstSubscribedAt) {
-      let totalTime = now.getTime() - user.firstSubscribedAt.getTime();
+    // Если пользователь участвует в программе лояльности, рассчитываем время с момента начала участия
+    if (user.loyaltyStartedAt) {
+      let totalTime = now.getTime() - user.loyaltyStartedAt.getTime();
       
       // Вычитаем время паузы (если пользователь отписывался)
       totalTime -= (user.pausedTime || 0);
@@ -710,8 +710,8 @@ function setupBotHandlers(bot, blocks, connections) {
       return Math.max(0, totalTime); // Не может быть отрицательным
     }
     
-    // Если пользователь отписан, возвращаем сохраненное время
-    return Math.max(0, (user.totalSubscribedTime || 0) - (user.pausedTime || 0));
+    // Если программа лояльности не была активирована, возвращаем 0
+    return 0;
   }
 
 
@@ -813,6 +813,17 @@ function setupBotHandlers(bot, blocks, connections) {
             console.log(`✅ Пользователь ${userId} подписан на канал ${channelId} - доступ разрешен`);
           }
         }
+      }
+
+      // Устанавливаем время начала программы лояльности, если его еще нет
+      if (!user.loyaltyStartedAt) {
+        await User.updateOne(
+          { botId, userId },
+          { $set: { loyaltyStartedAt: new Date() } }
+        );
+        console.log(`🎁 Установлено время начала программы лояльности для пользователя ${userId}`);
+        // Обновляем объект пользователя для текущего запроса
+        user.loyaltyStartedAt = new Date();
       }
 
       const loyalty = await Loyalty.findOne({ botId, userId });
@@ -1669,13 +1680,24 @@ function startLoyaltyChecker() {
             console.log(`[LOYALTY] Создана запись лояльности для пользователя ${user.userId}`);
           }
           
-          // Вычисляем время подписки
-          const subscriptionTime = Date.now() - user.firstSubscribedAt.getTime();
-          const minutes = Math.floor(subscriptionTime / (1000 * 60));
-          const hours = Math.floor(subscriptionTime / (1000 * 60 * 60));
-          const days = Math.floor(subscriptionTime / (1000 * 60 * 60 * 24));
+          // Устанавливаем время начала программы лояльности, если его еще нет
+          if (!user.loyaltyStartedAt) {
+            await User.updateOne(
+              { botId, userId: user.userId },
+              { $set: { loyaltyStartedAt: new Date() } }
+            );
+            console.log(`[LOYALTY] Установлено время начала программы лояльности для пользователя ${user.userId}`);
+            // Обновляем объект пользователя для текущего запроса
+            user.loyaltyStartedAt = new Date();
+          }
+
+          // Вычисляем время участия в программе лояльности
+          const loyaltyTime = Date.now() - user.loyaltyStartedAt.getTime();
+          const minutes = Math.floor(loyaltyTime / (1000 * 60));
+          const hours = Math.floor(loyaltyTime / (1000 * 60 * 60));
+          const days = Math.floor(loyaltyTime / (1000 * 60 * 60 * 24));
           
-          console.log(`[LOYALTY] Пользователь ${user.userId}: подписан ${minutes} минут, ${hours} часов, ${days} дней`);
+          console.log(`[LOYALTY] Пользователь ${user.userId}: участвует в программе лояльности ${minutes} минут, ${hours} часов, ${days} дней`);
           
           // Проверяем каждый период
           const periods = [

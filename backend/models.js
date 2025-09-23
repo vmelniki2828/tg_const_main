@@ -28,6 +28,8 @@ const UserSchema = new mongoose.Schema({
   totalSubscribedTime: { type: Number, default: 0 }, // Общее время подписки в миллисекундах
   lastUnsubscribedAt: Date, // Время последней отписки
   pausedTime: { type: Number, default: 0 }, // Время на паузе в миллисекундах
+  // Поля для программы лояльности
+  loyaltyStartedAt: Date, // Время начала участия в программе лояльности
   loyaltyRewards: {
     '1m': { type: Boolean, default: false },
     '24h': { type: Boolean, default: false },
