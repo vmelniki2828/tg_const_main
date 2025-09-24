@@ -799,14 +799,16 @@ function setupBotHandlers(bot, blocks, connections) {
           const isSubscribed = await checkChannelSubscription(userId, channelId);
           
           if (!isSubscribed) {
-            const channelUsername = loyaltyConfig.channelSettings.channelUsername || channelId;
+            const channelTitle = loyaltyConfig.channelSettings.channelTitle || 
+              loyaltyConfig.channelSettings.channelUsername || 
+              channelId;
             const notSubscribedMessage = loyaltyConfig.channelSettings.notSubscribedMessage || 
               'Для участия в программе лояльности необходимо подписаться на наш канал!';
             
-            let message = '🔒 **ДОСТУП ОГРАНИЧЕН**\n\n';
+            let message = '🔒 ДОСТУП ОГРАНИЧЕН\n\n';
             message += `${notSubscribedMessage}\n\n`;
-            message += `📢 **Канал:** ${channelUsername}\n\n`;
-            message += '💡 **Подпишитесь на канал и попробуйте снова!**';
+            message += `📢 Канал: ${channelTitle}\n\n`;
+            message += '💡 Подпишитесь на канал и попробуйте снова!';
             
             return message;
           } else {
@@ -837,14 +839,14 @@ function setupBotHandlers(bot, blocks, connections) {
       const totalHours = Math.floor(effectiveTime / (1000 * 60 * 60));
       const totalMinutes = Math.floor(effectiveTime / (1000 * 60));
 
-      let message = '🎁 **СИСТЕМА ЛОЯЛЬНОСТИ**\n\n';
-      message += `📅 **Вы с нами:** ${totalDays} дней, ${totalHours % 24} часов, ${totalMinutes % 60} минут\n\n`;
+      let message = '🎁 СИСТЕМА ЛОЯЛЬНОСТИ\n\n';
+      message += `📅 Вы с нами: ${totalDays} дней, ${totalHours % 24} часов, ${totalMinutes % 60} минут\n\n`;
       
       // Показываем статус подписки
       if (user.isSubscribed) {
-        message += `🟢 **Статус:** Подписан\n\n`;
+        message += `🟢 Статус: Подписан\n\n`;
       } else {
-        message += `🔴 **Статус:** Отписан (время на паузе)\n\n`;
+        message += `🔴 Статус: Отписан (время на паузе)\n\n`;
       }
 
       // Периоды лояльности (отсортированы по времени)
@@ -862,7 +864,7 @@ function setupBotHandlers(bot, blocks, connections) {
       const enabledPeriods = periods.filter(period => loyaltyConfig.messages[period.key]?.enabled);
       
       if (enabledPeriods.length === 0) {
-        message += '❌ **Программа лояльности не настроена**';
+        message += '❌ Программа лояльности не настроена';
         return message;
       }
 
@@ -879,8 +881,8 @@ function setupBotHandlers(bot, blocks, connections) {
           allRewarded = false;
           if (currentMinutes >= period.minutes) {
             // Бонус доступен сейчас
-            message += `🎁 **Следующий бонус:** ${period.name} - **ДОСТУПЕН СЕЙЧАС!**\n\n`;
-            message += '💡 **Награда придет автоматически!**';
+            message += `🎁 Следующий бонус: ${period.name} - ДОСТУПЕН СЕЙЧАС!\n\n`;
+            message += '💡 Награда придет автоматически!';
             return message;
           } else {
             // Бонус еще не доступен
@@ -892,25 +894,25 @@ function setupBotHandlers(bot, blocks, connections) {
       }
 
       if (allRewarded) {
-        message += '🎉 **Поздравляем! Вы получили все доступные награды!**\n\n';
-        message += '💡 **Следите за обновлениями программы лояльности!**';
+        message += '🎉 Поздравляем! Вы получили все доступные награды!\n\n';
+        message += '💡 Следите за обновлениями программы лояльности!';
       } else if (nextBonus) {
         const remainingMinutes = nextBonus.minutes - currentMinutes;
         const remainingDays = Math.floor(remainingMinutes / (24 * 60));
         const remainingHours = Math.floor((remainingMinutes % (24 * 60)) / 60);
         const remainingMins = remainingMinutes % 60;
         
-        message += `⏳ **До следующего бонуса:** ${nextBonus.name}\n\n`;
+        message += `⏳ До следующего бонуса: ${nextBonus.name}\n\n`;
         
         if (remainingDays > 0) {
-          message += `📅 **Осталось:** ${remainingDays} дней, ${remainingHours} часов, ${remainingMins} минут`;
+          message += `📅 Осталось: ${remainingDays} дней, ${remainingHours} часов, ${remainingMins} минут`;
         } else if (remainingHours > 0) {
-          message += `⏰ **Осталось:** ${remainingHours} часов, ${remainingMins} минут`;
+          message += `⏰ Осталось: ${remainingHours} часов, ${remainingMins} минут`;
         } else {
-          message += `⏰ **Осталось:** ${remainingMins} минут`;
+          message += `⏰ Осталось: ${remainingMins} минут`;
         }
         
-        message += '\n\n💡 **Награда придет автоматически!**';
+        message += '\n\n💡 Награда придет автоматически!';
       }
 
       return message;
@@ -974,17 +976,17 @@ function setupBotHandlers(bot, blocks, connections) {
     }
     let currentBlockId = userCurrentBlock.get(userId);
     
-    let helpMessage = '🤖 **Помощь по использованию бота:**\n\n';
-    helpMessage += '📱 **Как использовать:**\n';
+    let helpMessage = '🤖 Помощь по использованию бота:\n\n';
+    helpMessage += '📱 Как использовать:\n';
     helpMessage += '• Используйте кнопки для навигации\n';
     helpMessage += '• Нажимайте на кнопки вместо ввода текста\n';
     helpMessage += '• Кнопка "Назад" вернет вас к предыдущему блоку\n\n';
-    helpMessage += '🔗 **Кнопки с ссылками:**\n';
+    helpMessage += '🔗 Кнопки с ссылками:\n';
     helpMessage += '• Если кнопка содержит ссылку, она откроется в браузере\n\n';
-    helpMessage += '📊 **Квизы:**\n';
+    helpMessage += '📊 Квизы:\n';
     helpMessage += '• Отвечайте на вопросы, выбирая правильные варианты\n';
     helpMessage += '• За правильные ответы вы можете получить промокоды\n\n';
-    helpMessage += '💡 **Советы:**\n';
+    helpMessage += '💡 Советы:\n';
     helpMessage += '• Не вводите текст вручную - используйте кнопки\n';
     helpMessage += '• Если заблудились, нажмите /start для возврата в начало';
     
@@ -1306,13 +1308,13 @@ function setupBotHandlers(bot, blocks, connections) {
            if (correctAnswers === totalQuestions) {
              // Все ответы правильные - показываем сообщение об успехе
              const successMessage = quizBlock.finalSuccessMessage || '🏆 Поздравляем! Вы успешно прошли квиз!';
-             const statsMessage = `\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
-             const promoMessage = promoCode ? `\n\n🎁 **Ваш промокод:** \`${promoCode}\`` : '';
+             const statsMessage = `\n\n📊 Статистика:\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+             const promoMessage = promoCode ? `\n\n🎁 Ваш промокод: \`${promoCode}\`` : '';
              
              finalMessage = successMessage + statsMessage + promoMessage;
                   } else {
              // Не все ответы правильные - показываем сообщение о неудаче
-             finalMessage = `${quizBlock.finalFailureMessage || '❌ Квест завершен. Попробуйте еще раз!'}\n\n📊 **Статистика:**\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+             finalMessage = `${quizBlock.finalFailureMessage || '❌ Квест завершен. Попробуйте еще раз!'}\n\n📊 Статистика:\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
            }
           
           await ctx.reply(finalMessage, { parse_mode: 'Markdown' });
