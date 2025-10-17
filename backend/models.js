@@ -146,17 +146,6 @@ LoyaltyPromoCodeSchema.index({ botId: 1, period: 1, activated: 1 });
 // Индекс для уникальности промокода в рамках периода (разрешаем дублирование между периодами)
 LoyaltyPromoCodeSchema.index({ botId: 1, period: 1, code: 1 }, { unique: true });
 
-// Удаляем старый индекс code_1 если он существует (для совместимости)
-LoyaltyPromoCodeSchema.pre('index', async function() {
-  try {
-    await this.collection.dropIndex('code_1');
-    console.log('✅ Удален старый индекс code_1 для LoyaltyPromoCode');
-  } catch (error) {
-    // Индекс может не существовать, это нормально
-    console.log('ℹ️ Старый индекс code_1 не найден или уже удален');
-  }
-});
-
 module.exports = {
   Bot: mongoose.model('Bot', BotSchema),
   User: mongoose.model('User', UserSchema),
