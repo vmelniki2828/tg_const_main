@@ -123,10 +123,23 @@ const promoCodeUpload = multer({
     fileSize: 100 * 1024 * 1024 // 100MB лимит для CSV файлов (увеличено с 10MB)
   },
   fileFilter: function (req, file, cb) {
+    console.log('📁 [MULTER_PROMOCODES] Проверка файла:', {
+      fieldname: file.fieldname,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
+    });
+    
     // Разрешаем только CSV файлы
     if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+      console.log('✅ [MULTER_PROMOCODES] Файл принят:', file.originalname);
       cb(null, true);
     } else {
+      console.error('❌ [MULTER_PROMOCODES] Файл отклонен:', {
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        reason: 'Неподдерживаемый тип файла'
+      });
       cb(new Error('Разрешены только CSV файлы'), false);
     }
   }
@@ -139,10 +152,23 @@ const loyaltyPromoCodeUpload = multer({
     fileSize: 100 * 1024 * 1024 // 100MB лимит для CSV файлов (увеличено с 10MB)
   },
   fileFilter: function (req, file, cb) {
+    console.log('📁 [MULTER_LOYALTY] Проверка файла:', {
+      fieldname: file.fieldname,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
+    });
+    
     // Разрешаем только CSV файлы
     if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+      console.log('✅ [MULTER_LOYALTY] Файл принят:', file.originalname);
       cb(null, true);
     } else {
+      console.error('❌ [MULTER_LOYALTY] Файл отклонен:', {
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        reason: 'Неподдерживаемый тип файла'
+      });
       cb(new Error('Разрешены только CSV файлы'), false);
     }
   }
@@ -169,6 +195,58 @@ const upload = multer({
       cb(new Error('Неподдерживаемый тип файла'), false);
     }
   }
+});
+
+// Middleware для обработки ошибок multer
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    console.error('❌ [MULTER_ERROR] Ошибка multer:', error);
+    console.error('❌ [MULTER_ERROR] Детали ошибки:', {
+      code: error.code,
+      message: error.message,
+      field: error.field,
+      requestUrl: req.url,
+      requestMethod: req.method,
+      requestBody: req.body
+    });
+    
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ 
+        error: 'Файл слишком большой',
+        details: `Максимальный размер файла: 100MB`,
+        code: error.code
+      });
+    }
+    
+    if (error.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ 
+        error: 'Слишком много файлов',
+        details: 'Можно загрузить только один файл за раз',
+        code: error.code
+      });
+    }
+    
+    return res.status(400).json({ 
+      error: 'Ошибка загрузки файла',
+      details: error.message,
+      code: error.code
+    });
+  }
+  
+  if (error.message === 'Разрешены только CSV файлы') {
+    console.error('❌ [FILE_TYPE_ERROR] Неподдерживаемый тип файла:', error.message);
+    console.error('❌ [FILE_TYPE_ERROR] Детали запроса:', {
+      requestUrl: req.url,
+      requestMethod: req.method,
+      requestBody: req.body
+    });
+    return res.status(400).json({ 
+      error: 'Неподдерживаемый тип файла',
+      details: 'Разрешены только CSV файлы'
+    });
+  }
+  
+  next(error);
 });
 
 // Статические файлы для загрузок
@@ -484,84 +562,216 @@ app.get('/api/quiz-promocodes/:quizId', async (req, res) => {
 
 // Эндпоинт для загрузки файла с промокодами
 app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (req, res) => {
+  console.log('📁 [UPLOAD_PROMOCODES] Начало загрузки промокодов');
+  console.log('📁 [UPLOAD_PROMOCODES] Request body:', req.body);
+  console.log('📁 [UPLOAD_PROMOCODES] Request file:', req.file ? {
+    fieldname: req.file.fieldname,
+    originalname: req.file.originalname,
+    mimetype: req.file.mimetype,
+    size: req.file.size,
+    path: req.file.path
+  } : 'No file');
+  
   try {
     if (!req.file) {
+      console.error('❌ [UPLOAD_PROMOCODES] Файл не был загружен');
+      console.error('❌ [UPLOAD_PROMOCODES] Request details:', {
+        body: req.body,
+        files: req.files,
+        file: req.file
+      });
       return res.status(400).json({ error: 'Файл не был загружен' });
     }
 
     const { quizId, botId } = req.body; // Получаем ID квиза и бота из тела запроса
+    console.log('📁 [UPLOAD_PROMOCODES] Параметры:', { quizId, botId });
+    
     if (!quizId) {
+      console.error('❌ [UPLOAD_PROMOCODES] ID квиза не указан');
       return res.status(400).json({ error: 'ID квиза не указан' });
     }
     if (!botId) {
+      console.error('❌ [UPLOAD_PROMOCODES] ID бота не указан');
       return res.status(400).json({ error: 'ID бота не указан' });
     }
 
     const filePath = req.file.path;
-    console.log(`🎁 Загружаем промокоды для квиза ${quizId} и бота ${botId}:`, filePath);
+    console.log(`🎁 [UPLOAD_PROMOCODES] Загружаем промокоды для квиза ${quizId} и бота ${botId}:`, filePath);
+    console.log(`🎁 [UPLOAD_PROMOCODES] Информация о файле:`, {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: filePath
+    });
 
     // Читаем файл и парсим промокоды
     const fs = require('fs');
-    const fileContent = fs.readFileSync(filePath, 'utf8');
-    const lines = fileContent.split('\n').filter(line => line.trim());
-    const dataLines = lines.slice(1); // Пропускаем заголовок
+    console.log('📁 [UPLOAD_PROMOCODES] Читаем файл...');
     
-    const promoCodes = dataLines.map(line => {
-      const [code] = line.split(',').map(field => field.trim());
-      return {
-        botId: botId,
-        code: code,
-        quizId: quizId,
-        activated: false
-      };
-    }).filter(item => item.code); // Фильтруем пустые строки
+    let fileContent;
+    try {
+      fileContent = fs.readFileSync(filePath, 'utf8');
+      console.log(`📁 [UPLOAD_PROMOCODES] Файл прочитан, размер: ${fileContent.length} символов`);
+    } catch (readError) {
+      console.error('❌ [UPLOAD_PROMOCODES] Ошибка чтения файла:', readError);
+      console.error('❌ [UPLOAD_PROMOCODES] Детали ошибки:', {
+        message: readError.message,
+        code: readError.code,
+        errno: readError.errno,
+        path: filePath
+      });
+      throw new Error(`Ошибка чтения файла: ${readError.message}`);
+    }
+    
+    const lines = fileContent.split('\n').filter(line => line.trim());
+    console.log(`📁 [UPLOAD_PROMOCODES] Найдено ${lines.length} строк в файле`);
+    
+    const dataLines = lines.slice(1); // Пропускаем заголовок
+    console.log(`📁 [UPLOAD_PROMOCODES] Строк данных (без заголовка): ${dataLines.length}`);
+    
+    const promoCodes = dataLines.map((line, index) => {
+      try {
+        const [code] = line.split(',').map(field => field.trim());
+        if (!code) {
+          console.log(`⚠️ [UPLOAD_PROMOCODES] Пустая строка ${index + 2}: "${line}"`);
+          return null;
+        }
+        return {
+          botId: botId,
+          code: code,
+          quizId: quizId,
+          activated: false
+        };
+      } catch (parseError) {
+        console.error(`❌ [UPLOAD_PROMOCODES] Ошибка парсинга строки ${index + 2}: "${line}"`, parseError);
+        return null;
+      }
+    }).filter(item => item); // Фильтруем пустые строки
 
-    console.log(`🎁 Найдено ${promoCodes.length} промокодов в файле`);
+    console.log(`🎁 [UPLOAD_PROMOCODES] Найдено ${promoCodes.length} валидных промокодов в файле`);
 
     // Удаляем старые промокоды для этого квиза и бота
     if (!botId || !quizId) {
       throw new Error('botId и quizId обязательны для удаления промокодов');
     }
-    protectFromMassDelete('PromoCode.deleteMany', { botId, quizId });
-    await PromoCode.deleteMany({ botId, quizId });
-    console.log(`🎁 Удалены старые промокоды для квиза ${quizId}`);
+    console.log(`🎁 [UPLOAD_PROMOCODES] Удаляем старые промокоды для квиза ${quizId} и бота ${botId}`);
+    
+    let deleteResult;
+    try {
+      protectFromMassDelete('PromoCode.deleteMany', { botId, quizId });
+      deleteResult = await PromoCode.deleteMany({ botId, quizId });
+      console.log(`🎁 [UPLOAD_PROMOCODES] Удалено ${deleteResult.deletedCount} старых промокодов`);
+    } catch (deleteError) {
+      console.error('❌ [UPLOAD_PROMOCODES] Ошибка удаления старых промокодов:', deleteError);
+      console.error('❌ [UPLOAD_PROMOCODES] Детали ошибки удаления:', {
+        message: deleteError.message,
+        code: deleteError.code,
+        botId,
+        quizId
+      });
+      throw new Error(`Ошибка удаления старых промокодов: ${deleteError.message}`);
+    }
 
     // Сохраняем новые промокоды в MongoDB с обработкой дубликатов
     let savedCount = 0;
     let skippedCount = 0;
     
+    console.log(`🎁 [UPLOAD_PROMOCODES] Начинаем сохранение ${promoCodes.length} промокодов в MongoDB`);
+    
     for (const promoCode of promoCodes) {
       try {
         // Используем upsert для перезаписи дубликатов
-        await PromoCode.updateOne(
+        const updateResult = await PromoCode.updateOne(
           { code: promoCode.code },
           promoCode,
           { upsert: true }
         );
         savedCount++;
+        
+        if (updateResult.upsertedCount > 0) {
+          console.log(`✅ [UPLOAD_PROMOCODES] Создан новый промокод: ${promoCode.code}`);
+        } else if (updateResult.modifiedCount > 0) {
+          console.log(`🔄 [UPLOAD_PROMOCODES] Обновлен существующий промокод: ${promoCode.code}`);
+        }
       } catch (error) {
-        console.error(`❌ Ошибка сохранения промокода ${promoCode.code}:`, error);
+        console.error(`❌ [UPLOAD_PROMOCODES] Ошибка сохранения промокода ${promoCode.code}:`, error);
+        console.error(`❌ [UPLOAD_PROMOCODES] Детали ошибки сохранения:`, {
+          message: error.message,
+          code: error.code,
+          promoCode: promoCode.code,
+          botId: promoCode.botId,
+          quizId: promoCode.quizId
+        });
         skippedCount++;
       }
     }
     
-    console.log(`🎁 Сохранено ${savedCount} промокодов в MongoDB, пропущено ${skippedCount}`);
+    console.log(`🎁 [UPLOAD_PROMOCODES] Сохранено ${savedCount} промокодов в MongoDB, пропущено ${skippedCount}`);
 
     // Удаляем временный файл
-    fs.unlinkSync(filePath);
-
-      res.json({ 
-        success: true, 
-        message: `Файл с промокодами успешно загружен для квиза ${quizId}`,
-        filename: req.file.originalname,
-        quizId: quizId,
-        botId: botId,
-        count: savedCount,
-        skipped: skippedCount
+    try {
+      fs.unlinkSync(filePath);
+      console.log(`📁 [UPLOAD_PROMOCODES] Временный файл ${filePath} удален`);
+    } catch (unlinkError) {
+      console.error('⚠️ [UPLOAD_PROMOCODES] Ошибка удаления временного файла:', unlinkError);
+      console.error('⚠️ [UPLOAD_PROMOCODES] Детали ошибки удаления файла:', {
+        message: unlinkError.message,
+        code: unlinkError.code,
+        path: filePath
       });
+      // Не прерываем выполнение, так как файл уже обработан
+    }
+
+    console.log(`✅ [UPLOAD_PROMOCODES] Загрузка промокодов завершена успешно`);
+    console.log(`📊 [UPLOAD_PROMOCODES] Итоговая статистика:`, {
+      totalCodes: promoCodes.length,
+      savedCount,
+      skippedCount,
+      quizId,
+      botId,
+      filename: req.file.originalname
+    });
+
+    res.json({ 
+      success: true, 
+      message: `Файл с промокодами успешно загружен для квиза ${quizId}`,
+      filename: req.file.originalname,
+      quizId: quizId,
+      botId: botId,
+      count: savedCount,
+      skipped: skippedCount
+    });
   } catch (error) {
-    console.error('❌ Promo codes upload error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('❌ [UPLOAD_PROMOCODES] Критическая ошибка загрузки промокодов:', error);
+    console.error('❌ [UPLOAD_PROMOCODES] Детали критической ошибки:', {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      stack: error.stack,
+      requestBody: req.body,
+      requestFile: req.file ? {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        path: req.file.path
+      } : 'No file'
+    });
+    
+    // Удаляем временный файл в случае ошибки
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+        console.log(`📁 [UPLOAD_PROMOCODES] Временный файл ${req.file.path} удален после ошибки`);
+      } catch (unlinkError) {
+        console.error('⚠️ [UPLOAD_PROMOCODES] Ошибка удаления временного файла после ошибки:', unlinkError);
+      }
+    }
+    
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Подробности в логах сервера'
+    });
   }
 });
 
@@ -698,63 +908,187 @@ app.get('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
 });
 
 app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single('promocodes'), async (req, res) => {
+  console.log('📁 [LOYALTY_PROMOCODES] Начало загрузки промокодов лояльности');
+  console.log('📁 [LOYALTY_PROMOCODES] Параметры:', { botId: req.params.botId, period: req.params.period });
+  console.log('📁 [LOYALTY_PROMOCODES] Request body:', req.body);
+  console.log('📁 [LOYALTY_PROMOCODES] Request file:', req.file ? {
+    fieldname: req.file.fieldname,
+    originalname: req.file.originalname,
+    mimetype: req.file.mimetype,
+    size: req.file.size
+  } : 'No file');
+  
   try {
     const { botId, period } = req.params;
     
     console.log(`[LOYALTY] Загрузка промокодов для бота ${botId}, периода ${period}`);
     
     if (!req.file) {
-      console.log('[LOYALTY] Файл не загружен');
+      console.error('❌ [LOYALTY_PROMOCODES] Файл не загружен');
+      console.error('❌ [LOYALTY_PROMOCODES] Request details:', {
+        body: req.body,
+        files: req.files,
+        file: req.file
+      });
       return res.status(400).json({ error: 'No file uploaded' });
     }
     
     console.log(`[LOYALTY] Файл загружен: ${req.file.originalname}, размер: ${req.file.size} bytes`);
     
     // Читаем CSV файл
-    const csvContent = req.file.buffer.toString('utf8');
-    const lines = csvContent.split('\n').filter(line => line.trim());
+    console.log('📁 [LOYALTY_PROMOCODES] Читаем CSV файл из буфера...');
+    let csvContent;
+    try {
+      csvContent = req.file.buffer.toString('utf8');
+      console.log(`📁 [LOYALTY_PROMOCODES] CSV файл прочитан, размер: ${csvContent.length} символов`);
+    } catch (bufferError) {
+      console.error('❌ [LOYALTY_PROMOCODES] Ошибка чтения буфера файла:', bufferError);
+      console.error('❌ [LOYALTY_PROMOCODES] Детали ошибки буфера:', {
+        message: bufferError.message,
+        code: bufferError.code,
+        bufferSize: req.file.buffer ? req.file.buffer.length : 'No buffer'
+      });
+      throw new Error(`Ошибка чтения файла: ${bufferError.message}`);
+    }
     
+    const lines = csvContent.split('\n').filter(line => line.trim());
     console.log(`[LOYALTY] Найдено ${lines.length} строк в CSV файле`);
     
     // Удаляем существующие промокоды для этого периода
     if (!botId || !period) {
       throw new Error('botId и period обязательны для удаления промокодов лояльности');
     }
-    protectFromMassDelete('LoyaltyPromoCode.deleteMany', { botId, period });
-    const deleteResult = await LoyaltyPromoCode.deleteMany({ botId, period });
-    console.log(`[LOYALTY] Удалено ${deleteResult.deletedCount} существующих промокодов`);
+    console.log(`[LOYALTY_PROMOCODES] Удаляем существующие промокоды для бота ${botId}, периода ${period}`);
+    
+    let deleteResult;
+    try {
+      protectFromMassDelete('LoyaltyPromoCode.deleteMany', { botId, period });
+      deleteResult = await LoyaltyPromoCode.deleteMany({ botId, period });
+      console.log(`[LOYALTY] Удалено ${deleteResult.deletedCount} существующих промокодов`);
+    } catch (deleteError) {
+      console.error('❌ [LOYALTY_PROMOCODES] Ошибка удаления существующих промокодов:', deleteError);
+      console.error('❌ [LOYALTY_PROMOCODES] Детали ошибки удаления:', {
+        message: deleteError.message,
+        code: deleteError.code,
+        botId,
+        period
+      });
+      throw new Error(`Ошибка удаления существующих промокодов: ${deleteError.message}`);
+    }
     
     // Добавляем новые промокоды - берем только первый столбец (Code)
-    const promoCodes = lines.map(line => {
-      const trimmedLine = line.trim();
-      // Пропускаем заголовки
-      if (trimmedLine.toLowerCase().includes('code') && trimmedLine.toLowerCase().includes('user')) {
-        console.log(`[LOYALTY] Пропускаем заголовок: "${trimmedLine}"`);
+    console.log(`[LOYALTY_PROMOCODES] Обрабатываем ${lines.length} строк для создания промокодов`);
+    
+    const promoCodes = lines.map((line, index) => {
+      try {
+        const trimmedLine = line.trim();
+        // Пропускаем заголовки
+        if (trimmedLine.toLowerCase().includes('code') && trimmedLine.toLowerCase().includes('user')) {
+          console.log(`[LOYALTY] Пропускаем заголовок: "${trimmedLine}"`);
+          return null;
+        }
+        
+        // Берем только первый столбец (до первой запятой)
+        const code = trimmedLine.split(',')[0].trim();
+        if (!code) {
+          console.log(`⚠️ [LOYALTY_PROMOCODES] Пустая строка ${index + 1}: "${trimmedLine}"`);
+          return null;
+        }
+        
+        console.log(`[LOYALTY] Обработка строки: "${trimmedLine}" -> код: "${code}"`);
+        return {
+          botId,
+          period,
+          code: code
+        };
+      } catch (parseError) {
+        console.error(`❌ [LOYALTY_PROMOCODES] Ошибка парсинга строки ${index + 1}: "${line}"`, parseError);
         return null;
       }
-      
-      // Берем только первый столбец (до первой запятой)
-      const code = trimmedLine.split(',')[0].trim();
-      console.log(`[LOYALTY] Обработка строки: "${trimmedLine}" -> код: "${code}"`);
-    return {
-        botId,
-        period,
-        code: code
-      };
     }).filter(promo => promo && promo.code && promo.code.length > 0); // Фильтруем пустые коды и null
     
     console.log(`[LOYALTY] Создано ${promoCodes.length} промокодов для вставки`);
     
-    const insertResult = await LoyaltyPromoCode.insertMany(promoCodes);
-    console.log(`[LOYALTY] Вставлено ${insertResult.length} промокодов в базу данных`);
+    if (promoCodes.length === 0) {
+      console.error('❌ [LOYALTY_PROMOCODES] Не найдено валидных промокодов');
+      return res.status(400).json({ error: 'Не найдено валидных промокодов' });
+    }
     
-    res.json({ 
-      success: true, 
-      message: `Загружено ${promoCodes.length} промокодов для периода ${period}` 
+    // Сохраняем все промокоды в базу данных с обработкой дубликатов
+    let savedCount = 0;
+    let saveSkippedCount = 0;
+    
+    console.log(`[LOYALTY_PROMOCODES] Начинаем сохранение ${promoCodes.length} промокодов в MongoDB`);
+    
+    for (const promoCode of promoCodes) {
+      try {
+        // Используем upsert для перезаписи дубликатов
+        const updateResult = await LoyaltyPromoCode.updateOne(
+          { botId: promoCode.botId, period: promoCode.period, code: promoCode.code },
+          promoCode,
+          { upsert: true }
+        );
+        savedCount++;
+        
+        if (updateResult.upsertedCount > 0) {
+          console.log(`✅ [LOYALTY_PROMOCODES] Создан новый промокод: ${promoCode.code}`);
+        } else if (updateResult.modifiedCount > 0) {
+          console.log(`🔄 [LOYALTY_PROMOCODES] Обновлен существующий промокод: ${promoCode.code}`);
+        }
+      } catch (error) {
+        console.error(`❌ [LOYALTY_PROMOCODES] Ошибка сохранения промокода лояльности ${promoCode.code}:`, error);
+        console.error(`❌ [LOYALTY_PROMOCODES] Детали ошибки сохранения:`, {
+          message: error.message,
+          code: error.code,
+          promoCode: promoCode.code,
+          botId: promoCode.botId,
+          period: promoCode.period
+        });
+        saveSkippedCount++;
+      }
+    }
+    
+    console.log(`[LOYALTY_PROMOCODES] Сохранено ${savedCount} промокодов в MongoDB, пропущено ${saveSkippedCount}`);
+    
+    console.log(`✅ [LOYALTY_PROMOCODES] Загрузка промокодов лояльности завершена успешно`);
+    console.log(`📊 [LOYALTY_PROMOCODES] Итоговая статистика:`, {
+      totalCodes: promoCodes.length,
+      savedCount,
+      saveSkippedCount,
+      botId,
+      period,
+      filename: req.file.originalname
     });
+    
+    res.json({
+      success: true,
+      message: `Успешно загружено ${savedCount} промокодов для периода ${period}`,
+      totalCodes: savedCount,
+      skippedCodes: saveSkippedCount,
+      period: period
+    });
+    
   } catch (error) {
-    console.error('❌ Error uploading loyalty promocodes:', error);
-    res.status(500).json({ error: 'Failed to upload loyalty promocodes' });
+    console.error('❌ [LOYALTY_PROMOCODES] Критическая ошибка загрузки промокодов лояльности:', error);
+    console.error('❌ [LOYALTY_PROMOCODES] Детали критической ошибки:', {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      stack: error.stack,
+      requestParams: req.params,
+      requestBody: req.body,
+      requestFile: req.file ? {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size
+      } : 'No file'
+    });
+    
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Подробности в логах сервера'
+    });
   }
 });
 
