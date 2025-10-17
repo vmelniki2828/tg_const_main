@@ -873,10 +873,10 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
       });
     }
 
-    res.json({ 
-      success: true, 
-      message: `Файл с промокодами успешно загружен для квиза ${quizId}`,
-      filename: req.file.originalname,
+      res.json({ 
+        success: true, 
+        message: `Файл с промокодами успешно загружен для квиза ${quizId}`,
+        filename: req.file.originalname,
       quizId: quizId,
       botId: botId,
       count: savedCount,
@@ -1214,7 +1214,7 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
           
           console.log(`✅ [LOYALTY_PROMOCODES] Создан новый промокод: ${promoCode.code}`);
         }
-      } catch (error) {
+  } catch (error) {
         console.error(`❌ [LOYALTY_PROMOCODES] Ошибка сохранения промокода лояльности ${promoCode.code}:`, error);
         console.error(`❌ [LOYALTY_PROMOCODES] Детали ошибки сохранения:`, {
           message: error.message,

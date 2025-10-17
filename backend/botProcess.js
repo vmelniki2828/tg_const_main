@@ -994,6 +994,41 @@ function setupBotHandlers(bot, blocks, connections) {
           message += '\n\n💡 Награда придет автоматически!';
         }
 
+        // Добавляем список выданных промокодов для новой записи
+        const userPromoCodes = await LoyaltyPromoCode.find({
+          botId,
+          activatedBy: userId,
+          activated: true
+        }).sort({ activatedAt: -1 });
+
+        if (userPromoCodes.length > 0) {
+          message += '\n\n🎫 **ВАШИ ПОЛУЧЕННЫЕ ПРОМОКОДЫ:**\n\n';
+          
+          const periodLabels = {
+            '1m': '1 минута',
+            '24h': '24 часа',
+            '7d': '7 дней',
+            '30d': '30 дней',
+            '90d': '90 дней',
+            '180d': '180 дней',
+            '360d': '360 дней'
+          };
+
+          userPromoCodes.forEach((promoCode, index) => {
+            const periodLabel = periodLabels[promoCode.period] || promoCode.period;
+            const activatedDate = new Date(promoCode.activatedAt).toLocaleDateString('ru-RU');
+            message += `${index + 1}. ⏰ **${periodLabel}**\n`;
+            message += `   🎫 Промокод: \`${promoCode.code}\`\n`;
+            message += `   📅 Получен: ${activatedDate}\n\n`;
+          });
+          
+          message += '💡 Используйте эти промокоды для получения бонусов!';
+        } else {
+          message += '\n\n🎫 **ВАШИ ПРОМОКОДЫ:**\n\n';
+          message += '📭 Пока у вас нет полученных промокодов\n';
+          message += '💡 Продолжайте участвовать в программе лояльности!';
+        }
+
         return message;
       }
 
@@ -1077,6 +1112,41 @@ function setupBotHandlers(bot, blocks, connections) {
         }
         
         message += '\n\n💡 Награда придет автоматически!';
+      }
+
+      // Добавляем список выданных промокодов
+      const userPromoCodes = await LoyaltyPromoCode.find({
+        botId,
+        activatedBy: userId,
+        activated: true
+      }).sort({ activatedAt: -1 });
+
+      if (userPromoCodes.length > 0) {
+        message += '\n\n🎫 **ВАШИ ПОЛУЧЕННЫЕ ПРОМОКОДЫ:**\n\n';
+        
+        const periodLabels = {
+          '1m': '1 минута',
+          '24h': '24 часа',
+          '7d': '7 дней',
+          '30d': '30 дней',
+          '90d': '90 дней',
+          '180d': '180 дней',
+          '360d': '360 дней'
+        };
+
+        userPromoCodes.forEach((promoCode, index) => {
+          const periodLabel = periodLabels[promoCode.period] || promoCode.period;
+          const activatedDate = new Date(promoCode.activatedAt).toLocaleDateString('ru-RU');
+          message += `${index + 1}. ⏰ **${periodLabel}**\n`;
+          message += `   🎫 Промокод: \`${promoCode.code}\`\n`;
+          message += `   📅 Получен: ${activatedDate}\n\n`;
+        });
+        
+        message += '💡 Используйте эти промокоды для получения бонусов!';
+      } else {
+        message += '\n\n🎫 **ВАШИ ПРОМОКОДЫ:**\n\n';
+        message += '📭 Пока у вас нет полученных промокодов\n';
+        message += '💡 Продолжайте участвовать в программе лояльности!';
       }
 
       return message;
