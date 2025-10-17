@@ -369,8 +369,93 @@ const completedQuizzes = new Map();
 const subscriptionCache = new Map();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 минут кэш
 
-// Глобальная переменная для бота
-let bot;
+// Функция для автоматической выдачи всех пропущенных промокодов лояльности
+async function giveMissedLoyaltyPromoCodes(userId, loyaltyRecord) {
+  try {
+    console.log(`🎁 [MISSED_PROMOCODES] Начинаем выдачу пропущенных промокодов для пользователя ${userId}`);
+    
+    // Получаем пользователя для расчета времени
+    const user = await User.findOne({ botId, userId });
+    if (!user || !user.loyaltyStartedAt) {
+      console.log(`🎁 [MISSED_PROMOCODES] Пользователь ${userId} не найден или не имеет времени начала лояльности`);
+      return;
+    }
+    
+    // Вычисляем эффективное время подписки
+    const effectiveTime = getEffectiveSubscriptionTime(user);
+    console.log(`🎁 [MISSED_PROMOCODES] Эффективное время подписки пользователя ${userId}: ${effectiveTime} мс`);
+    
+    // Определяем все периоды, которые пользователь уже прошел
+    const timeRewards = [
+      { key: '1m', time: 1 * 60 * 1000 },
+      { key: '24h', time: 24 * 60 * 60 * 1000 },
+      { key: '7d', time: 7 * 24 * 60 * 60 * 1000 },
+      { key: '30d', time: 30 * 24 * 60 * 60 * 1000 },
+      { key: '90d', time: 90 * 24 * 60 * 60 * 1000 },
+      { key: '180d', time: 180 * 24 * 60 * 60 * 1000 },
+      { key: '360d', time: 360 * 24 * 60 * 60 * 1000 }
+    ];
+    
+    const passedPeriods = timeRewards.filter(period => effectiveTime >= period.time);
+    console.log(`🎁 [MISSED_PROMOCODES] Пользователь ${userId} прошел периоды: ${passedPeriods.map(p => p.key).join(', ')}`);
+    
+    // Выдаем промокоды за все пройденные периоды
+    for (const period of passedPeriods) {
+      if (!loyaltyRecord.rewards[period.key]) {
+        console.log(`🎁 [MISSED_PROMOCODES] Выдаем промокод за период ${period.key} пользователю ${userId}`);
+        
+        // Ищем доступный промокод для этого периода
+        const availablePromoCode = await LoyaltyPromoCode.findOne({
+          botId,
+          period: period.key,
+          activated: false
+        });
+        
+        if (availablePromoCode) {
+          try {
+            // Отправляем промокод пользователю
+            const message = `🎁 **ПРОМОКОД ЗА ЛОЯЛЬНОСТЬ!**\n\n` +
+              `⏰ Период: ${period.key}\n` +
+              `🎫 Ваш промокод: \`${availablePromoCode.code}\`\n\n` +
+              `💡 Используйте его для получения бонуса!`;
+            
+            await bot.telegram.sendMessage(userId, message, { parse_mode: 'Markdown' });
+            
+            // Активируем промокод
+            await LoyaltyPromoCode.updateOne(
+              { _id: availablePromoCode._id },
+              { 
+                activated: true, 
+                activatedBy: userId, 
+                activatedAt: new Date() 
+              }
+            );
+            
+            // Отмечаем награду как выданную
+            await Loyalty.updateOne(
+              { botId, userId },
+              { $set: { [`rewards.${period.key}`]: true } }
+            );
+            
+            console.log(`✅ [MISSED_PROMOCODES] Промокод ${availablePromoCode.code} выдан пользователю ${userId} за период ${period.key}`);
+            
+          } catch (sendError) {
+            console.error(`❌ [MISSED_PROMOCODES] Ошибка отправки промокода ${availablePromoCode.code} пользователю ${userId}:`, sendError);
+          }
+        } else {
+          console.log(`⚠️ [MISSED_PROMOCODES] Нет доступных промокодов для периода ${period.key}`);
+        }
+      } else {
+        console.log(`ℹ️ [MISSED_PROMOCODES] Промокод за период ${period.key} уже был выдан пользователю ${userId}`);
+      }
+    }
+    
+    console.log(`🎁 [MISSED_PROMOCODES] Завершена выдача пропущенных промокодов для пользователя ${userId}`);
+    
+  } catch (error) {
+    console.error(`❌ [MISSED_PROMOCODES] Ошибка выдачи пропущенных промокодов пользователю ${userId}:`, error);
+  }
+}
 
 // Функция для проверки подписки пользователя на канал (глобальная) - ОПТИМИЗИРОВАННАЯ
 async function checkChannelSubscription(userId, channelId) {
@@ -819,6 +904,10 @@ function setupBotHandlers(bot, blocks, connections) {
         });
         await newLoyalty.save();
         console.log(`🎁 Создана запись лояльности для пользователя ${userId}`);
+        
+        // АВТОМАТИЧЕСКИ ВЫДАЕМ ВСЕ ПРОПУЩЕННЫЕ ПРОМОКОДЫ
+        console.log(`🎁 [AUTO_REWARD] Автоматически выдаем пропущенные промокоды пользователю ${userId}`);
+        await giveMissedLoyaltyPromoCodes(userId, newLoyalty);
         
         // Используем новую запись
         const effectiveTime = getEffectiveSubscriptionTime(user);
@@ -1755,6 +1844,10 @@ function startLoyaltyChecker() {
             });
             await loyaltyRecord.save();
             console.log(`[LOYALTY] Создана запись лояльности для пользователя ${user.userId}`);
+            
+            // АВТОМАТИЧЕСКИ ВЫДАЕМ ВСЕ ПРОПУЩЕННЫЕ ПРОМОКОДЫ
+            console.log(`🎁 [AUTO_REWARD] Автоматически выдаем пропущенные промокоды пользователю ${user.userId}`);
+            await giveMissedLoyaltyPromoCodes(user.userId, loyaltyRecord);
           }
           
           // Устанавливаем время начала программы лояльности, если его еще нет
