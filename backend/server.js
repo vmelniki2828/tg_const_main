@@ -1907,6 +1907,20 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
       } catch (error) {
         console.error(`❌ Ошибка сохранения промокода лояльности ${promoCode.code}:`, error);
         saveSkippedCount++;
+        
+        // Если это ошибка дубликата из-за старого индекса, попробуем удалить и создать заново
+        if (error.code === 11000) {
+          try {
+            console.log(`🔄 Попытка исправить дубликат для ${promoCode.code}`);
+            await LoyaltyPromoCode.deleteOne({ code: promoCode.code });
+            await LoyaltyPromoCode.create(promoCode);
+            savedCount++;
+            saveSkippedCount--;
+            console.log(`✅ Исправлен дубликат для ${promoCode.code}`);
+          } catch (retryError) {
+            console.error(`❌ Не удалось исправить дубликат для ${promoCode.code}:`, retryError);
+          }
+        }
       }
     }
     
