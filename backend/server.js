@@ -697,66 +697,6 @@ app.get('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
   }
 });
 
-app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single('promocodes'), async (req, res) => {
-  try {
-    const { botId, period } = req.params;
-    
-    console.log(`[LOYALTY] Загрузка промокодов для бота ${botId}, периода ${period}`);
-    
-    if (!req.file) {
-      console.log('[LOYALTY] Файл не загружен');
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-    
-    console.log(`[LOYALTY] Файл загружен: ${req.file.originalname}, размер: ${req.file.size} bytes`);
-    
-    // Читаем CSV файл
-    const csvContent = req.file.buffer.toString('utf8');
-    const lines = csvContent.split('\n').filter(line => line.trim());
-    
-    console.log(`[LOYALTY] Найдено ${lines.length} строк в CSV файле`);
-    
-    // Удаляем существующие промокоды для этого периода
-    if (!botId || !period) {
-      throw new Error('botId и period обязательны для удаления промокодов лояльности');
-    }
-    protectFromMassDelete('LoyaltyPromoCode.deleteMany', { botId, period });
-    const deleteResult = await LoyaltyPromoCode.deleteMany({ botId, period });
-    console.log(`[LOYALTY] Удалено ${deleteResult.deletedCount} существующих промокодов`);
-    
-    // Добавляем новые промокоды - берем только первый столбец (Code)
-    const promoCodes = lines.map(line => {
-      const trimmedLine = line.trim();
-      // Пропускаем заголовки
-      if (trimmedLine.toLowerCase().includes('code') && trimmedLine.toLowerCase().includes('user')) {
-        console.log(`[LOYALTY] Пропускаем заголовок: "${trimmedLine}"`);
-        return null;
-      }
-      
-      // Берем только первый столбец (до первой запятой)
-      const code = trimmedLine.split(',')[0].trim();
-      console.log(`[LOYALTY] Обработка строки: "${trimmedLine}" -> код: "${code}"`);
-    return {
-        botId,
-        period,
-        code: code
-      };
-    }).filter(promo => promo && promo.code && promo.code.length > 0); // Фильтруем пустые коды и null
-    
-    console.log(`[LOYALTY] Создано ${promoCodes.length} промокодов для вставки`);
-    
-    const insertResult = await LoyaltyPromoCode.insertMany(promoCodes);
-    console.log(`[LOYALTY] Вставлено ${insertResult.length} промокодов в базу данных`);
-    
-    res.json({ 
-      success: true, 
-      message: `Загружено ${promoCodes.length} промокодов для периода ${period}` 
-    });
-  } catch (error) {
-    console.error('❌ Error uploading loyalty promocodes:', error);
-    res.status(500).json({ error: 'Failed to upload loyalty promocodes' });
-  }
-});
 
 app.delete('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
   try {

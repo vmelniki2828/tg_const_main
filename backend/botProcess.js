@@ -830,7 +830,109 @@ function setupBotHandlers(bot, blocks, connections) {
 
       const loyalty = await Loyalty.findOne({ botId, userId });
       if (!loyalty) {
-        return '❌ Информация о лояльности не найдена';
+        // Создаем запись лояльности, если её нет
+        const newLoyalty = new Loyalty({
+          botId,
+          userId,
+          rewards: {
+            '1m': false,
+            '24h': false,
+            '7d': false,
+            '30d': false,
+            '90d': false,
+            '180d': false,
+            '360d': false
+          }
+        });
+        await newLoyalty.save();
+        console.log(`🎁 Создана запись лояльности для пользователя ${userId}`);
+        
+        // Используем новую запись
+        const effectiveTime = getEffectiveSubscriptionTime(user);
+        const totalDays = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
+        const totalHours = Math.floor(effectiveTime / (1000 * 60 * 60));
+        const totalMinutes = Math.floor(effectiveTime / (1000 * 60));
+
+        let message = '🎁 СИСТЕМА ЛОЯЛЬНОСТИ\n\n';
+        message += `📅 Вы с нами: ${totalDays} дней, ${totalHours % 24} часов, ${totalMinutes % 60} минут\n\n`;
+        
+        // Показываем статус подписки
+        if (user.isSubscribed) {
+          message += `🟢 Статус: Подписан\n\n`;
+        } else {
+          message += `🔴 Статус: Отписан (время на паузе)\n\n`;
+        }
+
+        // Проверяем доступные периоды
+        const enabledPeriods = [];
+        const periods = [
+          { key: '1m', name: '1 минута', minutes: 1 },
+          { key: '24h', name: '24 часа', hours: 24 },
+          { key: '7d', name: '7 дней', days: 7 },
+          { key: '30d', name: '30 дней', days: 30 },
+          { key: '90d', name: '90 дней', days: 90 },
+          { key: '180d', name: '180 дней', days: 180 },
+          { key: '360d', name: '360 дней', days: 360 }
+        ];
+
+        for (const period of periods) {
+          const config = loyaltyConfig.messages[period.key];
+          if (config && config.enabled) {
+            enabledPeriods.push(period);
+          }
+        }
+
+        if (enabledPeriods.length === 0) {
+          message += '❌ Программа лояльности не настроена';
+          return message;
+        }
+
+        // Проверяем текущее время в минутах
+        const currentMinutes = Math.floor(effectiveTime / (1000 * 60));
+
+        // Ищем следующий доступный бонус
+        let nextBonus = null;
+        let allRewarded = true;
+
+        for (const period of enabledPeriods) {
+          const periodMinutes = period.minutes || (period.hours * 60) || (period.days * 24 * 60);
+          
+          if (!newLoyalty.rewards[period.key]) {
+            allRewarded = false;
+            if (currentMinutes >= periodMinutes) {
+              // Бонус доступен сейчас
+              message += `🎁 Следующий бонус: ${period.name} - ДОСТУПЕН СЕЙЧАС!\n\n`;
+              message += '💡 Награда придет автоматически!';
+              return message;
+            } else if (!nextBonus) {
+              nextBonus = { ...period, minutes: periodMinutes };
+            }
+          }
+        }
+
+        if (allRewarded) {
+          message += '🎉 Поздравляем! Вы получили все доступные награды!\n\n';
+          message += '💡 Следите за обновлениями программы лояльности!';
+        } else if (nextBonus) {
+          const remainingMinutes = nextBonus.minutes - currentMinutes;
+          const remainingDays = Math.floor(remainingMinutes / (24 * 60));
+          const remainingHours = Math.floor((remainingMinutes % (24 * 60)) / 60);
+          const remainingMins = remainingMinutes % 60;
+          
+          message += `⏳ До следующего бонуса: ${nextBonus.name}\n\n`;
+          
+          if (remainingDays > 0) {
+            message += `📅 Осталось: ${remainingDays} дней, ${remainingHours} часов, ${remainingMins} минут`;
+          } else if (remainingHours > 0) {
+            message += `⏰ Осталось: ${remainingHours} часов, ${remainingMins} минут`;
+          } else {
+            message += `⏰ Осталось: ${remainingMins} минут`;
+          }
+          
+          message += '\n\n💡 Награда придет автоматически!';
+        }
+
+        return message;
       }
 
       // Используем эффективное время подписки (с учетом пауз)
