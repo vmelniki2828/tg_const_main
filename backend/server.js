@@ -677,6 +677,7 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
     let skippedCount = 0;
     const errorDetails = []; // Массив для сбора деталей ошибок
     const duplicates = []; // Массив для сбора дубликатов
+    const skippedCodes = []; // Массив для сбора пропущенных промокодов
     
     console.log(`🎁 [UPLOAD_PROMOCODES] Начинаем сохранение ${promoCodes.length} промокодов в MongoDB`);
     
@@ -734,12 +735,23 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
           type: error.name
         });
         
+        // Собираем информацию о пропущенном промокоде
+        skippedCodes.push({
+          code: promoCode.code,
+          botId: promoCode.botId,
+          quizId: promoCode.quizId,
+          error: error.message,
+          errorCode: error.code,
+          errorType: error.name
+        });
+        
         skippedCount++;
       }
     }
     
     console.log(`🎁 [UPLOAD_PROMOCODES] Сохранено ${savedCount} промокодов в MongoDB, пропущено ${skippedCount}`);
     console.log(`🔄 [UPLOAD_PROMOCODES] Найдено дубликатов: ${duplicates.length}`);
+    console.log(`❌ [UPLOAD_PROMOCODES] Пропущенных промокодов: ${skippedCodes.length}`);
 
     // Удаляем временный файл
     try {
@@ -761,6 +773,7 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
       savedCount,
       skippedCount,
       duplicatesCount: duplicates.length,
+      skippedCodesCount: skippedCodes.length,
       quizId,
       botId,
       filename: req.file.originalname
@@ -848,6 +861,18 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
       });
     }
 
+    // Логирование пропущенных промокодов
+    if (skippedCodes.length > 0) {
+      console.log(`❌ [UPLOAD_PROMOCODES] СПИСОК ПРОПУЩЕННЫХ ПРОМОКОДОВ:`);
+      skippedCodes.forEach((skipped, index) => {
+        console.log(`   ${index + 1}. Промокод: "${skipped.code}"`);
+        console.log(`      Бот: ${skipped.botId}, Квиз: ${skipped.quizId}`);
+        console.log(`      Ошибка: ${skipped.error}`);
+        console.log(`      Код ошибки: ${skipped.errorCode}`);
+        console.log(`      Тип ошибки: ${skipped.errorType}`);
+      });
+    }
+
     res.json({ 
       success: true, 
       message: `Файл с промокодами успешно загружен для квиза ${quizId}`,
@@ -856,12 +881,15 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
       botId: botId,
       count: savedCount,
       skipped: skippedCount,
+      skippedCodes: skippedCodes,
+      skippedCodesCount: skippedCodes.length,
       duplicates: duplicates,
       duplicatesCount: duplicates.length,
       statistics: {
         totalCodes: promoCodes.length,
         savedCount,
         skippedCount,
+        skippedCodesCount: skippedCodes.length,
         duplicatesCount: duplicates.length,
         successRate: Math.round((savedCount / promoCodes.length) * 100)
       }
@@ -1144,6 +1172,7 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
     let saveSkippedCount = 0;
     const loyaltyErrorDetails = []; // Массив для сбора деталей ошибок лояльности
     const loyaltyDuplicates = []; // Массив для сбора дубликатов лояльности
+    const loyaltySkippedCodes = []; // Массив для сбора пропущенных промокодов лояльности
     
     console.log(`[LOYALTY_PROMOCODES] Начинаем сохранение ${promoCodes.length} промокодов в MongoDB`);
     
@@ -1205,12 +1234,23 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
           period: promoCode.period
         });
         
+        // Собираем информацию о пропущенном промокоде лояльности
+        loyaltySkippedCodes.push({
+          code: promoCode.code,
+          botId: promoCode.botId,
+          period: promoCode.period,
+          error: error.message,
+          errorCode: error.code,
+          errorType: error.name
+        });
+        
         saveSkippedCount++;
       }
     }
     
     console.log(`[LOYALTY_PROMOCODES] Сохранено ${savedCount} промокодов в MongoDB, пропущено ${saveSkippedCount}`);
     console.log(`🔄 [LOYALTY_PROMOCODES] Найдено дубликатов лояльности: ${loyaltyDuplicates.length}`);
+    console.log(`❌ [LOYALTY_PROMOCODES] Пропущенных промокодов лояльности: ${loyaltySkippedCodes.length}`);
     
     console.log(`✅ [LOYALTY_PROMOCODES] Загрузка промокодов лояльности завершена успешно`);
     console.log(`📊 [LOYALTY_PROMOCODES] Итоговая статистика:`, {
@@ -1218,6 +1258,7 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
       savedCount,
       saveSkippedCount,
       duplicatesCount: loyaltyDuplicates.length,
+      skippedCodesCount: loyaltySkippedCodes.length,
       botId,
       period,
       filename: req.file.originalname
@@ -1305,12 +1346,25 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
         console.log(`      Действие: ${dup.action}`);
       });
     }
+
+    // Логирование пропущенных промокодов лояльности
+    if (loyaltySkippedCodes.length > 0) {
+      console.log(`❌ [LOYALTY_PROMOCODES] СПИСОК ПРОПУЩЕННЫХ ПРОМОКОДОВ ЛОЯЛЬНОСТИ:`);
+      loyaltySkippedCodes.forEach((skipped, index) => {
+        console.log(`   ${index + 1}. Промокод: "${skipped.code}"`);
+        console.log(`      Бот: ${skipped.botId}, Период: ${skipped.period}`);
+        console.log(`      Ошибка: ${skipped.error}`);
+        console.log(`      Код ошибки: ${skipped.errorCode}`);
+        console.log(`      Тип ошибки: ${skipped.errorType}`);
+      });
+    }
     
     res.json({
       success: true,
       message: `Успешно загружено ${savedCount} промокодов для периода ${period}`,
       totalCodes: savedCount,
-      skippedCodes: saveSkippedCount,
+      skippedCodes: loyaltySkippedCodes,
+      skippedCodesCount: loyaltySkippedCodes.length,
       duplicates: loyaltyDuplicates,
       duplicatesCount: loyaltyDuplicates.length,
       period: period,
@@ -1318,6 +1372,7 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
         totalCodes: promoCodes.length,
         savedCount,
         skippedCount: saveSkippedCount,
+        skippedCodesCount: loyaltySkippedCodes.length,
         duplicatesCount: loyaltyDuplicates.length,
         successRate: Math.round((savedCount / promoCodes.length) * 100)
       }
