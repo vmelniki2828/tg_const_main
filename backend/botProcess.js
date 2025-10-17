@@ -365,10 +365,14 @@ const userQuizStates = new Map();
 const userLastActivity = new Map();
 const completedQuizzes = new Map();
 
+// Кэш для проверки подписки на канал (избегаем повторных API-вызовов)
+const subscriptionCache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 минут кэш
+
 // Глобальная переменная для бота
 let bot;
 
-// Функция для проверки подписки пользователя на канал (глобальная)
+// Функция для проверки подписки пользователя на канал (глобальная) - ОПТИМИЗИРОВАННАЯ
 async function checkChannelSubscription(userId, channelId) {
   try {
     console.log(`🔍 Проверяем подписку пользователя ${userId} на канал ${channelId}`);
@@ -376,6 +380,14 @@ async function checkChannelSubscription(userId, channelId) {
     if (!channelId) {
       console.log('❌ ID канала не указан');
       return false;
+    }
+    
+    // Проверяем кэш
+    const cacheKey = `${userId}_${channelId}`;
+    const cached = subscriptionCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      console.log(`⚡ Используем кэшированный результат: ${cached.isSubscribed}`);
+      return cached.isSubscribed;
     }
     
     // Нормализуем ID канала - убираем лишние пробелы и приводим к строке
@@ -405,41 +417,50 @@ async function checkChannelSubscription(userId, channelId) {
     
     console.log(`🔍 Финальный ID для проверки: "${normalizedChannelId}"`);
     
-    // Сначала проверяем, существует ли канал
+    // Сначала проверяем, существует ли канал с таймаутом
     try {
-      const chat = await bot.telegram.getChat(normalizedChannelId);
+      const chat = await Promise.race([
+        bot.telegram.getChat(normalizedChannelId),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+      ]);
       console.log(`✅ Канал найден:`, {
         id: chat.id,
         title: chat.title,
         type: chat.type
       });
     } catch (chatError) {
-      console.log(`❌ Канал не найден: ${chatError.message}`);
+      console.log(`❌ Канал не найден или таймаут: ${chatError.message}`);
       return false;
     }
     
-    // Проверяем подписку через Telegram API
-    const chatMember = await bot.telegram.getChatMember(normalizedChannelId, userId);
+    // Проверяем подписку через Telegram API с таймаутом
+    const chatMember = await Promise.race([
+      bot.telegram.getChatMember(normalizedChannelId, userId),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+    ]);
+    
     console.log(`🔍 Статус подписки: ${chatMember.status}`);
-    console.log(`🔍 Полная информация о членстве:`, JSON.stringify(chatMember, null, 2));
     
     // Статусы, которые считаются подпиской
     const subscribedStatuses = ['member', 'administrator', 'creator'];
     const isSubscribed = subscribedStatuses.includes(chatMember.status);
+    
+    // Сохраняем в кэш
+    subscriptionCache.set(cacheKey, {
+      isSubscribed,
+      timestamp: Date.now()
+    });
     
     console.log(`✅ Пользователь ${userId} ${isSubscribed ? 'подписан' : 'не подписан'} на канал ${normalizedChannelId}`);
     return isSubscribed;
     
   } catch (error) {
     console.error(`❌ Ошибка проверки подписки пользователя ${userId} на канал ${channelId}:`, error);
-    console.error(`❌ Детали ошибки:`, {
-      message: error.message,
-      code: error.code,
-      response: error.response ? {
-        error_code: error.response.error_code,
-        description: error.response.description
-      } : null
-    });
+    
+    if (error.message === 'Timeout') {
+      console.log('⏰ Таймаут при проверке подписки - предполагаем, что пользователь не подписан');
+      return false;
+    }
     
     // Если канал не найден
     if (error.response && error.response.error_code === 400 && error.response.description && error.response.description.includes('chat not found')) {
@@ -550,55 +571,7 @@ function setupBotHandlers(bot, blocks, connections) {
     // }
   }, 30 * 60 * 1000); // Каждые 30 минут - только мониторинг
 
-  // Функция для сохранения пользователя в MongoDB
-  async function saveUserToMongo(ctx) {
-    try {
-      const userId = ctx.from?.id;
-      if (!userId) {
-        console.log('❌ No user ID in context');
-        return;
-      }
-
-      const userData = {
-        botId,
-        userId,
-        username: ctx.from?.username,
-        firstName: ctx.from?.first_name,
-        lastName: ctx.from?.last_name,
-        isSubscribed: true, // Предполагаем, что пользователь подписан при взаимодействии с ботом
-        firstSubscribedAt: new Date(),
-        lastSubscribedAt: new Date()
-      };
-
-      // Проверяем, существует ли пользователь
-      let user = await User.findOne({ botId, userId });
-      
-      if (!user) {
-        // Создаем нового пользователя
-        user = new User(userData);
-        console.log(`✅ Создан новый пользователь: ${userId}`);
-      } else {
-        // Обновляем существующего пользователя
-        user.username = userData.username;
-        user.firstName = userData.firstName;
-        user.lastName = userData.lastName;
-        user.isSubscribed = true;
-        user.lastSubscribedAt = new Date();
-        
-        // Если это первая подписка, устанавливаем firstSubscribedAt
-        if (!user.firstSubscribedAt) {
-          user.firstSubscribedAt = new Date();
-        }
-        
-        console.log(`✅ Обновлен пользователь: ${userId}`);
-      }
-
-      await user.save();
-      console.log(`✅ Пользователь ${userId} сохранен в MongoDB`);
-    } catch (error) {
-      console.error('❌ Ошибка при сохранении пользователя в MongoDB:', error);
-    }
-  }
+  // УДАЛЕНА ДУБЛИРУЮЩАЯСЯ ФУНКЦИЯ saveUserToMongo - используется глобальная версия
 
   // Функция для обработки подписки пользователя
   async function handleUserSubscription(userId) {
@@ -1742,9 +1715,9 @@ function startLoyaltyChecker() {
       
       console.log('[LOYALTY] Программа лояльности включена, проверяем пользователей');
       
-      // Получаем всех пользователей бота
-      const users = await User.find({ botId, isSubscribed: true });
-      console.log(`[LOYALTY] Найдено ${users.length} подписанных пользователей`);
+      // Получаем всех пользователей бота (ограничиваем для производительности)
+      const users = await User.find({ botId, isSubscribed: true }).limit(50);
+      console.log(`[LOYALTY] Найдено ${users.length} подписанных пользователей (ограничено до 50 для производительности)`);
       
       for (const user of users) {
         try {
@@ -1898,7 +1871,7 @@ function startLoyaltyChecker() {
     } catch (error) {
       console.error('[LOYALTY] Ошибка при периодической проверке программы лояльности:', error);
     }
-  }, 10000); // Проверяем каждые 10 секунд для тестирования
+  }, 2 * 60 * 1000); // Проверяем каждые 2 минуты для оптимизации
 }
 
 // Функция для загрузки завершенных квизов из MongoDB
