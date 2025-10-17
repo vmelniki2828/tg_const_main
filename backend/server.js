@@ -675,6 +675,7 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
     // Сохраняем новые промокоды в MongoDB с обработкой дубликатов
     let savedCount = 0;
     let skippedCount = 0;
+    const errorDetails = []; // Массив для сбора деталей ошибок
     
     console.log(`🎁 [UPLOAD_PROMOCODES] Начинаем сохранение ${promoCodes.length} промокодов в MongoDB`);
     
@@ -702,6 +703,15 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
           botId: promoCode.botId,
           quizId: promoCode.quizId
         });
+        
+        // Собираем детали ошибки для анализа
+        errorDetails.push({
+          promoCode: promoCode.code,
+          error: error.message,
+          code: error.code,
+          type: error.name
+        });
+        
         skippedCount++;
       }
     }
@@ -731,6 +741,76 @@ app.post('/api/upload-promocodes', promoCodeUpload.single('promocodes'), async (
       botId,
       filename: req.file.originalname
     });
+
+    // Анализ причин неудачных загрузок
+    if (skippedCount > 0) {
+      console.log(`⚠️ [UPLOAD_PROMOCODES] АНАЛИЗ ПРИЧИН НЕУДАЧНЫХ ЗАГРУЗОК:`);
+      console.log(`📊 [UPLOAD_PROMOCODES] Всего промокодов в файле: ${promoCodes.length}`);
+      console.log(`✅ [UPLOAD_PROMOCODES] Успешно загружено: ${savedCount}`);
+      console.log(`❌ [UPLOAD_PROMOCODES] Пропущено: ${skippedCount}`);
+      console.log(`📈 [UPLOAD_PROMOCODES] Процент успеха: ${Math.round((savedCount / promoCodes.length) * 100)}%`);
+      
+      if (skippedCount === promoCodes.length) {
+        console.log(`🚨 [UPLOAD_PROMOCODES] КРИТИЧЕСКАЯ ПРОБЛЕМА: Не загружен ни один промокод!`);
+        console.log(`🔍 [UPLOAD_PROMOCODES] Возможные причины:`);
+        console.log(`   - Проблемы с подключением к MongoDB`);
+        console.log(`   - Ошибки в схеме данных`);
+        console.log(`   - Проблемы с правами доступа к базе данных`);
+        console.log(`   - Неправильный формат данных в файле`);
+      } else if (skippedCount > savedCount) {
+        console.log(`⚠️ [UPLOAD_PROMOCODES] ПРОБЛЕМА: Больше половины промокодов не загружено!`);
+        console.log(`🔍 [UPLOAD_PROMOCODES] Возможные причины:`);
+        console.log(`   - Дубликаты промокодов в файле`);
+        console.log(`   - Проблемы с валидацией данных`);
+        console.log(`   - Ошибки в структуре промокодов`);
+      } else {
+        console.log(`ℹ️ [UPLOAD_PROMOCODES] Частичная загрузка: ${skippedCount} промокодов пропущено`);
+        console.log(`🔍 [UPLOAD_PROMOCODES] Возможные причины:`);
+        console.log(`   - Дубликаты некоторых промокодов`);
+        console.log(`   - Ошибки валидации отдельных записей`);
+        console.log(`   - Проблемы с отдельными строками файла`);
+      }
+      
+      // Детальный анализ ошибок
+      if (errorDetails.length > 0) {
+        console.log(`🔍 [UPLOAD_PROMOCODES] ДЕТАЛЬНЫЙ АНАЛИЗ ОШИБОК:`);
+        
+        // Группируем ошибки по типам
+        const errorGroups = {};
+        errorDetails.forEach(err => {
+          const key = `${err.type}:${err.code}`;
+          if (!errorGroups[key]) {
+            errorGroups[key] = { count: 0, examples: [] };
+          }
+          errorGroups[key].count++;
+          if (errorGroups[key].examples.length < 3) {
+            errorGroups[key].examples.push(err.promoCode);
+          }
+        });
+        
+        Object.keys(errorGroups).forEach(key => {
+          const group = errorGroups[key];
+          console.log(`   📊 ${key}: ${group.count} ошибок`);
+          console.log(`      Примеры промокодов: ${group.examples.join(', ')}`);
+        });
+        
+        // Показываем первые 5 ошибок полностью
+        console.log(`🔍 [UPLOAD_PROMOCODES] ПЕРВЫЕ 5 ОШИБОК:`);
+        errorDetails.slice(0, 5).forEach((err, index) => {
+          console.log(`   ${index + 1}. Промокод: "${err.promoCode}"`);
+          console.log(`      Ошибка: ${err.error}`);
+          console.log(`      Код: ${err.code}`);
+          console.log(`      Тип: ${err.type}`);
+        });
+        
+        if (errorDetails.length > 5) {
+          console.log(`   ... и еще ${errorDetails.length - 5} ошибок`);
+        }
+      }
+    } else {
+      console.log(`🎉 [UPLOAD_PROMOCODES] ОТЛИЧНО: Все промокоды загружены успешно!`);
+      console.log(`📊 [UPLOAD_PROMOCODES] Успешность: 100%`);
+    }
 
     res.json({ 
       success: true, 
@@ -1017,6 +1097,7 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
     // Сохраняем все промокоды в базу данных с обработкой дубликатов
     let savedCount = 0;
     let saveSkippedCount = 0;
+    const loyaltyErrorDetails = []; // Массив для сбора деталей ошибок лояльности
     
     console.log(`[LOYALTY_PROMOCODES] Начинаем сохранение ${promoCodes.length} промокодов в MongoDB`);
     
@@ -1044,6 +1125,17 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
           botId: promoCode.botId,
           period: promoCode.period
         });
+        
+        // Собираем детали ошибки для анализа
+        loyaltyErrorDetails.push({
+          promoCode: promoCode.code,
+          error: error.message,
+          code: error.code,
+          type: error.name,
+          botId: promoCode.botId,
+          period: promoCode.period
+        });
+        
         saveSkippedCount++;
       }
     }
@@ -1059,6 +1151,79 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
       period,
       filename: req.file.originalname
     });
+
+    // Анализ причин неудачных загрузок промокодов лояльности
+    if (saveSkippedCount > 0) {
+      console.log(`⚠️ [LOYALTY_PROMOCODES] АНАЛИЗ ПРИЧИН НЕУДАЧНЫХ ЗАГРУЗОК:`);
+      console.log(`📊 [LOYALTY_PROMOCODES] Всего промокодов в файле: ${promoCodes.length}`);
+      console.log(`✅ [LOYALTY_PROMOCODES] Успешно загружено: ${savedCount}`);
+      console.log(`❌ [LOYALTY_PROMOCODES] Пропущено: ${saveSkippedCount}`);
+      console.log(`📈 [LOYALTY_PROMOCODES] Процент успеха: ${Math.round((savedCount / promoCodes.length) * 100)}%`);
+      
+      if (saveSkippedCount === promoCodes.length) {
+        console.log(`🚨 [LOYALTY_PROMOCODES] КРИТИЧЕСКАЯ ПРОБЛЕМА: Не загружен ни один промокод лояльности!`);
+        console.log(`🔍 [LOYALTY_PROMOCODES] Возможные причины:`);
+        console.log(`   - Проблемы с подключением к MongoDB`);
+        console.log(`   - Ошибки в схеме LoyaltyPromoCode`);
+        console.log(`   - Проблемы с правами доступа к базе данных`);
+        console.log(`   - Неправильный формат данных в файле`);
+        console.log(`   - Ошибки в индексах базы данных`);
+      } else if (saveSkippedCount > savedCount) {
+        console.log(`⚠️ [LOYALTY_PROMOCODES] ПРОБЛЕМА: Больше половины промокодов лояльности не загружено!`);
+        console.log(`🔍 [LOYALTY_PROMOCODES] Возможные причины:`);
+        console.log(`   - Дубликаты промокодов в файле`);
+        console.log(`   - Проблемы с валидацией данных`);
+        console.log(`   - Ошибки в структуре промокодов`);
+        console.log(`   - Конфликты с существующими промокодами`);
+      } else {
+        console.log(`ℹ️ [LOYALTY_PROMOCODES] Частичная загрузка: ${saveSkippedCount} промокодов лояльности пропущено`);
+        console.log(`🔍 [LOYALTY_PROMOCODES] Возможные причины:`);
+        console.log(`   - Дубликаты некоторых промокодов`);
+        console.log(`   - Ошибки валидации отдельных записей`);
+        console.log(`   - Проблемы с отдельными строками файла`);
+        console.log(`   - Конфликты с существующими промокодами`);
+      }
+      
+      // Детальный анализ ошибок лояльности
+      if (loyaltyErrorDetails.length > 0) {
+        console.log(`🔍 [LOYALTY_PROMOCODES] ДЕТАЛЬНЫЙ АНАЛИЗ ОШИБОК:`);
+        
+        // Группируем ошибки по типам
+        const loyaltyErrorGroups = {};
+        loyaltyErrorDetails.forEach(err => {
+          const key = `${err.type}:${err.code}`;
+          if (!loyaltyErrorGroups[key]) {
+            loyaltyErrorGroups[key] = { count: 0, examples: [] };
+          }
+          loyaltyErrorGroups[key].count++;
+          if (loyaltyErrorGroups[key].examples.length < 3) {
+            loyaltyErrorGroups[key].examples.push(err.promoCode);
+          }
+        });
+        
+        Object.keys(loyaltyErrorGroups).forEach(key => {
+          const group = loyaltyErrorGroups[key];
+          console.log(`   📊 ${key}: ${group.count} ошибок`);
+          console.log(`      Примеры промокодов: ${group.examples.join(', ')}`);
+        });
+        
+        // Показываем первые 5 ошибок полностью
+        console.log(`🔍 [LOYALTY_PROMOCODES] ПЕРВЫЕ 5 ОШИБОК:`);
+        loyaltyErrorDetails.slice(0, 5).forEach((err, index) => {
+          console.log(`   ${index + 1}. Промокод: "${err.promoCode}" (${err.botId}/${err.period})`);
+          console.log(`      Ошибка: ${err.error}`);
+          console.log(`      Код: ${err.code}`);
+          console.log(`      Тип: ${err.type}`);
+        });
+        
+        if (loyaltyErrorDetails.length > 5) {
+          console.log(`   ... и еще ${loyaltyErrorDetails.length - 5} ошибок`);
+        }
+      }
+    } else {
+      console.log(`🎉 [LOYALTY_PROMOCODES] ОТЛИЧНО: Все промокоды лояльности загружены успешно!`);
+      console.log(`📊 [LOYALTY_PROMOCODES] Успешность: 100%`);
+    }
     
     res.json({
       success: true,
