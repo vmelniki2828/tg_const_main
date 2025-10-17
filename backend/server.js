@@ -81,8 +81,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 // Настройка multer для загрузки файлов
 const storage = multer.diskStorage({
@@ -120,7 +120,7 @@ const promoCodeStorage = multer.diskStorage({
 const promoCodeUpload = multer({ 
   storage: promoCodeStorage,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB лимит для CSV файлов
+    fileSize: 100 * 1024 * 1024 // 100MB лимит для CSV файлов (увеличено с 10MB)
   },
   fileFilter: function (req, file, cb) {
     // Разрешаем только CSV файлы
@@ -136,7 +136,7 @@ const promoCodeUpload = multer({
 const loyaltyPromoCodeUpload = multer({ 
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB лимит для CSV файлов
+    fileSize: 100 * 1024 * 1024 // 100MB лимит для CSV файлов (увеличено с 10MB)
   },
   fileFilter: function (req, file, cb) {
     // Разрешаем только CSV файлы
@@ -417,9 +417,9 @@ app.post('/api/quiz-stats', async (req, res) => {
     // Добавляем полную информацию о попытке пользователя
     quizStats.userAttempts.push(userAttempt);
     
-    // Ограничиваем количество попыток в истории (максимум 1000)
-    if (quizStats.userAttempts.length > 1000) {
-      quizStats.userAttempts = quizStats.userAttempts.slice(-1000);
+    // Ограничиваем количество попыток в истории (максимум 10000)
+    if (quizStats.userAttempts.length > 10000) {
+      quizStats.userAttempts = quizStats.userAttempts.slice(-10000);
     }
     
     await writeQuizStats(stats);
