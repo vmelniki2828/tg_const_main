@@ -2683,6 +2683,156 @@ app.post('/api/fix-missed-loyalty-promocodes/:botId', async (req, res) => {
   }
 });
 
+// Эндпоинт для повторной отправки сообщений с промокодами лояльности
+app.post('/api/resend-loyalty-promocode-messages/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    console.log(`📨 [RESEND_MESSAGES] Начинаем повторную отправку сообщений с промокодами для бота ${botId}`);
+    
+    // Получаем все активированные промокоды лояльности за последние 24 часа
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    
+    const activatedPromoCodes = await LoyaltyPromoCode.find({
+      botId,
+      activated: true,
+      activatedAt: { $gte: twentyFourHoursAgo }
+    }).sort({ activatedAt: -1 });
+    
+    console.log(`📨 [RESEND_MESSAGES] Найдено ${activatedPromoCodes.length} активированных промокодов за последние 24 часа`);
+    
+    if (activatedPromoCodes.length === 0) {
+      return res.json({
+        success: true,
+        message: 'Нет активированных промокодов за последние 24 часа',
+        statistics: {
+          totalPromoCodes: 0,
+          messagesSent: 0,
+          errors: 0
+        },
+        results: []
+      });
+    }
+    
+    // Получаем токен бота для отправки сообщений
+    const bot = await Bot.findOne({ id: botId });
+    if (!bot || !bot.token) {
+      return res.status(400).json({ 
+        error: 'Бот не найден или токен не настроен' 
+      });
+    }
+    
+    const { Telegraf } = require('telegraf');
+    const telegramBot = new Telegraf(bot.token);
+    
+    let messagesSent = 0;
+    let errors = 0;
+    const results = [];
+    
+    // Группируем промокоды по пользователям
+    const promoCodesByUser = {};
+    activatedPromoCodes.forEach(promoCode => {
+      if (!promoCodesByUser[promoCode.activatedBy]) {
+        promoCodesByUser[promoCode.activatedBy] = [];
+      }
+      promoCodesByUser[promoCode.activatedBy].push(promoCode);
+    });
+    
+    console.log(`📨 [RESEND_MESSAGES] Найдено ${Object.keys(promoCodesByUser).length} пользователей для отправки сообщений`);
+    
+    // Отправляем сообщения каждому пользователю
+    for (const [userId, userPromoCodes] of Object.entries(promoCodesByUser)) {
+      try {
+        console.log(`📨 [RESEND_MESSAGES] Отправляем сообщение пользователю ${userId} с ${userPromoCodes.length} промокодами`);
+        
+        // Получаем информацию о пользователе
+        const user = await User.findOne({ botId, userId: parseInt(userId) });
+        const userName = user ? (user.username || user.firstName || `Пользователь ${userId}`) : `Пользователь ${userId}`;
+        
+        // Создаем сообщение с промокодами
+        let message = `🎁 **ВАШИ ПРОМОКОДЫ ЗА ЛОЯЛЬНОСТЬ!**\n\n`;
+        message += `Привет, ${userName}! 👋\n\n`;
+        message += `Вы получили промокоды за участие в программе лояльности:\n\n`;
+        
+        // Добавляем каждый промокод
+        userPromoCodes.forEach((promoCode, index) => {
+          const periodLabels = {
+            '1m': '1 минута',
+            '24h': '24 часа', 
+            '7d': '7 дней',
+            '30d': '30 дней',
+            '90d': '90 дней',
+            '180d': '180 дней',
+            '360d': '360 дней'
+          };
+          
+          const periodLabel = periodLabels[promoCode.period] || promoCode.period;
+          message += `${index + 1}. ⏰ **${periodLabel}**\n`;
+          message += `   🎫 Промокод: \`${promoCode.code}\`\n\n`;
+        });
+        
+        message += `💡 **Используйте эти промокоды для получения бонусов!**\n\n`;
+        message += `🎉 Спасибо за участие в программе лояльности!`;
+        
+        // Отправляем сообщение
+        await telegramBot.telegram.sendMessage(userId, message, { parse_mode: 'Markdown' });
+        
+        messagesSent++;
+        results.push({
+          userId: parseInt(userId),
+          userName,
+          promoCodesCount: userPromoCodes.length,
+          promoCodes: userPromoCodes.map(pc => ({
+            period: pc.period,
+            code: pc.code,
+            activatedAt: pc.activatedAt
+          })),
+          status: 'sent'
+        });
+        
+        console.log(`✅ [RESEND_MESSAGES] Сообщение отправлено пользователю ${userId} (${userName})`);
+        
+        // Небольшая пауза между отправками
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+      } catch (error) {
+        console.error(`❌ [RESEND_MESSAGES] Ошибка отправки сообщения пользователю ${userId}:`, error);
+        errors++;
+        
+        results.push({
+          userId: parseInt(userId),
+          userName: `Пользователь ${userId}`,
+          promoCodesCount: userPromoCodes.length,
+          status: 'error',
+          error: error.message
+        });
+      }
+    }
+    
+    console.log(`📨 [RESEND_MESSAGES] Отправка сообщений завершена:`);
+    console.log(`   - Всего промокодов: ${activatedPromoCodes.length}`);
+    console.log(`   - Отправлено сообщений: ${messagesSent}`);
+    console.log(`   - Ошибок: ${errors}`);
+    
+    res.json({
+      success: true,
+      message: `Повторная отправка сообщений завершена`,
+      statistics: {
+        totalPromoCodes: activatedPromoCodes.length,
+        messagesSent,
+        errors
+      },
+      results
+    });
+    
+  } catch (error) {
+    console.error('❌ [RESEND_MESSAGES] Критическая ошибка:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Подробности в логах сервера'
+    });
+  }
+});
+
 // Функция для вычисления эффективного времени подписки (копия из botProcess.js)
 function getEffectiveSubscriptionTime(user) {
   if (!user.loyaltyStartedAt) {
