@@ -2833,6 +2833,166 @@ app.post('/api/resend-loyalty-promocode-messages/:botId', async (req, res) => {
   }
 });
 
+// Эндпоинт для диагностики и исправления несоответствий между наградами и промокодами лояльности
+app.post('/api/diagnose-loyalty-mismatch/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    console.log(`🔍 [DIAGNOSE_MISMATCH] Начинаем диагностику несоответствий для бота ${botId}`);
+    
+    // Получаем всех пользователей с записями лояльности
+    const loyaltyRecords = await Loyalty.find({ botId });
+    console.log(`🔍 [DIAGNOSE_MISMATCH] Найдено ${loyaltyRecords.length} записей лояльности`);
+    
+    const mismatches = [];
+    const fixes = [];
+    
+    for (const loyalty of loyaltyRecords) {
+      try {
+        console.log(`🔍 [DIAGNOSE_MISMATCH] Проверяем пользователя ${loyalty.userId}`);
+        
+        // Получаем пользователя для проверки времени
+        const user = await User.findOne({ botId, userId: loyalty.userId });
+        if (!user) {
+          console.log(`⚠️ [DIAGNOSE_MISMATCH] Пользователь ${loyalty.userId} не найден в User`);
+          continue;
+        }
+        
+        // Вычисляем эффективное время подписки
+        const effectiveTime = getEffectiveSubscriptionTime(user);
+        console.log(`🔍 [DIAGNOSE_MISMATCH] Эффективное время пользователя ${loyalty.userId}: ${effectiveTime} мс`);
+        
+        // Определяем все периоды, которые пользователь должен был пройти
+        const timeRewards = [
+          { key: '1m', time: 1 * 60 * 1000 },
+          { key: '24h', time: 24 * 60 * 60 * 1000 },
+          { key: '7d', time: 7 * 24 * 60 * 60 * 1000 },
+          { key: '30d', time: 30 * 24 * 60 * 60 * 1000 },
+          { key: '90d', time: 90 * 24 * 60 * 60 * 1000 },
+          { key: '180d', time: 180 * 24 * 60 * 60 * 1000 },
+          { key: '360d', time: 360 * 24 * 60 * 60 * 1000 }
+        ];
+        
+        const passedPeriods = timeRewards.filter(period => effectiveTime >= period.time);
+        console.log(`🔍 [DIAGNOSE_MISMATCH] Пользователь ${loyalty.userId} прошел периоды: ${passedPeriods.map(p => p.key).join(', ')}`);
+        
+        // Проверяем каждый пройденный период
+        for (const period of passedPeriods) {
+          const isRewarded = loyalty.rewards[period.key];
+          
+          // Проверяем, есть ли активированный промокод для этого периода
+          const activatedPromoCode = await LoyaltyPromoCode.findOne({
+            botId,
+            activatedBy: loyalty.userId,
+            period: period.key,
+            activated: true
+          });
+          
+          console.log(`🔍 [DIAGNOSE_MISMATCH] Период ${period.key}: награда=${isRewarded}, промокод=${!!activatedPromoCode}`);
+          
+          // Находим несоответствия
+          if (isRewarded && !activatedPromoCode) {
+            // Награда отмечена, но промокод не активирован
+            mismatches.push({
+              userId: loyalty.userId,
+              period: period.key,
+              issue: 'rewarded_but_no_promocode',
+              description: `Период ${period.key} отмечен как награжденный, но промокод не активирован`
+            });
+            
+            // Ищем доступный промокод для активации
+            const availablePromoCode = await LoyaltyPromoCode.findOne({
+              botId,
+              period: period.key,
+              activated: false
+            });
+            
+            if (availablePromoCode) {
+              // Активируем промокод
+              await LoyaltyPromoCode.updateOne(
+                { _id: availablePromoCode._id },
+                { 
+                  activated: true, 
+                  activatedBy: loyalty.userId, 
+                  activatedAt: new Date() 
+                }
+              );
+              
+              fixes.push({
+                userId: loyalty.userId,
+                period: period.key,
+                action: 'activated_promocode',
+                promoCode: availablePromoCode.code,
+                description: `Активирован промокод ${availablePromoCode.code} для периода ${period.key}`
+              });
+              
+              console.log(`✅ [DIAGNOSE_MISMATCH] Активирован промокод ${availablePromoCode.code} для пользователя ${loyalty.userId}, периода ${period.key}`);
+            } else {
+              console.log(`⚠️ [DIAGNOSE_MISMATCH] Нет доступных промокодов для периода ${period.key}`);
+            }
+            
+          } else if (!isRewarded && activatedPromoCode) {
+            // Промокод активирован, но награда не отмечена
+            mismatches.push({
+              userId: loyalty.userId,
+              period: period.key,
+              issue: 'promocode_but_not_rewarded',
+              description: `Промокод активирован для периода ${period.key}, но награда не отмечена`
+            });
+            
+            // Отмечаем награду как выданную
+            await Loyalty.updateOne(
+              { botId, userId: loyalty.userId },
+              { $set: { [`rewards.${period.key}`]: true } }
+            );
+            
+            fixes.push({
+              userId: loyalty.userId,
+              period: period.key,
+              action: 'marked_reward',
+              promoCode: activatedPromoCode.code,
+              description: `Отмечена награда для периода ${period.key}`
+            });
+            
+            console.log(`✅ [DIAGNOSE_MISMATCH] Отмечена награда для пользователя ${loyalty.userId}, периода ${period.key}`);
+          }
+        }
+        
+      } catch (userError) {
+        console.error(`❌ [DIAGNOSE_MISMATCH] Ошибка обработки пользователя ${loyalty.userId}:`, userError);
+        mismatches.push({
+          userId: loyalty.userId,
+          period: 'unknown',
+          issue: 'processing_error',
+          description: `Ошибка обработки: ${userError.message}`
+        });
+      }
+    }
+    
+    console.log(`🔍 [DIAGNOSE_MISMATCH] Диагностика завершена:`);
+    console.log(`   - Найдено несоответствий: ${mismatches.length}`);
+    console.log(`   - Выполнено исправлений: ${fixes.length}`);
+    
+    res.json({
+      success: true,
+      message: `Диагностика и исправление несоответствий завершены`,
+      statistics: {
+        totalLoyaltyRecords: loyaltyRecords.length,
+        mismatchesFound: mismatches.length,
+        fixesApplied: fixes.length
+      },
+      mismatches,
+      fixes
+    });
+    
+  } catch (error) {
+    console.error('❌ [DIAGNOSE_MISMATCH] Критическая ошибка:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Подробности в логах сервера'
+    });
+  }
+});
+
 // Функция для вычисления эффективного времени подписки (копия из botProcess.js)
 function getEffectiveSubscriptionTime(user) {
   if (!user.loyaltyStartedAt) {
