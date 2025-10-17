@@ -2500,6 +2500,208 @@ app.get('/api/system-stats', async (req, res) => {
   }
 });
 
+// Эндпоинт для исправления пропущенных промокодов лояльности для существующих пользователей
+app.post('/api/fix-missed-loyalty-promocodes/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    console.log(`🔧 [FIX_MISSED_PROMOCODES] Начинаем исправление пропущенных промокодов для бота ${botId}`);
+    
+    // Получаем всех пользователей бота, которые подписаны и имеют время начала лояльности
+    const users = await User.find({ 
+      botId, 
+      isSubscribed: true,
+      loyaltyStartedAt: { $exists: true }
+    });
+    
+    console.log(`🔧 [FIX_MISSED_PROMOCODES] Найдено ${users.length} пользователей для проверки`);
+    
+    let fixedUsers = 0;
+    let totalPromoCodesGiven = 0;
+    const results = [];
+    
+    for (const user of users) {
+      try {
+        console.log(`🔧 [FIX_MISSED_PROMOCODES] Обрабатываем пользователя ${user.userId}`);
+        
+        // Проверяем, есть ли запись лояльности
+        let loyaltyRecord = await Loyalty.findOne({ botId, userId: user.userId });
+        
+        if (!loyaltyRecord) {
+          console.log(`🔧 [FIX_MISSED_PROMOCODES] Создаем запись лояльности для пользователя ${user.userId}`);
+          
+          // Создаем запись лояльности
+          loyaltyRecord = new Loyalty({
+            botId,
+            userId: user.userId,
+            rewards: {
+              '1m': false,
+              '24h': false,
+              '7d': false,
+              '30d': false,
+              '90d': false,
+              '180d': false,
+              '360d': false
+            }
+          });
+          await loyaltyRecord.save();
+        }
+        
+        // Вычисляем эффективное время подписки
+        const effectiveTime = getEffectiveSubscriptionTime(user);
+        console.log(`🔧 [FIX_MISSED_PROMOCODES] Эффективное время подписки пользователя ${user.userId}: ${effectiveTime} мс`);
+        
+        // Определяем все периоды, которые пользователь уже прошел
+        const timeRewards = [
+          { key: '1m', time: 1 * 60 * 1000 },
+          { key: '24h', time: 24 * 60 * 60 * 1000 },
+          { key: '7d', time: 7 * 24 * 60 * 60 * 1000 },
+          { key: '30d', time: 30 * 24 * 60 * 60 * 1000 },
+          { key: '90d', time: 90 * 24 * 60 * 60 * 1000 },
+          { key: '180d', time: 180 * 24 * 60 * 60 * 1000 },
+          { key: '360d', time: 360 * 24 * 60 * 60 * 1000 }
+        ];
+        
+        const passedPeriods = timeRewards.filter(period => effectiveTime >= period.time);
+        console.log(`🔧 [FIX_MISSED_PROMOCODES] Пользователь ${user.userId} прошел периоды: ${passedPeriods.map(p => p.key).join(', ')}`);
+        
+        let userPromoCodesGiven = 0;
+        const userResults = [];
+        
+        // Выдаем промокоды за все пройденные периоды
+        for (const period of passedPeriods) {
+          if (!loyaltyRecord.rewards[period.key]) {
+            console.log(`🔧 [FIX_MISSED_PROMOCODES] Выдаем промокод за период ${period.key} пользователю ${user.userId}`);
+            
+            // Ищем доступный промокод для этого периода
+            const availablePromoCode = await LoyaltyPromoCode.findOne({
+              botId,
+              period: period.key,
+              activated: false
+            });
+            
+            if (availablePromoCode) {
+              try {
+                // Активируем промокод
+                await LoyaltyPromoCode.updateOne(
+                  { _id: availablePromoCode._id },
+                  { 
+                    activated: true, 
+                    activatedBy: user.userId, 
+                    activatedAt: new Date() 
+                  }
+                );
+                
+                // Отмечаем награду как выданную
+                await Loyalty.updateOne(
+                  { botId, userId: user.userId },
+                  { $set: { [`rewards.${period.key}`]: true } }
+                );
+                
+                userPromoCodesGiven++;
+                totalPromoCodesGiven++;
+                
+                userResults.push({
+                  period: period.key,
+                  promoCode: availablePromoCode.code,
+                  status: 'given'
+                });
+                
+                console.log(`✅ [FIX_MISSED_PROMOCODES] Промокод ${availablePromoCode.code} выдан пользователю ${user.userId} за период ${period.key}`);
+                
+              } catch (error) {
+                console.error(`❌ [FIX_MISSED_PROMOCODES] Ошибка выдачи промокода ${availablePromoCode.code} пользователю ${user.userId}:`, error);
+                userResults.push({
+                  period: period.key,
+                  promoCode: availablePromoCode.code,
+                  status: 'error',
+                  error: error.message
+                });
+              }
+            } else {
+              console.log(`⚠️ [FIX_MISSED_PROMOCODES] Нет доступных промокодов для периода ${period.key}`);
+              userResults.push({
+                period: period.key,
+                promoCode: null,
+                status: 'no_available'
+              });
+            }
+          } else {
+            console.log(`ℹ️ [FIX_MISSED_PROMOCODES] Промокод за период ${period.key} уже был выдан пользователю ${user.userId}`);
+            userResults.push({
+              period: period.key,
+              promoCode: null,
+              status: 'already_given'
+            });
+          }
+        }
+        
+        if (userPromoCodesGiven > 0) {
+          fixedUsers++;
+          results.push({
+            userId: user.userId,
+            username: user.username,
+            firstName: user.firstName,
+            promoCodesGiven: userPromoCodesGiven,
+            results: userResults
+          });
+        }
+        
+      } catch (userError) {
+        console.error(`❌ [FIX_MISSED_PROMOCODES] Ошибка обработки пользователя ${user.userId}:`, userError);
+        results.push({
+          userId: user.userId,
+          username: user.username,
+          firstName: user.firstName,
+          promoCodesGiven: 0,
+          error: userError.message
+        });
+      }
+    }
+    
+    console.log(`🔧 [FIX_MISSED_PROMOCODES] Исправление завершено:`);
+    console.log(`   - Обработано пользователей: ${users.length}`);
+    console.log(`   - Исправлено пользователей: ${fixedUsers}`);
+    console.log(`   - Выдано промокодов: ${totalPromoCodesGiven}`);
+    
+    res.json({
+      success: true,
+      message: `Исправление пропущенных промокодов завершено`,
+      statistics: {
+        totalUsers: users.length,
+        fixedUsers,
+        totalPromoCodesGiven
+      },
+      results
+    });
+    
+  } catch (error) {
+    console.error('❌ [FIX_MISSED_PROMOCODES] Критическая ошибка:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Подробности в логах сервера'
+    });
+  }
+});
+
+// Функция для вычисления эффективного времени подписки (копия из botProcess.js)
+function getEffectiveSubscriptionTime(user) {
+  if (!user.loyaltyStartedAt) {
+    return 0;
+  }
+  
+  const now = Date.now();
+  const loyaltyStartTime = user.loyaltyStartedAt.getTime();
+  
+  // Если пользователь не подписан, возвращаем время до последней отписки
+  if (!user.isSubscribed && user.lastUnsubscribedAt) {
+    const lastUnsubscribedTime = user.lastUnsubscribedAt.getTime();
+    return Math.max(0, lastUnsubscribedTime - loyaltyStartTime - (user.pausedTime || 0));
+  }
+  
+  // Если пользователь подписан, возвращаем общее время минус паузы
+  return Math.max(0, now - loyaltyStartTime - (user.pausedTime || 0));
+}
+
 // API endpoint для получения статистики ботов
 
 // ВАЖНО: Все операции с User, QuizStats, PromoCode, Loyalty всегда используют botId как фильтр!
