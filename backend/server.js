@@ -2975,24 +2975,167 @@ app.post('/api/diagnose-loyalty-mismatch/:botId', async (req, res) => {
   }
 });
 
-// Функция для вычисления эффективного времени подписки (копия из botProcess.js)
-function getEffectiveSubscriptionTime(user) {
-  if (!user.loyaltyStartedAt) {
-    return 0;
+// Эндпоинт для принудительной выдачи пропущенных наград конкретному пользователю
+app.post('/api/force-give-loyalty-rewards/:botId/:userId', async (req, res) => {
+  try {
+    const { botId, userId } = req.params;
+    console.log(`🎁 [FORCE_REWARDS] Принудительная выдача наград пользователю ${userId} в боте ${botId}`);
+    
+    // Получаем пользователя
+    const user = await User.findOne({ botId, userId: parseInt(userId) });
+    if (!user) {
+      return res.status(404).json({ 
+        error: 'Пользователь не найден',
+        userId: parseInt(userId),
+        botId 
+      });
+    }
+    
+    console.log(`🎁 [FORCE_REWARDS] Пользователь найден: ${user.username || user.firstName || userId}`);
+    console.log(`🎁 [FORCE_REWARDS] loyaltyStartedAt: ${user.loyaltyStartedAt}`);
+    console.log(`🎁 [FORCE_REWARDS] loyaltyRewards:`, user.loyaltyRewards);
+    
+    // Получаем конфигурацию лояльности
+    const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+    if (!loyaltyConfig || !loyaltyConfig.isEnabled) {
+      return res.status(400).json({ 
+        error: 'Программа лояльности не настроена или отключена' 
+      });
+    }
+    
+    // Вычисляем эффективное время подписки
+    const effectiveTime = getEffectiveSubscriptionTime(user);
+    const currentMinutes = Math.floor(effectiveTime / (1000 * 60));
+    
+    console.log(`🎁 [FORCE_REWARDS] Эффективное время: ${effectiveTime} мс (${currentMinutes} минут)`);
+    
+    // Определяем все периоды, которые пользователь должен был пройти
+    const timeRewards = [
+      { key: '1m', time: 1 * 60 * 1000, name: '1 минута' },
+      { key: '24h', time: 24 * 60 * 60 * 1000, name: '24 часа' },
+      { key: '7d', time: 7 * 24 * 60 * 60 * 1000, name: '7 дней' },
+      { key: '30d', time: 30 * 24 * 60 * 60 * 1000, name: '30 дней' },
+      { key: '90d', time: 90 * 24 * 60 * 60 * 1000, name: '90 дней' },
+      { key: '180d', time: 180 * 24 * 60 * 60 * 1000, name: '180 дней' },
+      { key: '360d', time: 360 * 24 * 60 * 60 * 1000, name: '360 дней' }
+    ];
+    
+    const passedPeriods = timeRewards.filter(period => effectiveTime >= period.time);
+    console.log(`🎁 [FORCE_REWARDS] Пройденные периоды: ${passedPeriods.map(p => p.key).join(', ')}`);
+    
+    const rewardsGiven = [];
+    const errors = [];
+    
+    // Проверяем каждый пройденный период
+    for (const period of passedPeriods) {
+      const isRewarded = user.loyaltyRewards[period.key];
+      
+      if (!isRewarded) {
+        console.log(`🎁 [FORCE_REWARDS] Выдаем награду за период ${period.key}`);
+        
+        try {
+          // Ищем доступный промокод для этого периода
+          const availablePromoCode = await LoyaltyPromoCode.findOne({
+            botId,
+            period: period.key,
+            activated: false
+          });
+          
+          if (availablePromoCode) {
+            // Активируем промокод
+            await LoyaltyPromoCode.updateOne(
+              { _id: availablePromoCode._id },
+              { 
+                activated: true, 
+                activatedBy: userId, 
+                activatedAt: new Date() 
+              }
+            );
+            
+            console.log(`✅ [FORCE_REWARDS] Активирован промокод ${availablePromoCode.code} для периода ${period.key}`);
+            
+            rewardsGiven.push({
+              period: period.key,
+              periodName: period.name,
+              promoCode: availablePromoCode.code,
+              action: 'promocode_activated'
+            });
+          } else {
+            console.log(`⚠️ [FORCE_REWARDS] Нет доступных промокодов для периода ${period.key}`);
+            rewardsGiven.push({
+              period: period.key,
+              periodName: period.name,
+              promoCode: null,
+              action: 'no_promocode_available'
+            });
+          }
+          
+          // Отмечаем награду как выданную
+          await User.updateOne(
+            { botId, userId: parseInt(userId) },
+            { $set: { [`loyaltyRewards.${period.key}`]: true } }
+          );
+          
+          console.log(`✅ [FORCE_REWARDS] Отмечена награда для периода ${period.key}`);
+          
+        } catch (rewardError) {
+          console.error(`❌ [FORCE_REWARDS] Ошибка выдачи награды за период ${period.key}:`, rewardError);
+          errors.push({
+            period: period.key,
+            periodName: period.name,
+            error: rewardError.message
+          });
+        }
+      } else {
+        console.log(`ℹ️ [FORCE_REWARDS] Награда за период ${period.key} уже выдана`);
+      }
+    }
+    
+    // Обновляем запись лояльности если она есть
+    const loyaltyRecord = await Loyalty.findOne({ botId, userId: parseInt(userId) });
+    if (loyaltyRecord) {
+      for (const period of passedPeriods) {
+        if (!loyaltyRecord.rewards[period.key]) {
+          await Loyalty.updateOne(
+            { botId, userId: parseInt(userId) },
+            { $set: { [`rewards.${period.key}`]: true } }
+          );
+          console.log(`✅ [FORCE_REWARDS] Обновлена запись лояльности для периода ${period.key}`);
+        }
+      }
+    }
+    
+    console.log(`🎁 [FORCE_REWARDS] Принудительная выдача завершена:`);
+    console.log(`   - Выдано наград: ${rewardsGiven.length}`);
+    console.log(`   - Ошибок: ${errors.length}`);
+    
+    res.json({
+      success: true,
+      message: `Принудительная выдача наград завершена`,
+      user: {
+        userId: parseInt(userId),
+        username: user.username,
+        firstName: user.firstName,
+        loyaltyStartedAt: user.loyaltyStartedAt,
+        effectiveTimeMinutes: currentMinutes
+      },
+      statistics: {
+        totalPassedPeriods: passedPeriods.length,
+        rewardsGiven: rewardsGiven.length,
+        errors: errors.length
+      },
+      rewardsGiven,
+      errors
+    });
+    
+  } catch (error) {
+    console.error('❌ [FORCE_REWARDS] Критическая ошибка:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Подробности в логах сервера'
+    });
   }
-  
-  const now = Date.now();
-  const loyaltyStartTime = user.loyaltyStartedAt.getTime();
-  
-  // Если пользователь не подписан, возвращаем время до последней отписки
-  if (!user.isSubscribed && user.lastUnsubscribedAt) {
-    const lastUnsubscribedTime = user.lastUnsubscribedAt.getTime();
-    return Math.max(0, lastUnsubscribedTime - loyaltyStartTime - (user.pausedTime || 0));
-  }
-  
-  // Если пользователь подписан, возвращаем общее время минус паузы
-  return Math.max(0, now - loyaltyStartTime - (user.pausedTime || 0));
-}
+});
 
 // API endpoint для получения статистики ботов
 
