@@ -1039,26 +1039,8 @@ app.get('/api/available-promocodes/:botId', async (req, res) => {
   }
 });
 
-// API для промокодов программы лояльности
-app.get('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
-  try {
-    const { botId, period } = req.params;
-    
-    // Получаем промокоды для конкретного периода
-    const promoCodes = await LoyaltyPromoCode.find({ botId, period });
-    
-    const stats = {
-      total: promoCodes.length,
-      available: promoCodes.filter(p => !p.activated).length,
-      used: promoCodes.filter(p => p.activated).length
-    };
-    
-    res.json({ promoCodes, stats });
-  } catch (error) {
-    console.error('❌ Error fetching loyalty promocodes:', error);
-    res.status(500).json({ error: 'Failed to fetch loyalty promocodes' });
-  }
-});
+// API для промокодов программы лояльности - УДАЛЕН ДУБЛИРУЮЩИЙСЯ ЭНДПОИНТ
+// Используется эндпоинт ниже (строка 3149)
 
 app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single('promocodes'), async (req, res) => {
   console.log('📁 [LOYALTY_PROMOCODES] Начало загрузки промокодов лояльности');
@@ -3158,13 +3140,17 @@ app.get('/api/loyalty-promocodes/:botId/:period', async (req, res) => {
     
     const promoCodes = await LoyaltyPromoCode.find({ botId, period }).sort({ createdAt: -1 });
     
+    const stats = {
+      total: promoCodes.length,
+      available: promoCodes.filter(p => !p.activated).length,
+      used: promoCodes.filter(p => p.activated).length
+    };
+    
     res.json({
       success: true,
       period: period,
-      total: promoCodes.length,
-      available: promoCodes.filter(p => !p.activated).length,
-      activated: promoCodes.filter(p => p.activated).length,
-      codes: promoCodes.map(p => ({
+      stats: stats,
+      promoCodes: promoCodes.map(p => ({
         code: p.code,
         activated: p.activated,
         activatedBy: p.activatedBy,
