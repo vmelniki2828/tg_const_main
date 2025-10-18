@@ -8,6 +8,25 @@ const multer = require('multer');
 const mongoose = require('mongoose');
 const { QuizStats, Bot, User, PromoCode, Loyalty, LoyaltyConfig, LoyaltyPromoCode } = require('./models');
 
+// Функция для вычисления эффективного времени подписки (копия из botProcess.js)
+function getEffectiveSubscriptionTime(user) {
+  if (!user.loyaltyStartedAt) {
+    return 0;
+  }
+  
+  const now = Date.now();
+  const loyaltyStartTime = user.loyaltyStartedAt.getTime();
+  
+  // Если пользователь не подписан, возвращаем время до последней отписки
+  if (!user.isSubscribed && user.lastUnsubscribedAt) {
+    const lastUnsubscribedTime = user.lastUnsubscribedAt.getTime();
+    return Math.max(0, lastUnsubscribedTime - loyaltyStartTime - (user.pausedTime || 0));
+  }
+  
+  // Если пользователь подписан, возвращаем общее время минус паузы
+  return Math.max(0, now - loyaltyStartTime - (user.pausedTime || 0));
+}
+
 // Загружаем переменные окружения
 try {
   require('dotenv').config();
