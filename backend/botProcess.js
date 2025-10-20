@@ -1874,12 +1874,18 @@ function startLoyaltyChecker() {
       
       console.log('[LOYALTY] Программа лояльности включена, проверяем пользователей');
       
-      // Получаем всех пользователей бота (ограничиваем для производительности)
-      const users = await User.find({ botId, isSubscribed: true }).limit(50);
-      console.log(`[LOYALTY] Найдено ${users.length} подписанных пользователей (ограничено до 50 для производительности)`);
+      // Получаем всех пользователей бота (убираем ограничение для новых аккаунтов)
+      const users = await User.find({ botId }).limit(100);
+      console.log(`[LOYALTY] Найдено ${users.length} пользователей (ограничено до 100 для производительности)`);
       
       for (const user of users) {
         try {
+          // Пропускаем пользователей без времени начала лояльности
+          if (!user.loyaltyStartedAt) {
+            console.log(`[LOYALTY] Пользователь ${user.userId} не участвует в программе лояльности, пропускаем`);
+            continue;
+          }
+          
           // Перепроверяем подписку на канал, если требуется
           if (loyaltyConfig.channelSettings && loyaltyConfig.channelSettings.isRequired) {
             const channelId = loyaltyConfig.channelSettings.channelId;
@@ -1920,34 +1926,23 @@ function startLoyaltyChecker() {
             await giveMissedLoyaltyPromoCodes(user.userId, loyaltyRecord);
           }
           
-          // Устанавливаем время начала программы лояльности, если его еще нет
-          if (!user.loyaltyStartedAt) {
-            await User.updateOne(
-              { botId, userId: user.userId },
-              { $set: { loyaltyStartedAt: new Date() } }
-            );
-            console.log(`[LOYALTY] Установлено время начала программы лояльности для пользователя ${user.userId}`);
-            // Обновляем объект пользователя для текущего запроса
-            user.loyaltyStartedAt = new Date();
-          }
-
-          // Вычисляем время участия в программе лояльности
-          const loyaltyTime = Date.now() - user.loyaltyStartedAt.getTime();
-          const minutes = Math.floor(loyaltyTime / (1000 * 60));
-          const hours = Math.floor(loyaltyTime / (1000 * 60 * 60));
-          const days = Math.floor(loyaltyTime / (1000 * 60 * 60 * 24));
+          // ИСПРАВЛЕНО: Используем правильную функцию для вычисления эффективного времени
+          const effectiveTime = getEffectiveSubscriptionTime(user);
+          const currentMinutes = Math.floor(effectiveTime / (1000 * 60));
+          const currentHours = Math.floor(effectiveTime / (1000 * 60 * 60));
+          const currentDays = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
           
-          console.log(`[LOYALTY] Пользователь ${user.userId}: участвует в программе лояльности ${minutes} минут, ${hours} часов, ${days} дней`);
+          console.log(`[LOYALTY] Пользователь ${user.userId}: эффективное время участия ${currentMinutes} минут, ${currentHours} часов, ${currentDays} дней`);
           
           // Проверяем каждый период
           const periods = [
-            { key: '1m', minutes: 1 },
-            { key: '24h', hours: 24 },
-            { key: '7d', days: 7 },
-            { key: '30d', days: 30 },
-            { key: '90d', days: 90 },
-            { key: '180d', days: 180 },
-            { key: '360d', days: 360 }
+            { key: '1m', time: 1 * 60 * 1000, name: '1 минута' },
+            { key: '24h', time: 24 * 60 * 60 * 1000, name: '24 часа' },
+            { key: '7d', time: 7 * 24 * 60 * 60 * 1000, name: '7 дней' },
+            { key: '30d', time: 30 * 24 * 60 * 60 * 1000, name: '30 дней' },
+            { key: '90d', time: 90 * 24 * 60 * 60 * 1000, name: '90 дней' },
+            { key: '180d', time: 180 * 24 * 60 * 60 * 1000, name: '180 дней' },
+            { key: '360d', time: 360 * 24 * 60 * 60 * 1000, name: '360 дней' }
           ];
           
           for (const period of periods) {
@@ -1957,11 +1952,8 @@ function startLoyaltyChecker() {
               continue;
             }
             
-            // Проверяем, достиг ли пользователь этого периода
-            let hasReachedPeriod = false;
-            if (period.minutes && minutes >= period.minutes) hasReachedPeriod = true;
-            if (period.hours && hours >= period.hours) hasReachedPeriod = true;
-            if (period.days && days >= period.days) hasReachedPeriod = true;
+            // ИСПРАВЛЕНО: Проверяем, достиг ли пользователь этого периода по времени
+            const hasReachedPeriod = effectiveTime >= period.time;
             
             console.log(`[LOYALTY] Период ${period.key}: достигнут=${hasReachedPeriod}, уже получен=${loyaltyRecord.rewards[period.key]}`);
             
@@ -1972,16 +1964,7 @@ function startLoyaltyChecker() {
               // Отправляем сообщение
               let message = config.message;
               if (!message) {
-                const periodLabels = {
-                  '1m': '1 минуту',
-                  '24h': '24 часа',
-                  '7d': '7 дней',
-                  '30d': '30 дней',
-                  '90d': '90 дней',
-                  '180d': '180 дней',
-                  '360d': '360 дней'
-                };
-                message = `Поздравляем! Вы с нами уже ${periodLabels[period.key]}! 🎉`;
+                message = `Поздравляем! Вы с нами уже ${period.name}! 🎉`;
               }
               
               // Ищем доступный промокод для этого периода
@@ -2019,7 +2002,13 @@ function startLoyaltyChecker() {
               // Отмечаем, что награда выдана
               await Loyalty.updateOne(
                 { botId, userId: user.userId },
-                { [`rewards.${period.key}`]: true }
+                { $set: { [`rewards.${period.key}`]: true } }
+              );
+              
+              // Также обновляем статус в User
+              await User.updateOne(
+                { botId, userId: user.userId },
+                { $set: { [`loyaltyRewards.${period.key}`]: true } }
               );
               
               console.log(`[LOYALTY] Награда за период ${period.key} выдана пользователю ${user.userId}`);
