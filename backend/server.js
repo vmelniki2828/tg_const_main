@@ -2994,6 +2994,187 @@ app.post('/api/diagnose-loyalty-mismatch/:botId', async (req, res) => {
   }
 });
 
+// Эндпоинт для диагностики дублированных промокодов лояльности
+app.get('/api/diagnose-duplicate-promocodes/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    console.log(`🔍 [DIAGNOSE_DUPLICATES] Диагностика дублированных промокодов для бота ${botId}`);
+    
+    // Получаем всех пользователей с активированными промокодами
+    const activatedPromoCodes = await LoyaltyPromoCode.find({
+      botId,
+      activated: true
+    }).sort({ activatedBy: 1, period: 1, activatedAt: 1 });
+    
+    console.log(`🔍 [DIAGNOSE_DUPLICATES] Найдено ${activatedPromoCodes.length} активированных промокодов`);
+    
+    // Группируем промокоды по пользователям и периодам
+    const userPeriodMap = {};
+    const duplicates = [];
+    
+    activatedPromoCodes.forEach(promoCode => {
+      const key = `${promoCode.activatedBy}_${promoCode.period}`;
+      
+      if (!userPeriodMap[key]) {
+        userPeriodMap[key] = [];
+      }
+      
+      userPeriodMap[key].push(promoCode);
+    });
+    
+    // Находим дубликаты
+    Object.entries(userPeriodMap).forEach(([key, promoCodes]) => {
+      if (promoCodes.length > 1) {
+        const [userId, period] = key.split('_');
+        
+        // Сортируем по дате активации
+        promoCodes.sort((a, b) => new Date(a.activatedAt) - new Date(b.activatedAt));
+        
+        duplicates.push({
+          userId: parseInt(userId),
+          period: period,
+          totalPromoCodes: promoCodes.length,
+          promoCodes: promoCodes.map(pc => ({
+            code: pc.code,
+            activatedAt: pc.activatedAt,
+            _id: pc._id
+          })),
+          keepPromoCode: promoCodes[0].code, // Оставляем первый (самый ранний)
+          removePromoCodes: promoCodes.slice(1).map(pc => pc.code) // Удаляем остальные
+        });
+      }
+    });
+    
+    console.log(`🔍 [DIAGNOSE_DUPLICATES] Найдено ${duplicates.length} случаев дублирования`);
+    
+    // Получаем информацию о пользователях
+    const userIds = [...new Set(duplicates.map(d => d.userId))];
+    const users = await User.find({ botId, userId: { $in: userIds } });
+    const userMap = new Map();
+    users.forEach(user => userMap.set(user.userId, user));
+    
+    // Добавляем информацию о пользователях
+    duplicates.forEach(duplicate => {
+      const user = userMap.get(duplicate.userId);
+      duplicate.userInfo = {
+        username: user?.username,
+        firstName: user?.firstName,
+        lastName: user?.lastName
+      };
+    });
+    
+    res.json({
+      success: true,
+      message: `Диагностика дублированных промокодов завершена`,
+      statistics: {
+        totalActivatedPromoCodes: activatedPromoCodes.length,
+        duplicateCases: duplicates.length,
+        affectedUsers: userIds.length
+      },
+      duplicates
+    });
+    
+  } catch (error) {
+    console.error('❌ [DIAGNOSE_DUPLICATES] Критическая ошибка:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Подробности в логах сервера'
+    });
+  }
+});
+
+// Эндпоинт для очистки дублированных промокодов
+app.post('/api/cleanup-duplicate-promocodes/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    console.log(`🧹 [CLEANUP_DUPLICATES] Очистка дублированных промокодов для бота ${botId}`);
+    
+    // Получаем дублированные промокоды
+    const activatedPromoCodes = await LoyaltyPromoCode.find({
+      botId,
+      activated: true
+    }).sort({ activatedBy: 1, period: 1, activatedAt: 1 });
+    
+    const userPeriodMap = {};
+    const duplicatesToRemove = [];
+    
+    // Группируем промокоды по пользователям и периодам
+    activatedPromoCodes.forEach(promoCode => {
+      const key = `${promoCode.activatedBy}_${promoCode.period}`;
+      
+      if (!userPeriodMap[key]) {
+        userPeriodMap[key] = [];
+      }
+      
+      userPeriodMap[key].push(promoCode);
+    });
+    
+    // Находим дубликаты для удаления
+    Object.entries(userPeriodMap).forEach(([key, promoCodes]) => {
+      if (promoCodes.length > 1) {
+        // Сортируем по дате активации (оставляем первый, удаляем остальные)
+        promoCodes.sort((a, b) => new Date(a.activatedAt) - new Date(b.activatedAt));
+        
+        // Добавляем все кроме первого в список для удаления
+        duplicatesToRemove.push(...promoCodes.slice(1));
+      }
+    });
+    
+    console.log(`🧹 [CLEANUP_DUPLICATES] Найдено ${duplicatesToRemove.length} дублированных промокодов для удаления`);
+    
+    const cleanupResults = [];
+    
+    // Удаляем дублированные промокоды
+    for (const promoCode of duplicatesToRemove) {
+      try {
+        await LoyaltyPromoCode.deleteOne({ _id: promoCode._id });
+        
+        cleanupResults.push({
+          userId: promoCode.activatedBy,
+          period: promoCode.period,
+          removedPromoCode: promoCode.code,
+          removedAt: promoCode.activatedAt,
+          status: 'removed'
+        });
+        
+        console.log(`✅ [CLEANUP_DUPLICATES] Удален дублированный промокод ${promoCode.code} для пользователя ${promoCode.activatedBy}, периода ${promoCode.period}`);
+        
+      } catch (error) {
+        console.error(`❌ [CLEANUP_DUPLICATES] Ошибка удаления промокода ${promoCode.code}:`, error);
+        
+        cleanupResults.push({
+          userId: promoCode.activatedBy,
+          period: promoCode.period,
+          removedPromoCode: promoCode.code,
+          removedAt: promoCode.activatedAt,
+          status: 'error',
+          error: error.message
+        });
+      }
+    }
+    
+    console.log(`🧹 [CLEANUP_DUPLICATES] Очистка завершена: удалено ${cleanupResults.filter(r => r.status === 'removed').length} промокодов`);
+    
+    res.json({
+      success: true,
+      message: `Очистка дублированных промокодов завершена`,
+      statistics: {
+        totalDuplicatesFound: duplicatesToRemove.length,
+        successfullyRemoved: cleanupResults.filter(r => r.status === 'removed').length,
+        errors: cleanupResults.filter(r => r.status === 'error').length
+      },
+      cleanupResults
+    });
+    
+  } catch (error) {
+    console.error('❌ [CLEANUP_DUPLICATES] Критическая ошибка:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Подробности в логах сервера'
+    });
+  }
+});
+
 // Эндпоинт для массовой проверки всех пользователей и выдачи пропущенных наград
 app.post('/api/force-give-loyalty-rewards-all/:botId', async (req, res) => {
   try {
@@ -3072,40 +3253,59 @@ app.post('/api/force-give-loyalty-rewards-all/:botId', async (req, res) => {
             console.log(`🎁 [FORCE_REWARDS_ALL] Выдаем награду пользователю ${user.userId} за период ${period.key}`);
             
             try {
-              // Ищем доступный промокод для этого периода
-              const availablePromoCode = await LoyaltyPromoCode.findOne({
+              // ПРОВЕРЯЕМ, НЕТ ЛИ УЖЕ АКТИВИРОВАННОГО ПРОМОКОДА ЗА ЭТОТ ПЕРИОД
+              const existingPromoCode = await LoyaltyPromoCode.findOne({
                 botId,
+                activatedBy: user.userId,
                 period: period.key,
-                activated: false
+                activated: true
               });
               
-              if (availablePromoCode) {
-                // Активируем промокод
-                await LoyaltyPromoCode.updateOne(
-                  { _id: availablePromoCode._id },
-                  { 
-                    activated: true, 
-                    activatedBy: user.userId, 
-                    activatedAt: new Date() 
-                  }
-                );
-                
-                console.log(`✅ [FORCE_REWARDS_ALL] Активирован промокод ${availablePromoCode.code} для пользователя ${user.userId}, периода ${period.key}`);
+              if (existingPromoCode) {
+                console.log(`⚠️ [FORCE_REWARDS_ALL] У пользователя ${user.userId} уже есть промокод за период ${period.key}: ${existingPromoCode.code}`);
                 
                 userRewardsGiven.push({
                   period: period.key,
                   periodName: period.name,
-                  promoCode: availablePromoCode.code,
-                  action: 'promocode_activated'
+                  promoCode: existingPromoCode.code,
+                  action: 'already_exists'
                 });
               } else {
-                console.log(`⚠️ [FORCE_REWARDS_ALL] Нет доступных промокодов для пользователя ${user.userId}, периода ${period.key}`);
-                userRewardsGiven.push({
+                // Ищем доступный промокод для этого периода
+                const availablePromoCode = await LoyaltyPromoCode.findOne({
+                  botId,
                   period: period.key,
-                  periodName: period.name,
-                  promoCode: null,
-                  action: 'no_promocode_available'
+                  activated: false
                 });
+                
+                if (availablePromoCode) {
+                  // Активируем промокод
+                  await LoyaltyPromoCode.updateOne(
+                    { _id: availablePromoCode._id },
+                    { 
+                      activated: true, 
+                      activatedBy: user.userId, 
+                      activatedAt: new Date() 
+                    }
+                  );
+                  
+                  console.log(`✅ [FORCE_REWARDS_ALL] Активирован промокод ${availablePromoCode.code} для пользователя ${user.userId}, периода ${period.key}`);
+                  
+                  userRewardsGiven.push({
+                    period: period.key,
+                    periodName: period.name,
+                    promoCode: availablePromoCode.code,
+                    action: 'promocode_activated'
+                  });
+                } else {
+                  console.log(`⚠️ [FORCE_REWARDS_ALL] Нет доступных промокодов для пользователя ${user.userId}, периода ${period.key}`);
+                  userRewardsGiven.push({
+                    period: period.key,
+                    periodName: period.name,
+                    promoCode: null,
+                    action: 'no_promocode_available'
+                  });
+                }
               }
               
               // Отмечаем награду как выданную
