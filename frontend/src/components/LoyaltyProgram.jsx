@@ -226,7 +226,17 @@ const LoyaltyProgram = ({ botId, onClose }) => {
       
       if (response.ok) {
         const result = await response.json();
-        alert(`✅ Проверка завершена!\n\nОбработано пользователей: ${result.processedUsers}\nВыдано наград: ${result.totalRewardsGiven}\nОшибок: ${result.totalErrors}`);
+        console.log('API Response:', result);
+        
+        // Достаем summary из ответа
+        const summary = result.summary || result.statistics || result;
+        
+        const totalUsers = summary.totalUsers || result.totalUsers || 0;
+        const processedUsers = summary.processedUsers || 0;
+        const totalRewards = summary.totalRewardsGiven || 0;
+        const totalErrors = summary.totalErrors || 0;
+        
+        alert(`✅ Проверка завершена!\n\nОбработано пользователей: ${processedUsers}\nВыдано наград: ${totalRewards}\nОшибок: ${totalErrors}`);
       } else {
         const errorData = await response.json();
         alert('Ошибка: ' + errorData.error);
