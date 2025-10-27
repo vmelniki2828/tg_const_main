@@ -27,6 +27,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [forceChecking, setForceChecking] = useState(false);
 
   useEffect(() => {
     fetchLoyaltyConfig();
@@ -207,6 +208,33 @@ const LoyaltyProgram = ({ botId, onClose }) => {
       }
     } catch (error) {
       alert('Ошибка скачивания: ' + error.message);
+    }
+  };
+
+  const handleForceCheck = async () => {
+    if (!window.confirm('Запустить принудительную проверку программы лояльности для всех пользователей? Это может занять некоторое время.')) {
+      return;
+    }
+    
+    setForceChecking(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/force-give-loyalty-rewards-all/${botId}`, {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        alert(`✅ Проверка завершена!\n\nОбработано пользователей: ${result.processedUsers}\nВыдано наград: ${result.totalRewardsGiven}\nОшибок: ${result.totalErrors}`);
+      } else {
+        const errorData = await response.json();
+        alert('Ошибка: ' + errorData.error);
+      }
+    } catch (error) {
+      alert('Ошибка проверки: ' + error.message);
+    } finally {
+      setForceChecking(false);
     }
   };
 
@@ -399,6 +427,14 @@ const LoyaltyProgram = ({ botId, onClose }) => {
           </div>
 
           <div className="loyalty-actions">
+            <button 
+              className="force-check-btn" 
+              onClick={handleForceCheck}
+              disabled={forceChecking}
+              title="Принудительно проверить всех пользователей и выдать не выданные промокоды"
+            >
+              {forceChecking ? '⏳ Проверка...' : '🔍 Принудительная проверка лояльности'}
+            </button>
             <button 
               className="export-btn" 
               onClick={handleExportStats}

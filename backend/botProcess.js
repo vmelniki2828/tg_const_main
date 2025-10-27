@@ -1959,13 +1959,56 @@ function startLoyaltyChecker() {
             
             // Проверяем, не получал ли уже награду за этот период
             if (hasReachedPeriod && !loyaltyRecord.rewards[period.key]) {
+              console.log(`[LOYALTY] Пользователь ${user.userId} достиг периода ${period.key}, проверяем наличие промокода...`);
+              
+              // ЗАЩИТА ОТ ДУБЛИКАТОВ: Проверяем, не получил ли уже промокод за этот период
+              const existingPromoCode = await LoyaltyPromoCode.findOne({
+                botId,
+                activatedBy: user.userId,
+                period: period.key,
+                activated: true
+              });
+              
+              if (existingPromoCode) {
+                console.log(`[LOYALTY] Пользователь ${user.userId} уже получил промокод ${existingPromoCode.code} за период ${period.key}, пропускаем`);
+                // Отмечаем награду как выданную, но не отправляем новый промокод
+                await Loyalty.updateOne(
+                  { botId, userId: user.userId },
+                  { $set: { [`rewards.${period.key}`]: true } }
+                );
+                await User.updateOne(
+                  { botId, userId: user.userId },
+                  { $set: { [`loyaltyRewards.${period.key}`]: true } }
+                );
+                continue;
+              }
+              
               console.log(`[LOYALTY] Пользователь ${user.userId} достиг периода ${period.key}, отправляем сообщение`);
+              
+              // Форматируем время для отображения в сообщении
+              const formatTime = (effectiveTime) => {
+                const days = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((effectiveTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((effectiveTime % (1000 * 60 * 60)) / (1000 * 60));
+                
+                const parts = [];
+                if (days > 0) parts.push(`${days} дн.`);
+                if (hours > 0) parts.push(`${hours} час.`);
+                if (minutes > 0) parts.push(`${minutes} мин.`);
+                
+                return parts.length > 0 ? parts.join(' ') : 'менее минуты';
+              };
+              
+              const currentTimeFormatted = formatTime(effectiveTime);
               
               // Отправляем сообщение
               let message = config.message;
               if (!message) {
-                message = `Поздравляем! Вы с нами уже ${period.name}! 🎉`;
+                message = `🎉 Поздравляем! Вы с нами уже ${period.name}! 🎉`;
               }
+              
+              // Добавляем информацию о времени участия
+              message = `📅 Вы с нами: ${currentTimeFormatted}\n\n${message}`;
               
               // Ищем доступный промокод для этого периода
               const availablePromoCodes = await LoyaltyPromoCode.find({
@@ -1979,7 +2022,9 @@ function startLoyaltyChecker() {
                 const randomIndex = Math.floor(Math.random() * availablePromoCodes.length);
                 const selectedPromoCode = availablePromoCodes[randomIndex];
                 
-                message += `\n\n🎁 Ваш промокод: \`${selectedPromoCode.code}\``;
+                message += `\n\n🎁 Ваш промокод:`;
+                message += `\n🎫 \`${selectedPromoCode.code}\``;
+                message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
                 
                 // Помечаем промокод как использованный
                 await LoyaltyPromoCode.updateOne(
@@ -1993,6 +2038,7 @@ function startLoyaltyChecker() {
                 console.log(`[LOYALTY] Промокод ${selectedPromoCode.code} активирован для пользователя ${user.userId} за период ${period.key}`);
               } else {
                 console.log(`[LOYALTY] Нет доступных промокодов для периода ${period.key}`);
+                message += `\n\n⚠️ Для этого периода нет доступных промокодов. Пожалуйста, попробуйте позже.`;
               }
               
               // Отправляем сообщение пользователю
