@@ -3222,6 +3222,70 @@ app.post('/api/force-give-loyalty-rewards-all/:botId', async (req, res) => {
           continue;
         }
         
+        // ПРОВЕРКА ПОДПИСКИ НА КАНАЛ (если требуется)
+        let isChannelSubscribed = true;
+        if (loyaltyConfig.channelSettings && loyaltyConfig.channelSettings.isRequired) {
+          const channelId = loyaltyConfig.channelSettings.channelId;
+          if (channelId) {
+            console.log(`🔍 [FORCE_REWARDS_ALL] Проверяем подписку пользователя ${user.userId} на канал ${channelId}`);
+            
+            // Получаем токен бота для проверки подписки
+            const botModel = await Bot.findOne({ id: botId });
+            if (botModel && botModel.token) {
+              try {
+                // Нормализуем ID канала
+                let normalizedChannelId = String(channelId).trim();
+                if (!normalizedChannelId.startsWith('@') && !normalizedChannelId.startsWith('-')) {
+                  if (normalizedChannelId.startsWith('100')) {
+                    normalizedChannelId = '-' + normalizedChannelId;
+                  } else if (/^\d+$/.test(normalizedChannelId)) {
+                    normalizedChannelId = '@' + normalizedChannelId;
+                  }
+                }
+                
+                // Проверяем подписку через Telegram Bot API
+                const response = await fetch(`https://api.telegram.org/bot${botModel.token}/getChatMember`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: normalizedChannelId,
+                    user_id: user.userId
+                  })
+                });
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  const subscribedStatuses = ['member', 'administrator', 'creator'];
+                  isChannelSubscribed = subscribedStatuses.includes(data.result?.status);
+                  console.log(`🔍 [FORCE_REWARDS_ALL] Статус подписки пользователя ${user.userId}: ${data.result?.status}`);
+                } else {
+                  console.log(`⚠️ [FORCE_REWARDS_ALL] Не удалось проверить подписку пользователя ${user.userId}`);
+                  isChannelSubscribed = false;
+                }
+              } catch (checkError) {
+                console.error(`⚠️ [FORCE_REWARDS_ALL] Ошибка проверки подписки:`, checkError);
+                isChannelSubscribed = false;
+              }
+            }
+            
+            if (!isChannelSubscribed) {
+              console.log(`⚠️ [FORCE_REWARDS_ALL] Пользователь ${user.userId} не подписан на канал ${channelId}, пропускаем`);
+              results.userDetails.push({
+                userId: user.userId,
+                username: user.username,
+                firstName: user.firstName,
+                status: 'skipped',
+                reason: 'not_subscribed_to_channel',
+                rewardsGiven: 0,
+                errors: 0
+              });
+              continue;
+            } else {
+              console.log(`✅ [FORCE_REWARDS_ALL] Пользователь ${user.userId} подписан на канал ${channelId}, продолжаем`);
+            }
+          }
+        }
+        
         // Вычисляем эффективное время подписки
         const effectiveTime = getEffectiveSubscriptionTime(user);
         const currentMinutes = Math.floor(effectiveTime / (1000 * 60));
