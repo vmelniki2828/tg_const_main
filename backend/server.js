@@ -3291,6 +3291,55 @@ app.post('/api/force-give-loyalty-rewards-all/:botId', async (req, res) => {
                   
                   console.log(`✅ [FORCE_REWARDS_ALL] Активирован промокод ${availablePromoCode.code} для пользователя ${user.userId}, периода ${period.key}`);
                   
+                  // Отправляем сообщение пользователю (если бот запущен)
+                  try {
+                    // Получаем настройки сообщения для этого периода
+                    const messageConfig = loyaltyConfig.messages[period.key];
+                    let message = messageConfig?.message || `Поздравляем! Вы с нами уже ${period.name}! 🎉`;
+                    
+                    // Форматируем время для отображения
+                    const formatTime = (effectiveTime) => {
+                      const days = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
+                      const hours = Math.floor((effectiveTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                      const minutes = Math.floor((effectiveTime % (1000 * 60 * 60)) / (1000 * 60));
+                      
+                      const parts = [];
+                      if (days > 0) parts.push(`${days} дн.`);
+                      if (hours > 0) parts.push(`${hours} час.`);
+                      if (minutes > 0) parts.push(`${minutes} мин.`);
+                      
+                      return parts.length > 0 ? parts.join(' ') : 'менее минуты';
+                    };
+                    
+                    const currentTimeFormatted = formatTime(effectiveTime);
+                    message = `📅 Вы с нами: ${currentTimeFormatted}\n\n${message}`;
+                    message += `\n\n🎁 Ваш промокод:`;
+                    message += `\n🎫 \`${availablePromoCode.code}\``;
+                    message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
+                    
+                    // Получаем токен бота
+                    const botModel = await Bot.findOne({ id: botId });
+                    if (botModel && botModel.token) {
+                      const response = await fetch(`https://api.telegram.org/bot${botModel.token}/sendMessage`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          chat_id: user.userId,
+                          text: message,
+                          parse_mode: 'Markdown'
+                        })
+                      });
+                      
+                      if (response.ok) {
+                        console.log(`✅ [FORCE_REWARDS_ALL] Сообщение отправлено пользователю ${user.userId}`);
+                      } else {
+                        console.error(`⚠️ [FORCE_REWARDS_ALL] Не удалось отправить сообщение пользователю ${user.userId}`);
+                      }
+                    }
+                  } catch (msgError) {
+                    console.error(`⚠️ [FORCE_REWARDS_ALL] Ошибка отправки сообщения:`, msgError);
+                  }
+                  
                   userRewardsGiven.push({
                     period: period.key,
                     periodName: period.name,
