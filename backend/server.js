@@ -3535,6 +3535,233 @@ app.post('/api/force-give-loyalty-rewards-all/:botId', async (req, res) => {
 });
 
 // Эндпоинт для принудительной выдачи пропущенных наград конкретному пользователю
+// Эндпоинт для принудительной выдачи промокодов всем пользователям за конкретный период
+app.post('/api/force-give-loyalty-rewards-period/:botId/:period', async (req, res) => {
+  try {
+    const { botId, period } = req.params;
+    console.log(`🎁 [FORCE_REWARDS_PERIOD] Принудительная выдача промокодов за период ${period} для бота ${botId}`);
+    
+    // Получаем конфигурацию лояльности
+    const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+    if (!loyaltyConfig || !loyaltyConfig.isEnabled) {
+      return res.status(400).json({ 
+        error: 'Программа лояльности не настроена или отключена' 
+      });
+    }
+    
+    // Валидируем период
+    const validPeriods = ['1m', '24h', '7d', '30d', '90d', '180d', '360d'];
+    if (!validPeriods.includes(period)) {
+      return res.status(400).json({ 
+        error: 'Некорректный период. Доступные: 1m, 24h, 7d, 30d, 90d, 180d, 360d'
+      });
+    }
+    
+    // Получаем всех пользователей бота
+    const users = await User.find({ botId });
+    console.log(`🎁 [FORCE_REWARDS_PERIOD] Найдено ${users.length} пользователей`);
+    
+    const results = {
+      totalUsers: users.length,
+      processedUsers: 0,
+      usersWithRewards: 0,
+      totalRewardsGiven: 0,
+      totalErrors: 0,
+      userDetails: []
+    };
+    
+    // Определяем время для периода
+    const periodTimes = {
+      '1m': 1 * 60 * 1000,
+      '24h': 24 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+      '90d': 90 * 24 * 60 * 60 * 1000,
+      '180d': 180 * 24 * 60 * 60 * 1000,
+      '360d': 360 * 24 * 60 * 60 * 1000
+    };
+    
+    const periodTime = periodTimes[period];
+    
+    // Обрабатываем каждого пользователя
+    for (const user of users) {
+      try {
+        // Пропускаем пользователей без времени начала лояльности
+        if (!user.loyaltyStartedAt) {
+          continue;
+        }
+        
+        // ПРОВЕРКА ПОДПИСКИ НА КАНАЛ (если требуется)
+        let isChannelSubscribed = true;
+        if (loyaltyConfig.channelSettings && loyaltyConfig.channelSettings.isRequired) {
+          const channelId = loyaltyConfig.channelSettings.channelId;
+          if (channelId) {
+            // Получаем токен бота для проверки подписки
+            const botModel = await Bot.findOne({ id: botId });
+            if (botModel && botModel.token) {
+              try {
+                let normalizedChannelId = String(channelId).trim();
+                if (!normalizedChannelId.startsWith('@') && !normalizedChannelId.startsWith('-')) {
+                  if (normalizedChannelId.startsWith('100')) {
+                    normalizedChannelId = '-' + normalizedChannelId;
+                  } else if (/^\d+$/.test(normalizedChannelId)) {
+                    normalizedChannelId = '@' + normalizedChannelId;
+                  }
+                }
+                
+                const response = await fetch(`https://api.telegram.org/bot${botModel.token}/getChatMember`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: normalizedChannelId,
+                    user_id: user.userId
+                  })
+                });
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  const subscribedStatuses = ['member', 'administrator', 'creator'];
+                  isChannelSubscribed = subscribedStatuses.includes(data.result?.status);
+                } else {
+                  isChannelSubscribed = false;
+                }
+              } catch (checkError) {
+                console.error(`⚠️ Ошибка проверки подписки:`, checkError);
+                isChannelSubscribed = false;
+              }
+            }
+          }
+        }
+        
+        if (!isChannelSubscribed) {
+          continue;
+        }
+        
+        // Вычисляем эффективное время подписки
+        const effectiveTime = getEffectiveSubscriptionTime(user);
+        
+        // Проверяем, достиг ли пользователь периода
+        if (effectiveTime >= periodTime) {
+          console.log(`🎁 [FORCE_REWARDS_PERIOD] Пользователь ${user.userId} достиг периода ${period}`);
+          
+          // Проверяем, есть ли уже активированный промокод
+          const existingPromoCode = await LoyaltyPromoCode.findOne({
+            botId,
+            activatedBy: user.userId,
+            period: period,
+            activated: true
+          });
+          
+          if (!existingPromoCode) {
+            // Ищем доступный промокод
+            const availablePromoCode = await LoyaltyPromoCode.findOne({
+              botId,
+              period: period,
+              activated: false
+            });
+            
+            if (availablePromoCode) {
+              // Активируем промокод
+              await LoyaltyPromoCode.updateOne(
+                { _id: availablePromoCode._id },
+                { 
+                  activated: true, 
+                  activatedBy: user.userId, 
+                  activatedAt: new Date() 
+                }
+              );
+              
+              console.log(`✅ [FORCE_REWARDS_PERIOD] Активирован промокод ${availablePromoCode.code} для пользователя ${user.userId}`);
+              
+              // Отправляем сообщение пользователю
+              try {
+                const botModel = await Bot.findOne({ id: botId });
+                if (botModel && botModel.token) {
+                  const messageConfig = loyaltyConfig.messages[period];
+                  let message = messageConfig?.message || `Поздравляем! Вы с нами уже ${period} дня! 🎉`;
+                  
+                  const formatTime = (effectiveTime) => {
+                    const days = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
+                    const hours = Math.floor((effectiveTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const minutes = Math.floor((effectiveTime % (1000 * 60 * 60)) / (1000 * 60));
+                    
+                    const parts = [];
+                    if (days > 0) parts.push(`${days} дн.`);
+                    if (hours > 0) parts.push(`${hours} час.`);
+                    if (minutes > 0) parts.push(`${minutes} мин.`);
+                    
+                    return parts.length > 0 ? parts.join(' ') : 'менее минуты';
+                  };
+                  
+                  const currentTimeFormatted = formatTime(effectiveTime);
+                  message = `📅 Вы с нами: ${currentTimeFormatted}\n\n${message}`;
+                  message += `\n\n🎁 Ваш промокод:`;
+                  message += `\n🎫 \`${availablePromoCode.code}\``;
+                  message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
+                  
+                  await fetch(`https://api.telegram.org/bot${botModel.token}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      chat_id: user.userId,
+                      text: message,
+                      parse_mode: 'Markdown'
+                    })
+                  });
+                  
+                  console.log(`✅ [FORCE_REWARDS_PERIOD] Сообщение отправлено пользователю ${user.userId}`);
+                }
+              } catch (msgError) {
+                console.error(`⚠️ [FORCE_REWARDS_PERIOD] Ошибка отправки сообщения:`, msgError);
+              }
+              
+              results.totalRewardsGiven++;
+              results.usersWithRewards++;
+            } else {
+              console.log(`⚠️ [FORCE_REWARDS_PERIOD] Нет доступных промокодов для пользователя ${user.userId}, периода ${period}`);
+            }
+          } else {
+            console.log(`ℹ️ [FORCE_REWARDS_PERIOD] Пользователь ${user.userId} уже имеет промокод за период ${period}`);
+          }
+        }
+        
+        results.processedUsers++;
+        
+      } catch (userError) {
+        console.error(`❌ [FORCE_REWARDS_PERIOD] Ошибка обработки пользователя ${user.userId}:`, userError);
+        results.totalErrors++;
+      }
+    }
+    
+    console.log(`🎁 [FORCE_REWARDS_PERIOD] Выдача завершена:`);
+    console.log(`   - Обработано: ${results.processedUsers}`);
+    console.log(`   - Получили промокоды: ${results.usersWithRewards}`);
+    console.log(`   - Всего выдано: ${results.totalRewardsGiven}`);
+    console.log(`   - Ошибок: ${results.totalErrors}`);
+    
+    res.json({
+      success: true,
+      message: `Массовая выдача промокодов за период ${period} завершена`,
+      period: period,
+      summary: {
+        totalUsers: results.totalUsers,
+        processedUsers: results.processedUsers,
+        usersWithRewards: results.usersWithRewards,
+        totalRewardsGiven: results.totalRewardsGiven,
+        totalErrors: results.totalErrors
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ [FORCE_REWARDS_PERIOD] Ошибка:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Подробности в логах сервера'
+    });
+  }
+});
+
+// Эндпоинт для принудительной выдачи пропущенных наград конкретному пользователю
 app.post('/api/force-give-loyalty-rewards/:botId/:userId', async (req, res) => {
   try {
     const { botId, userId } = req.params;
