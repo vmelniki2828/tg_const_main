@@ -367,7 +367,7 @@ const completedQuizzes = new Map();
 
 // Кэш для проверки подписки на канал (избегаем повторных API-вызовов)
 const subscriptionCache = new Map();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 минут кэш
+const CACHE_DURATION = 30 * 1000; // 30 секунд кэш (сокращено для оперативности)
 
 // Функция для автоматической выдачи всех пропущенных промокодов лояльности
 async function giveMissedLoyaltyPromoCodes(userId, loyaltyRecord) {
@@ -853,6 +853,11 @@ function setupBotHandlers(bot, blocks, connections) {
         console.log(`🔍 Channel ID from config: "${channelId}" (type: ${typeof channelId})`);
         
         if (channelId) {
+          // ОЧИЩАЕМ КЭШ ПЕРЕД ПРОВЕРКОЙ (чтобы получить актуальное состояние подписки)
+          const cacheKey = `${userId}_${channelId}`;
+          subscriptionCache.delete(cacheKey);
+          console.log(`🗑️ Очищен кэш подписки для пользователя ${userId}, канал ${channelId}`);
+          
           console.log(`🔄 Перепроверяем подписку пользователя ${userId} на канал ${channelId}`);
           const isSubscribed = await checkChannelSubscription(userId, channelId);
           
