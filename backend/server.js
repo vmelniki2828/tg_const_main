@@ -3336,11 +3336,14 @@ app.post('/api/force-give-loyalty-rewards-all/:botId', async (req, res) => {
                 });
               } else {
                 // Ищем доступный промокод для этого периода
+                console.log(`🔍 [FORCE_REWARDS_ALL] Ищем доступные промокоды для периода ${period.key} (botId: ${botId})`);
                 const availablePromoCode = await LoyaltyPromoCode.findOne({
                   botId,
                   period: period.key,
                   activated: false
                 });
+                
+                console.log(`🔍 [FORCE_REWARDS_ALL] Найден промокод:`, availablePromoCode ? availablePromoCode.code : 'НЕТ');
                 
                 if (availablePromoCode) {
                   // Активируем промокод
@@ -3354,6 +3357,15 @@ app.post('/api/force-give-loyalty-rewards-all/:botId', async (req, res) => {
                   );
                   
                   console.log(`✅ [FORCE_REWARDS_ALL] Активирован промокод ${availablePromoCode.code} для пользователя ${user.userId}, периода ${period.key}`);
+                  
+                  // ПРОВЕРЯЕМ ЧТО ПРОМОКОД ДЕЙСТВИТЕЛЬНО АКТИВИРОВАН
+                  const verifyPromoCode = await LoyaltyPromoCode.findOne({
+                    botId,
+                    activatedBy: user.userId,
+                    period: period.key,
+                    activated: true
+                  });
+                  console.log(`✅ [FORCE_REWARDS_ALL] Проверка активации промокода:`, verifyPromoCode ? `ПРОМОКОД ${verifyPromoCode.code} АКТИВИРОВАН` : 'ПРОМОКОД НЕ НАЙДЕН');
                   
                   // Отправляем сообщение пользователю (если бот запущен)
                   try {
