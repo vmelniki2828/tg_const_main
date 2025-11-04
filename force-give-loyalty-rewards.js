@@ -33,7 +33,18 @@ async function forceGiveLoyaltyRewards(botId, userId) {
         } else {
           console.log(`   - Промокод: не доступен`);
         }
+        if (reward.messageSent !== undefined) {
+          console.log(`   - Сообщение отправлено: ${reward.messageSent ? '✅ Да' : '❌ Нет'}`);
+        }
       });
+      
+      const messagesSent = response.data.rewardsGiven.filter(r => r.messageSent === true).length;
+      const messagesNotSent = response.data.rewardsGiven.filter(r => r.messageSent === false).length;
+      if (messagesSent > 0 || messagesNotSent > 0) {
+        console.log(`\n📨 Статистика сообщений:`);
+        console.log(`   - Отправлено: ${messagesSent}`);
+        console.log(`   - Не отправлено: ${messagesNotSent}`);
+      }
     }
     
     if (response.data.errors.length > 0) {

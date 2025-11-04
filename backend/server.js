@@ -1583,11 +1583,36 @@ app.get('/api/export-loyalty-stats/:botId', async (req, res) => {
       loyaltyMap.set(record.userId, record);
     });
     
+    // Получаем все активированные промокоды для пользователей
+    const activatedPromoCodes = await LoyaltyPromoCode.find({ 
+      botId, 
+      activated: true 
+    });
+    
+    // Создаем Map для быстрого поиска промокодов по userId и периоду
+    // Если у пользователя несколько промокодов за период, берем первый (самый ранний)
+    const promoCodesMap = new Map();
+    activatedPromoCodes
+      .sort((a, b) => (a.activatedAt || 0) - (b.activatedAt || 0)) // Сортируем по дате активации
+      .forEach(promoCode => {
+        const key = `${promoCode.activatedBy}_${promoCode.period}`;
+        // Сохраняем только первый промокод за период (если уже есть - не перезаписываем)
+        if (!promoCodesMap.has(key)) {
+          promoCodesMap.set(key, promoCode.code);
+        }
+      });
+    
     // Формируем CSV данные
-    let csvContent = 'User ID,Username,First Name,Last Name,Subscribed At,First Subscribed At,Is Subscribed,1m Reward,24h Reward,7d Reward,30d Reward,90d Reward,180d Reward,360d Reward\n';
+    let csvContent = 'User ID,Username,First Name,Last Name,Subscribed At,First Subscribed At,Is Subscribed,1m Reward,1m PromoCode,24h Reward,24h PromoCode,7d Reward,7d PromoCode,30d Reward,30d PromoCode,90d Reward,90d PromoCode,180d Reward,180d PromoCode,360d Reward,360d PromoCode\n';
     
     users.forEach(user => {
       const loyaltyRecord = loyaltyMap.get(user.userId) || { rewards: {} };
+      
+      // Получаем промокоды для каждого периода
+      const getPromoCode = (period) => {
+        const key = `${user.userId}_${period}`;
+        return promoCodesMap.get(key) || '';
+      };
       
       const row = [
         user.userId || '',
@@ -1598,12 +1623,19 @@ app.get('/api/export-loyalty-stats/:botId', async (req, res) => {
         user.firstSubscribedAt ? new Date(user.firstSubscribedAt).toISOString() : '',
         user.isSubscribed ? 'Да' : 'Нет',
         loyaltyRecord.rewards['1m'] ? 'Да' : 'Нет',
+        getPromoCode('1m'),
         loyaltyRecord.rewards['24h'] ? 'Да' : 'Нет',
+        getPromoCode('24h'),
         loyaltyRecord.rewards['7d'] ? 'Да' : 'Нет',
+        getPromoCode('7d'),
         loyaltyRecord.rewards['30d'] ? 'Да' : 'Нет',
+        getPromoCode('30d'),
         loyaltyRecord.rewards['90d'] ? 'Да' : 'Нет',
+        getPromoCode('90d'),
         loyaltyRecord.rewards['180d'] ? 'Да' : 'Нет',
-        loyaltyRecord.rewards['360d'] ? 'Да' : 'Нет'
+        getPromoCode('180d'),
+        loyaltyRecord.rewards['360d'] ? 'Да' : 'Нет',
+        getPromoCode('360d')
       ].join(',');
       
       csvContent += row + '\n';
@@ -3795,6 +3827,30 @@ app.post('/api/force-give-loyalty-rewards/:botId/:userId', async (req, res) => {
         console.log(`🎁 [FORCE_REWARDS] Выдаем награду за период ${period.key}`);
         
         try {
+          // ЗАЩИТА ОТ ДУБЛИКАТОВ: Проверяем, не получил ли уже промокод за этот период
+          const existingPromoCode = await LoyaltyPromoCode.findOne({
+            botId,
+            activatedBy: parseInt(userId),
+            period: period.key,
+            activated: true
+          });
+          
+          if (existingPromoCode) {
+            console.log(`⚠️ [FORCE_REWARDS] У пользователя ${userId} уже есть промокод за период ${period.key}: ${existingPromoCode.code}`);
+            rewardsGiven.push({
+              period: period.key,
+              periodName: period.name,
+              promoCode: existingPromoCode.code,
+              action: 'already_exists'
+            });
+            // Отмечаем награду как выданную, но не отправляем новый промокод
+            await User.updateOne(
+              { botId, userId: parseInt(userId) },
+              { $set: { [`loyaltyRewards.${period.key}`]: true } }
+            );
+            continue;
+          }
+          
           // Ищем доступный промокод для этого периода
           const availablePromoCode = await LoyaltyPromoCode.findOne({
             botId,
@@ -3808,18 +3864,73 @@ app.post('/api/force-give-loyalty-rewards/:botId/:userId', async (req, res) => {
               { _id: availablePromoCode._id },
               { 
                 activated: true, 
-                activatedBy: userId, 
+                activatedBy: parseInt(userId), 
                 activatedAt: new Date() 
               }
             );
             
             console.log(`✅ [FORCE_REWARDS] Активирован промокод ${availablePromoCode.code} для периода ${period.key}`);
             
+            // Отправляем сообщение пользователю (если бот запущен)
+            let messageSent = false;
+            try {
+              // Получаем настройки сообщения для этого периода
+              const messageConfig = loyaltyConfig.messages[period.key];
+              let message = messageConfig?.message || `Поздравляем! Вы с нами уже ${period.name}! 🎉`;
+              
+              // Форматируем время для отображения
+              const formatTime = (effectiveTime) => {
+                const days = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((effectiveTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((effectiveTime % (1000 * 60 * 60)) / (1000 * 60));
+                
+                const parts = [];
+                if (days > 0) parts.push(`${days} дн.`);
+                if (hours > 0) parts.push(`${hours} час.`);
+                if (minutes > 0) parts.push(`${minutes} мин.`);
+                
+                return parts.length > 0 ? parts.join(' ') : 'менее минуты';
+              };
+              
+              const currentTimeFormatted = formatTime(effectiveTime);
+              message = `📅 Вы с нами: ${currentTimeFormatted}\n\n${message}`;
+              message += `\n\n🎁 Ваш промокод:`;
+              message += `\n🎫 \`${availablePromoCode.code}\``;
+              message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
+              
+              // Получаем токен бота
+              const botModel = await Bot.findOne({ id: botId });
+              if (botModel && botModel.token) {
+                const response = await fetch(`https://api.telegram.org/bot${botModel.token}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: parseInt(userId),
+                    text: message,
+                    parse_mode: 'Markdown'
+                  })
+                });
+                
+                if (response.ok) {
+                  messageSent = true;
+                  console.log(`✅ [FORCE_REWARDS] Сообщение отправлено пользователю ${userId}`);
+                } else {
+                  const errorData = await response.json();
+                  console.error(`⚠️ [FORCE_REWARDS] Не удалось отправить сообщение пользователю ${userId}:`, errorData);
+                }
+              } else {
+                console.log(`⚠️ [FORCE_REWARDS] Бот не найден или токен отсутствует`);
+              }
+            } catch (msgError) {
+              console.error(`⚠️ [FORCE_REWARDS] Ошибка отправки сообщения:`, msgError);
+            }
+            
             rewardsGiven.push({
               period: period.key,
               periodName: period.name,
               promoCode: availablePromoCode.code,
-              action: 'promocode_activated'
+              action: 'promocode_activated',
+              messageSent: messageSent
             });
           } else {
             console.log(`⚠️ [FORCE_REWARDS] Нет доступных промокодов для периода ${period.key}`);
