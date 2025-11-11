@@ -1835,19 +1835,27 @@ function setupBotHandlers(bot, blocks, connections) {
 
 // Функция для обновления меню команд Telegram
 async function updateBotCommands(bot, blocks) {
-  const commands = blocks
-    .filter(block => block.command)
-    .map(block => ({
-      command: block.command.replace(/^\//, ''),
-      description: (block.description || '').substring(0, 50)
-    }))
-    .sort((a, b) => a.command.localeCompare(b.command));
-  if (commands.length > 0) {
-    await bot.telegram.setMyCommands(commands);
-    console.log('Меню команд Telegram обновлено:', commands);
-  } else {
-    await bot.telegram.setMyCommands([]);
-    console.log('Меню команд Telegram очищено');
+  try {
+    const commands = blocks
+      .filter(block => block.command)
+      .map(block => ({
+        command: block.command.replace(/^\//, ''),
+        description: (block.description || '').substring(0, 50)
+      }))
+      .sort((a, b) => a.command.localeCompare(b.command));
+    if (commands.length > 0) {
+      await bot.telegram.setMyCommands(commands);
+      console.log('✅ Меню команд Telegram обновлено:', commands);
+    } else {
+      await bot.telegram.setMyCommands([]);
+      console.log('✅ Меню команд Telegram очищено');
+    }
+  } catch (error) {
+    console.error('❌ Ошибка при обновлении команд бота:', error.message);
+    if (error.response && error.response.error_code === 401) {
+      throw new Error('Токен бота невалидный или истек. Проверьте токен в настройках бота.');
+    }
+    throw error;
   }
 }
 
@@ -2140,26 +2148,8 @@ async function startBot() {
   // Загружаем завершенные квизы из MongoDB
   await loadCompletedQuizzes();
   
-  // Настраиваем обработчики
-  setupBotHandlers(bot, state.blocks, state.connections);
-
-  // Обновляем меню команд Telegram
-  await updateBotCommands(bot, state.blocks);
-  
-  // Оптимизированный логгер для всех апдейтов Telegram
-  bot.use((ctx, next) => {
-    // Логируем только основную информацию для производительности
-    console.log(`📨 ${ctx.updateType} from ${ctx.from?.id || 'unknown'}: ${ctx.message?.text || 'no text'}`);
-    return next();
-  });
-
-  // Обработчик ошибок бота
-  bot.catch((err, ctx) => {
-    console.error('❌ Bot error:', err);
-    handleCriticalError(err);
-  });
-  
-  // Проверяем подключение к Telegram API
+  // ПРОВЕРЯЕМ ТОКЕН ПЕРЕД ВСЕМ ОСТАЛЬНЫМ
+  // Это критично, так как невалидный токен приведет к ошибкам во всех последующих операциях
   try {
     console.log('=== [BOOT] Проверяем подключение к Telegram API... ===');
     const botInfo = await bot.telegram.getMe();
@@ -2175,8 +2165,34 @@ async function startBot() {
     console.error('=== [BOOT] 2. Доступность api.telegram.org');
     console.error('=== [BOOT] 3. Валидность токена бота');
     console.error('=== [BOOT] 4. Токен должен начинаться с цифр и содержать двоеточие');
+    console.error('=== [BOOT] 5. Токен может быть отозван или истек - проверьте в @BotFather');
     process.exit(1);
   }
+  
+  // Настраиваем обработчики
+  setupBotHandlers(bot, state.blocks, state.connections);
+
+  // Обновляем меню команд Telegram (после проверки токена)
+  try {
+    await updateBotCommands(bot, state.blocks);
+  } catch (cmdError) {
+    console.error('=== [BOOT] ⚠️ Ошибка при обновлении команд бота:', cmdError.message);
+    console.error('=== [BOOT] Бот продолжит работу, но команды могут быть не обновлены');
+    // Не завершаем процесс, так как токен уже проверен
+  }
+  
+  // Оптимизированный логгер для всех апдейтов Telegram
+  bot.use((ctx, next) => {
+    // Логируем только основную информацию для производительности
+    console.log(`📨 ${ctx.updateType} from ${ctx.from?.id || 'unknown'}: ${ctx.message?.text || 'no text'}`);
+    return next();
+  });
+
+  // Обработчик ошибок бота
+  bot.catch((err, ctx) => {
+    console.error('❌ Bot error:', err);
+    handleCriticalError(err);
+  });
 
   // Проверяем сетевые настройки
   try {
