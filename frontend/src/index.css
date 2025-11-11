@@ -869,7 +869,7 @@ body {
 .settings-button {
   flex: 1;
   padding: 0.5rem;
-  background: var(--secondary-color);
+  background: #6B7280;
   color: white;
   border: none;
   border-radius: var(--radius-sm);
@@ -878,7 +878,7 @@ body {
 }
 
 .settings-button:hover {
-  background: #616161;
+  background: #4B5563;
 }
 
 .delete-button {
@@ -1739,12 +1739,7 @@ body {
   color: var(--text-color);
 }
 
-/* Стили для системной статистики */
-.system-stats-modal {
-  min-width: 500px;
-}
-
-/* Стили для модального окна настроек бота */
+/* Стили для формы настроек бота */
 .bot-settings-modal {
   min-width: 500px;
   max-width: 600px;
@@ -1754,6 +1749,24 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+.bot-settings-form .form-group {
+  margin-bottom: 0;
+}
+
+.bot-settings-form .form-group input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+}
+
+.bot-settings-form .form-group input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.15);
 }
 
 .form-actions {
@@ -1785,11 +1798,10 @@ body {
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: var(--transition);
-  font-weight: 500;
 }
 
 .save-button:hover:not(:disabled) {
-  background: #45a049;
+  background: #16a34a;
   opacity: 0.9;
 }
 
@@ -1797,6 +1809,11 @@ body {
 .cancel-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Стили для системной статистики */
+.system-stats-modal {
+  min-width: 500px;
 }
 
 .stats-content {

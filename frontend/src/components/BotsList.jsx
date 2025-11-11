@@ -10,7 +10,7 @@ function BotsList({ onSelectBot }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showSystemStats, setShowSystemStats] = useState(false);
-  const [selectedBotForSettings, setSelectedBotForSettings] = useState(null);
+  const [settingsBotId, setSettingsBotId] = useState(null);
 
   // Загрузка списка ботов
   useEffect(() => {
@@ -178,7 +178,7 @@ function BotsList({ onSelectBot }) {
                 ✏️ Редактировать
               </button>
               <button
-                onClick={() => setSelectedBotForSettings(bot)}
+                onClick={() => setSettingsBotId(bot.id)}
                 className="settings-button"
               >
                 ⚙️ Настройки
@@ -200,11 +200,15 @@ function BotsList({ onSelectBot }) {
         />
       )}
       
-      {selectedBotForSettings && (
+      {settingsBotId && (
         <BotSettingsModal
-          bot={selectedBotForSettings}
-          onClose={() => setSelectedBotForSettings(null)}
-          onUpdate={loadBots}
+          botId={settingsBotId}
+          bot={bots.find(b => b.id === settingsBotId)}
+          onClose={() => setSettingsBotId(null)}
+          onSave={() => {
+            setSettingsBotId(null);
+            loadBots();
+          }}
         />
       )}
     </div>

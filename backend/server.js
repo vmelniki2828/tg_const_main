@@ -1903,20 +1903,51 @@ function wait(ms) {
 app.put('/api/bots/:id', async (req, res) => {
   try {
     const { name, token, editorState } = req.body;
-    // Создаем объект для обновления только с переданными полями
-    const updateData = {};
-    if (name !== undefined) updateData.name = name;
-    if (token !== undefined) updateData.token = token;
-    if (editorState !== undefined) updateData.editorState = editorState;
-    
     // Обновить в MongoDB
     await Bot.updateOne(
       { id: req.params.id },
-      { $set: updateData }
+      { $set: {
+        name,
+        token,
+        editorState
+      }}
     );
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update bot' });
+  }
+});
+
+// Обновление только названия и токена бота (настройки)
+app.patch('/api/bots/:id/settings', async (req, res) => {
+  try {
+    const { name, token } = req.body;
+    
+    if (!name || !token) {
+      return res.status(400).json({ error: 'Название и токен обязательны' });
+    }
+
+    // Проверяем существование бота
+    const bot = await Bot.findOne({ id: req.params.id });
+    if (!bot) {
+      return res.status(404).json({ error: 'Бот не найден' });
+    }
+
+    // Обновляем только name и token, не трогая editorState и другие данные
+    await Bot.updateOne(
+      { id: req.params.id },
+      { $set: {
+        name: name.trim(),
+        token: token.trim()
+      }}
+    );
+
+    console.log(`[BOT_SETTINGS] Обновлены настройки бота ${req.params.id}: name="${name}", token="${token.substring(0, 10)}..."`);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[BOT_SETTINGS] Ошибка при обновлении настроек бота:', error);
+    res.status(500).json({ error: 'Не удалось обновить настройки бота', details: error.message });
   }
 });
 
