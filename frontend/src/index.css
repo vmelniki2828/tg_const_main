@@ -866,6 +866,21 @@ body {
   background: var(--primary-dark);
 }
 
+.settings-button {
+  flex: 1;
+  padding: 0.5rem;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.settings-button:hover {
+  background: #5568d3;
+}
+
 .delete-button {
   padding: 0.5rem;
   background: none;

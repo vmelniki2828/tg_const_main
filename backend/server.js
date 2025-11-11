@@ -1918,6 +1918,36 @@ app.put('/api/bots/:id', async (req, res) => {
   }
 });
 
+// Обновление только настроек бота (название и токен) без изменения editorState и других данных
+app.put('/api/bots/:id/settings', async (req, res) => {
+  try {
+    const { name, token } = req.body;
+    const botId = req.params.id;
+    
+    // Проверяем, что бот существует
+    const bot = await Bot.findOne({ id: botId });
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot not found' });
+    }
+    
+    // Обновляем только name и token, не трогая editorState, статистику и другие данные
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (token !== undefined) updateData.token = token;
+    
+    await Bot.updateOne(
+      { id: botId },
+      { $set: updateData }
+    );
+    
+    console.log(`[BOT_SETTINGS] Обновлены настройки бота ${botId}:`, updateData);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating bot settings:', error);
+    res.status(500).json({ error: 'Failed to update bot settings', details: error.message });
+  }
+});
+
 // Активация бота
 app.post('/api/bots/:id/activate', async (req, res) => {
   try {

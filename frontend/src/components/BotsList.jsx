@@ -9,6 +9,11 @@ function BotsList({ onSelectBot }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showSystemStats, setShowSystemStats] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [selectedBot, setSelectedBot] = useState(null);
+  const [settingsName, setSettingsName] = useState('');
+  const [settingsToken, setSettingsToken] = useState('');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // Загрузка списка ботов
   useEffect(() => {
@@ -112,6 +117,64 @@ function BotsList({ onSelectBot }) {
     }
   };
 
+  const handleOpenSettings = (bot) => {
+    setSelectedBot(bot);
+    setSettingsName(bot.name || '');
+    setSettingsToken(bot.token || '');
+    setShowSettingsModal(true);
+    setError(null);
+  };
+
+  const handleCloseSettings = () => {
+    setShowSettingsModal(false);
+    setSelectedBot(null);
+    setSettingsName('');
+    setSettingsToken('');
+    setError(null);
+  };
+
+  const handleSaveSettings = async (e) => {
+    e.preventDefault();
+    if (!selectedBot) return;
+
+    if (!settingsName.trim() || !settingsToken.trim()) {
+      setError('Введите название и токен бота');
+      return;
+    }
+
+    try {
+      setIsSavingSettings(true);
+      setError(null);
+      
+      const response = await fetch(`${config.API_BASE_URL}/api/bots/${selectedBot.id}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: settingsName.trim(),
+          token: settingsToken.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Не удалось сохранить настройки');
+      }
+
+      // Обновляем список ботов
+      await loadBots();
+      
+      // Закрываем модальное окно
+      handleCloseSettings();
+    } catch (err) {
+      console.error('Error saving bot settings:', err);
+      setError(err.message);
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   if (isLoading) {
     return <div className="loading">Загрузка...</div>;
   }
@@ -176,6 +239,12 @@ function BotsList({ onSelectBot }) {
                 ✏️ Редактировать
               </button>
               <button
+                onClick={() => handleOpenSettings(bot)}
+                className="settings-button"
+              >
+                ⚙️ Настройки
+              </button>
+              <button
                 onClick={() => handleDeleteBot(bot.id)}
                 className="delete-button"
               >
@@ -190,6 +259,67 @@ function BotsList({ onSelectBot }) {
         <SystemStats 
           onClose={() => setShowSystemStats(false)}
         />
+      )}
+
+      {showSettingsModal && selectedBot && (
+        <div className="modal-overlay" onClick={handleCloseSettings}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>⚙️ Настройки бота</h2>
+              <button onClick={handleCloseSettings} className="close-button">×</button>
+            </div>
+            
+            <form onSubmit={handleSaveSettings}>
+              <div className="form-group">
+                <label>Название бота:</label>
+                <input
+                  type="text"
+                  value={settingsName}
+                  onChange={(e) => setSettingsName(e.target.value)}
+                  placeholder="Введите название бота"
+                  required
+                  disabled={isSavingSettings}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Токен бота:</label>
+                <input
+                  type="text"
+                  value={settingsToken}
+                  onChange={(e) => setSettingsToken(e.target.value)}
+                  placeholder="Введите токен бота"
+                  required
+                  disabled={isSavingSettings}
+                />
+              </div>
+
+              {error && (
+                <div className="error-message" style={{ marginBottom: '1rem' }}>
+                  ❌ {error}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={handleCloseSettings}
+                  disabled={isSavingSettings}
+                  style={{ padding: '0.5rem 1.5rem' }}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingSettings}
+                  style={{ padding: '0.5rem 1.5rem' }}
+                >
+                  {isSavingSettings ? 'Сохранение...' : 'Сохранить'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
