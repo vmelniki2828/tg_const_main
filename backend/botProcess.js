@@ -26,7 +26,7 @@ mongoose.connect(MONGO_URI, {
   });
 
 // Получаем параметры из аргументов командной строки
-const [token, botId, stateJson] = process.argv.slice(2);
+let [token, botId, stateJson] = process.argv.slice(2);
 
 if (!token || !botId || !stateJson) {
   console.error('❌ [BOT_PROCESS] Missing required arguments');
@@ -39,12 +39,25 @@ if (!token || !botId || !stateJson) {
   process.exit(1);
 }
 
-// Проверяем валидность токена
-if (!token.trim() || token.length < 10) {
+// Очищаем токен от возможных пробелов и проверяем
+const cleanToken = token.trim();
+if (!cleanToken || cleanToken.length < 10) {
   console.error('❌ [BOT_PROCESS] Invalid token format');
+  console.error('❌ [BOT_PROCESS] Token length:', cleanToken ? cleanToken.length : 0);
+  console.error('❌ [BOT_PROCESS] Token preview:', cleanToken ? `${cleanToken.substring(0, 15)}...` : 'empty');
   console.error('❌ [BOT_PROCESS] Token should be a valid Telegram bot token');
   process.exit(1);
 }
+
+// Проверяем формат токена (должен содержать двоеточие)
+if (!cleanToken.includes(':')) {
+  console.error('❌ [BOT_PROCESS] Invalid token format - missing colon');
+  console.error('❌ [BOT_PROCESS] Token preview:', `${cleanToken.substring(0, 15)}...`);
+  process.exit(1);
+}
+
+// Используем очищенный токен
+token = cleanToken;
 
 // Парсим состояние
 let state;
@@ -2121,6 +2134,8 @@ async function loadCompletedQuizzes() {
 
 async function startBot() {
   console.log('=== [BOOT] startBot вызван ===');
+  console.log(`=== [BOOT] Используемый токен: ${token.substring(0, 10)}...${token.substring(token.length - 5)} (длина: ${token.length}) ===`);
+  console.log(`=== [BOOT] Формат токена: ${token.includes(':') ? '✅ содержит двоеточие' : '❌ НЕТ двоеточия'} ===`);
   bot = new Telegraf(token);
   
   // Счетчик ошибок для автоматического перезапуска
