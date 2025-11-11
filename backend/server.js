@@ -1973,6 +1973,16 @@ app.patch('/api/bots/:id/settings', async (req, res) => {
       return res.status(400).json({ error: 'Название и токен обязательны' });
     }
 
+    // Очищаем и проверяем токен
+    const cleanToken = token.trim();
+    if (!cleanToken || cleanToken.length < 20) {
+      return res.status(400).json({ error: 'Токен слишком короткий. Проверьте правильность токена.' });
+    }
+    
+    if (!cleanToken.includes(':')) {
+      return res.status(400).json({ error: 'Неверный формат токена. Токен должен содержать двоеточие (например: 123456789:ABC...)' });
+    }
+
     // Проверяем существование бота
     const bot = await Bot.findOne({ id: req.params.id });
     if (!bot) {
@@ -1984,11 +1994,14 @@ app.patch('/api/bots/:id/settings', async (req, res) => {
       { id: req.params.id },
       { $set: {
         name: name.trim(),
-        token: token.trim()
+        token: cleanToken
       }}
     );
 
-    console.log(`[BOT_SETTINGS] Обновлены настройки бота ${req.params.id}: name="${name}", token="${token.substring(0, 10)}..."`);
+    console.log(`[BOT_SETTINGS] Обновлены настройки бота ${req.params.id}`);
+    console.log(`[BOT_SETTINGS] Name: "${name}"`);
+    console.log(`[BOT_SETTINGS] Token: ${cleanToken.substring(0, 10)}...${cleanToken.substring(cleanToken.length - 5)} (length: ${cleanToken.length})`);
+    console.log(`[BOT_SETTINGS] Token format: ${cleanToken.includes(':') ? '✅ valid' : '❌ invalid'}`);
     
     res.json({ success: true });
   } catch (error) {
