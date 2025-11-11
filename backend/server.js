@@ -1903,14 +1903,16 @@ function wait(ms) {
 app.put('/api/bots/:id', async (req, res) => {
   try {
     const { name, token, editorState } = req.body;
+    // Создаем объект для обновления только с переданными полями
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (token !== undefined) updateData.token = token;
+    if (editorState !== undefined) updateData.editorState = editorState;
+    
     // Обновить в MongoDB
     await Bot.updateOne(
       { id: req.params.id },
-      { $set: {
-        name,
-        token,
-        editorState
-      }}
+      { $set: updateData }
     );
     res.json({ success: true });
   } catch (error) {

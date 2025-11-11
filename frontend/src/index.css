@@ -866,6 +866,21 @@ body {
   background: var(--primary-dark);
 }
 
+.settings-button {
+  flex: 1;
+  padding: 0.5rem;
+  background: var(--secondary-color);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.settings-button:hover {
+  background: #616161;
+}
+
 .delete-button {
   padding: 0.5rem;
   background: none;
@@ -1727,6 +1742,61 @@ body {
 /* Стили для системной статистики */
 .system-stats-modal {
   min-width: 500px;
+}
+
+/* Стили для модального окна настроек бота */
+.bot-settings-modal {
+  min-width: 500px;
+  max-width: 600px;
+}
+
+.bot-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.cancel-button {
+  padding: 0.75rem 1.5rem;
+  background: var(--background-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.cancel-button:hover:not(:disabled) {
+  background: var(--border-color);
+}
+
+.save-button {
+  padding: 0.75rem 1.5rem;
+  background: var(--success-color);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  font-weight: 500;
+}
+
+.save-button:hover:not(:disabled) {
+  background: #45a049;
+  opacity: 0.9;
+}
+
+.save-button:disabled,
+.cancel-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .stats-content {

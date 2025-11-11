@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import SystemStats from './SystemStats';
+import BotSettingsModal from './BotSettingsModal';
 import config from '../config';
 
 function BotsList({ onSelectBot }) {
@@ -9,6 +10,7 @@ function BotsList({ onSelectBot }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showSystemStats, setShowSystemStats] = useState(false);
+  const [selectedBotForSettings, setSelectedBotForSettings] = useState(null);
 
   // Загрузка списка ботов
   useEffect(() => {
@@ -176,6 +178,12 @@ function BotsList({ onSelectBot }) {
                 ✏️ Редактировать
               </button>
               <button
+                onClick={() => setSelectedBotForSettings(bot)}
+                className="settings-button"
+              >
+                ⚙️ Настройки
+              </button>
+              <button
                 onClick={() => handleDeleteBot(bot.id)}
                 className="delete-button"
               >
@@ -189,6 +197,14 @@ function BotsList({ onSelectBot }) {
       {showSystemStats && (
         <SystemStats 
           onClose={() => setShowSystemStats(false)}
+        />
+      )}
+      
+      {selectedBotForSettings && (
+        <BotSettingsModal
+          bot={selectedBotForSettings}
+          onClose={() => setSelectedBotForSettings(null)}
+          onUpdate={loadBots}
         />
       )}
     </div>
