@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import SystemStats from './SystemStats';
-import BotSettingsModal from './BotSettingsModal';
 import config from '../config';
 
 function BotsList({ onSelectBot }) {
@@ -10,7 +9,11 @@ function BotsList({ onSelectBot }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showSystemStats, setShowSystemStats] = useState(false);
-  const [settingsBotId, setSettingsBotId] = useState(null);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [editingBot, setEditingBot] = useState(null);
+  const [editBotName, setEditBotName] = useState('');
+  const [editBotToken, setEditBotToken] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Загрузка списка ботов
   useEffect(() => {
@@ -114,6 +117,60 @@ function BotsList({ onSelectBot }) {
     }
   };
 
+  const handleOpenSettings = (bot) => {
+    setEditingBot(bot);
+    setEditBotName(bot.name || '');
+    setEditBotToken(bot.token || '');
+    setShowSettingsModal(true);
+    setError(null);
+  };
+
+  const handleCloseSettings = () => {
+    setShowSettingsModal(false);
+    setEditingBot(null);
+    setEditBotName('');
+    setEditBotToken('');
+    setError(null);
+  };
+
+  const handleSaveSettings = async (e) => {
+    e.preventDefault();
+    if (!editBotName.trim() || !editBotToken.trim()) {
+      setError('Введите название и токен бота');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setError(null);
+      
+      const response = await fetch(`${config.API_BASE_URL}/api/bots/${editingBot.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: editBotName.trim(),
+          token: editBotToken.trim()
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Не удалось обновить настройки бота');
+      }
+
+      // Обновляем список ботов
+      await loadBots();
+      handleCloseSettings();
+    } catch (err) {
+      console.error('Error saving bot settings:', err);
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (isLoading) {
     return <div className="loading">Загрузка...</div>;
   }
@@ -178,7 +235,7 @@ function BotsList({ onSelectBot }) {
                 ✏️ Редактировать
               </button>
               <button
-                onClick={() => setSettingsBotId(bot.id)}
+                onClick={() => handleOpenSettings(bot)}
                 className="settings-button"
               >
                 ⚙️ Настройки
@@ -199,17 +256,64 @@ function BotsList({ onSelectBot }) {
           onClose={() => setShowSystemStats(false)}
         />
       )}
-      
-      {settingsBotId && (
-        <BotSettingsModal
-          botId={settingsBotId}
-          bot={bots.find(b => b.id === settingsBotId)}
-          onClose={() => setSettingsBotId(null)}
-          onSave={() => {
-            setSettingsBotId(null);
-            loadBots();
-          }}
-        />
+
+      {showSettingsModal && editingBot && (
+        <div className="modal-overlay" onClick={handleCloseSettings}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>⚙️ Настройки бота</h2>
+              <button onClick={handleCloseSettings} className="close-button">×</button>
+            </div>
+            
+            {error && (
+              <div className="error-message">
+                ❌ {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSettings} className="create-bot-form">
+              <div className="form-group">
+                <label>Название бота:</label>
+                <input
+                  type="text"
+                  value={editBotName}
+                  onChange={(e) => setEditBotName(e.target.value)}
+                  placeholder="Введите название бота"
+                  required
+                  disabled={isSaving}
+                />
+              </div>
+              <div className="form-group">
+                <label>Токен бота:</label>
+                <input
+                  type="text"
+                  value={editBotToken}
+                  onChange={(e) => setEditBotToken(e.target.value)}
+                  placeholder="Введите токен бота"
+                  required
+                  disabled={isSaving}
+                />
+              </div>
+              <div className="form-actions">
+                <button 
+                  type="button" 
+                  onClick={handleCloseSettings}
+                  disabled={isSaving}
+                  className="cancel-button"
+                >
+                  Отмена
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSaving}
+                  className="save-button"
+                >
+                  {isSaving ? 'Сохранение...' : 'Сохранить'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

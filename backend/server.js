@@ -1786,85 +1786,24 @@ setInterval(async () => {
 
 // Получение editorState из MongoDB для запуска botProcess.js
 async function startBot(bot) {
-  console.log(`[START_BOT] Starting bot ${bot.id}...`);
-  console.log(`[START_BOT] Bot object:`, { id: bot.id, name: bot.name, hasToken: !!bot.token });
+  console.log(`Starting bot ${bot.id}...`);
   
   // Проверяем, не запущен ли уже бот
   if (activeProcesses.has(bot.id)) {
-    console.log(`[START_BOT] Bot ${bot.id} is already running`);
+    console.log(`Bot ${bot.id} is already running`);
     return activeProcesses.get(bot.id);
   }
   
-  // Получаем актуальные данные бота из MongoDB
-  let botDoc;
-  try {
-    console.log(`[START_BOT] Fetching bot from MongoDB...`);
-    botDoc = await Bot.findOne({ id: bot.id });
-    if (!botDoc) {
-      throw new Error('Bot not found in MongoDB');
-    }
-    console.log(`[START_BOT] Bot found in MongoDB:`, { 
-      id: botDoc.id, 
-      name: botDoc.name, 
-      hasToken: !!botDoc.token,
-      hasEditorState: !!botDoc.editorState 
-    });
-  } catch (error) {
-    console.error(`[START_BOT] Error fetching bot from MongoDB:`, error);
-    console.error(`[START_BOT] Error stack:`, error.stack);
-    throw error;
-  }
-  
-  // Проверяем наличие токена
-  let token = (botDoc.token || bot.token || '').trim();
-  if (!token) {
-    throw new Error('Bot token is missing or empty. Please set the token in bot settings.');
-  }
-  
-  // Проверяем формат токена
-  if (!token.includes(':')) {
-    throw new Error('Bot token has invalid format. Token must contain a colon (e.g., "123456789:ABC...").');
-  }
-  
-  if (token.length < 20) {
-    throw new Error('Bot token is too short. Please check the token in bot settings.');
-  }
-  
-  // Проверяем наличие editorState
-  if (!botDoc.editorState || !botDoc.editorState.blocks || !botDoc.editorState.connections) {
-    throw new Error('Bot editorState is invalid. Please configure the bot flow first.');
-  }
-  
-  console.log(`[START_BOT] Bot ${bot.id} token: ${token.substring(0, 10)}...${token.substring(token.length - 5)} (length: ${token.length})`);
-  console.log(`[START_BOT] Bot ${bot.id} token format: ${token.includes(':') ? '✅ valid' : '❌ invalid'}`);
-  console.log(`[START_BOT] Bot ${bot.id} has ${botDoc.editorState.blocks.length} blocks`);
-  
-  // Сериализуем editorState в JSON
-  let editorStateJson;
-  try {
-    editorStateJson = JSON.stringify(botDoc.editorState);
-    console.log(`[START_BOT] EditorState serialized, size: ${editorStateJson.length} bytes`);
-  } catch (jsonError) {
-    console.error(`[START_BOT] Failed to serialize editorState:`, jsonError);
-    throw new Error(`Failed to serialize bot editorState: ${jsonError.message}`);
-  }
-  
-  // Проверяем путь к botProcess.js
-  const botProcessPath = path.join(__dirname, 'botProcess.js');
-  if (!fs.existsSync(botProcessPath)) {
-    console.error(`[START_BOT] botProcess.js not found at: ${botProcessPath}`);
-    throw new Error(`botProcess.js not found at ${botProcessPath}`);
-  }
-  console.log(`[START_BOT] Using botProcess.js at: ${botProcessPath}`);
+  // Получаем editorState из MongoDB
+  const botDoc = await Bot.findOne({ id: bot.id });
+  if (!botDoc) throw new Error('Bot not found in MongoDB');
   
   const botProcess = spawn('node', [
-    botProcessPath,
-    token,
+    path.join(__dirname, 'botProcess.js'),
+    bot.token,
     bot.id,
-    editorStateJson
-  ], {
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
+    JSON.stringify(botDoc.editorState)
+  ]);
 
   // Сохраняем процесс в карте
   activeProcesses.set(bot.id, botProcess);
@@ -1872,8 +1811,6 @@ async function startBot(bot) {
   return new Promise((resolve, reject) => {
     let isResolved = false;
     let startTimeout;
-    let errorMessages = [];
-    let outputMessages = [];
 
     const cleanup = () => {
       clearTimeout(startTimeout);
@@ -1884,8 +1821,7 @@ async function startBot(bot) {
 
     botProcess.stdout.on('data', (data) => {
       const output = data.toString();
-      outputMessages.push(output);
-      console.log(`[BOT ${bot.id} STDOUT]:`, output);
+      console.log(`Bot ${bot.id} output:`, output);
       
       if (output.includes('Bot started successfully')) {
         isResolved = true;
@@ -1896,37 +1832,22 @@ async function startBot(bot) {
 
     botProcess.stderr.on('data', (data) => {
       const error = data.toString();
-      errorMessages.push(error);
-      console.error(`[BOT ${bot.id} STDERR]:`, error);
+      console.error(`Bot ${bot.id} error:`, error);
     });
 
-    botProcess.on('exit', (code, signal) => {
-      console.log(`[START_BOT] Bot ${bot.id} process exited with code ${code}, signal ${signal}`);
+    botProcess.on('exit', (code) => {
+      console.log(`Bot ${bot.id} process exited with code ${code}`);
       activeProcesses.delete(bot.id);
       if (!isResolved) {
         cleanup();
-        const errorText = errorMessages.length > 0 
-          ? `\nError details:\n${errorMessages.join('\n')}`
-          : '';
-        const outputText = outputMessages.length > 0
-          ? `\nOutput:\n${outputMessages.join('\n')}`
-          : '';
-        reject(new Error(`Bot process exited with code ${code}${errorText}${outputText}`));
+        reject(new Error(`Bot process exited with code ${code}`));
       }
-    });
-
-    // Обработка ошибок запуска процесса
-    botProcess.on('error', (error) => {
-      console.error(`[START_BOT] Failed to start bot ${bot.id} process:`, error);
-      activeProcesses.delete(bot.id);
-      cleanup();
-      reject(new Error(`Failed to start bot process: ${error.message}`));
     });
 
     startTimeout = setTimeout(() => {
       if (!isResolved) {
         cleanup();
-        console.log(`[START_BOT] Bot ${bot.id} launch timeout, assuming it's running`);
+        console.log(`Bot ${bot.id} launch timeout, assuming it's running`);
         resolve(botProcess);
       }
     }, 20000); // Увеличиваем таймаут до 20 секунд
@@ -1982,131 +1903,69 @@ function wait(ms) {
 app.put('/api/bots/:id', async (req, res) => {
   try {
     const { name, token, editorState } = req.body;
-    // Обновить в MongoDB
+    const updateData = {};
+    
+    // Обновляем только те поля, которые переданы
+    // Это позволяет обновлять только name и token без изменения editorState
+    if (name !== undefined) {
+      updateData.name = name;
+    }
+    if (token !== undefined) {
+      updateData.token = token;
+    }
+    if (editorState !== undefined) {
+      updateData.editorState = editorState;
+    }
+    
+    // Проверяем, что есть что обновлять
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    // Обновить в MongoDB только переданные поля
     await Bot.updateOne(
       { id: req.params.id },
-      { $set: {
-        name,
-        token,
-        editorState
-      }}
+      { $set: updateData }
     );
+    
+    console.log(`[BOT_UPDATE] Обновлен бот ${req.params.id}, поля: ${Object.keys(updateData).join(', ')}`);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update bot' });
-  }
-});
-
-// Обновление только названия и токена бота (настройки)
-app.patch('/api/bots/:id/settings', async (req, res) => {
-  try {
-    const { name, token } = req.body;
-    
-    if (!name || !token) {
-      return res.status(400).json({ error: 'Название и токен обязательны' });
-    }
-
-    // Очищаем и проверяем токен
-    const cleanToken = token.trim();
-    if (!cleanToken || cleanToken.length < 20) {
-      return res.status(400).json({ error: 'Токен слишком короткий. Проверьте правильность токена.' });
-    }
-    
-    if (!cleanToken.includes(':')) {
-      return res.status(400).json({ error: 'Неверный формат токена. Токен должен содержать двоеточие (например: 123456789:ABC...)' });
-    }
-
-    // Проверяем существование бота
-    const bot = await Bot.findOne({ id: req.params.id });
-    if (!bot) {
-      return res.status(404).json({ error: 'Бот не найден' });
-    }
-
-    // Обновляем только name и token, не трогая editorState и другие данные
-    await Bot.updateOne(
-      { id: req.params.id },
-      { $set: {
-        name: name.trim(),
-        token: cleanToken
-      }}
-    );
-
-    console.log(`[BOT_SETTINGS] Обновлены настройки бота ${req.params.id}`);
-    console.log(`[BOT_SETTINGS] Name: "${name}"`);
-    console.log(`[BOT_SETTINGS] Token: ${cleanToken.substring(0, 10)}...${cleanToken.substring(cleanToken.length - 5)} (length: ${cleanToken.length})`);
-    console.log(`[BOT_SETTINGS] Token format: ${cleanToken.includes(':') ? '✅ valid' : '❌ invalid'}`);
-    
-    res.json({ success: true });
-  } catch (error) {
-    console.error('[BOT_SETTINGS] Ошибка при обновлении настроек бота:', error);
-    res.status(500).json({ error: 'Не удалось обновить настройки бота', details: error.message });
+    console.error('[BOT_UPDATE] Ошибка при обновлении бота:', error);
+    res.status(500).json({ error: 'Failed to update bot', details: error.message });
   }
 });
 
 // Активация бота
 app.post('/api/bots/:id/activate', async (req, res) => {
   try {
-    console.log(`[ACTIVATE] Activation request for bot ${req.params.id}`);
     const bot = await Bot.findOne({ id: req.params.id });
     if (!bot) {
-      console.error('[ACTIVATE] Bot not found for activation:', req.params.id);
+      console.error('Bot not found for activation:', req.params.id);
       return res.status(404).json({ error: 'Bot not found' });
     }
-    
-    // Проверяем токен
-    const token = bot.token ? String(bot.token).trim() : '';
-    if (!token || token.length < 20) {
-      console.error('[ACTIVATE] Bot token is missing, empty, or too short for activation:', req.params.id);
-      console.error('[ACTIVATE] Token length:', token ? token.length : 0);
-      return res.status(400).json({ 
-        error: 'Bot token is missing or invalid. Please set a valid token in bot settings before activation.' 
-      });
+    if (!bot.token) {
+      console.error('Bot token is missing for activation:', req.params.id);
+      return res.status(400).json({ error: 'Bot token is missing' });
     }
-    
-    if (!token.includes(':')) {
-      console.error('[ACTIVATE] Bot token has invalid format (missing colon):', req.params.id);
-      return res.status(400).json({ 
-        error: 'Bot token has invalid format. Token must contain a colon (e.g., "123456789:ABC...").' 
-      });
-    }
-    
-    // Проверяем editorState
     if (!bot.editorState || !bot.editorState.blocks || !bot.editorState.connections) {
-      console.error('[ACTIVATE] Invalid editor state for activation:', req.params.id);
-      return res.status(400).json({ 
-        error: 'Invalid editor state. Please configure the bot flow before activation.' 
-      });
+      console.error('Invalid editor state for activation:', req.params.id, bot.editorState);
+      return res.status(400).json({ error: 'Invalid editor state' });
     }
-    
-    console.log(`[ACTIVATE] All validations passed for bot ${req.params.id}`);
-    console.log(`[ACTIVATE] Token: ${token.substring(0, 10)}...${token.substring(token.length - 5)} (length: ${token.length})`);
-    console.log(`[ACTIVATE] Blocks count: ${bot.editorState.blocks.length}`);
-    
     // Обновляем isActive в базе
     await Bot.updateOne({ id: req.params.id }, { $set: { isActive: true } });
-    console.log(`[ACTIVATE] Bot ${req.params.id} marked as active in database`);
-    
+    console.log('All validations passed, starting bot activation for:', req.params.id);
     try {
       await startBot(bot);
-      console.log(`[ACTIVATE] Bot ${req.params.id} process started successfully`);
+      console.log('Bot process started successfully for:', req.params.id);
       res.json({ success: true });
     } catch (error) {
-      console.error(`[ACTIVATE] Error starting bot ${req.params.id} process:`, error);
-      console.error(`[ACTIVATE] Error stack:`, error.stack);
-      // Откатываем isActive в случае ошибки
-      await Bot.updateOne({ id: req.params.id }, { $set: { isActive: false } });
-      res.status(500).json({ 
-        error: 'Failed to start bot process', 
-        details: error.message || String(error)
-      });
+      console.error('Error starting bot process:', error);
+      res.status(500).json({ error: 'Failed to start bot process', details: error.message });
     }
   } catch (error) {
-    console.error('[ACTIVATE] Error in activate endpoint:', error);
-    console.error('[ACTIVATE] Error stack:', error.stack);
-    res.status(500).json({ 
-      error: 'Failed to activate bot', 
-      details: error.message || String(error)
-    });
+    console.error('Error in activate endpoint:', error);
+    res.status(500).json({ error: 'Failed to activate bot', details: error.message });
   }
 });
 

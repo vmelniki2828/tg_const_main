@@ -26,50 +26,22 @@ mongoose.connect(MONGO_URI, {
   });
 
 // Получаем параметры из аргументов командной строки
-let [token, botId, stateJson] = process.argv.slice(2);
+const [token, botId, stateJson] = process.argv.slice(2);
 
 if (!token || !botId || !stateJson) {
-  console.error('❌ [BOT_PROCESS] Missing required arguments');
-  console.error('❌ [BOT_PROCESS] Expected: token, botId, stateJson');
-  console.error('❌ [BOT_PROCESS] Received:', { 
-    token: token ? `${token.substring(0, 10)}...` : 'missing',
-    botId: botId || 'missing',
-    stateJson: stateJson ? `${stateJson.substring(0, 50)}...` : 'missing'
-  });
+  console.error('Missing required arguments: token, botId, stateJson');
   process.exit(1);
 }
-
-// Очищаем токен от возможных пробелов и проверяем
-const cleanToken = token.trim();
-if (!cleanToken || cleanToken.length < 10) {
-  console.error('❌ [BOT_PROCESS] Invalid token format');
-  console.error('❌ [BOT_PROCESS] Token length:', cleanToken ? cleanToken.length : 0);
-  console.error('❌ [BOT_PROCESS] Token preview:', cleanToken ? `${cleanToken.substring(0, 15)}...` : 'empty');
-  console.error('❌ [BOT_PROCESS] Token should be a valid Telegram bot token');
-  process.exit(1);
-}
-
-// Проверяем формат токена (должен содержать двоеточие)
-if (!cleanToken.includes(':')) {
-  console.error('❌ [BOT_PROCESS] Invalid token format - missing colon');
-  console.error('❌ [BOT_PROCESS] Token preview:', `${cleanToken.substring(0, 15)}...`);
-  process.exit(1);
-}
-
-// Используем очищенный токен
-token = cleanToken;
 
 // Парсим состояние
 let state;
 try {
   state = JSON.parse(stateJson);
   if (!state.blocks || !state.connections) {
-    throw new Error('Invalid state format: missing blocks or connections');
+    throw new Error('Invalid state format');
   }
-  console.log(`✅ [BOT_PROCESS] State parsed successfully: ${state.blocks.length} blocks, ${state.connections.length} connections`);
 } catch (error) {
-  console.error('❌ [BOT_PROCESS] Failed to parse state:', error.message);
-  console.error('❌ [BOT_PROCESS] State JSON length:', stateJson.length);
+  console.error('Failed to parse state:', error);
   process.exit(1);
 }
 
@@ -1848,27 +1820,19 @@ function setupBotHandlers(bot, blocks, connections) {
 
 // Функция для обновления меню команд Telegram
 async function updateBotCommands(bot, blocks) {
-  try {
-    const commands = blocks
-      .filter(block => block.command)
-      .map(block => ({
-        command: block.command.replace(/^\//, ''),
-        description: (block.description || '').substring(0, 50)
-      }))
-      .sort((a, b) => a.command.localeCompare(b.command));
-    if (commands.length > 0) {
-      await bot.telegram.setMyCommands(commands);
-      console.log('✅ Меню команд Telegram обновлено:', commands);
-    } else {
-      await bot.telegram.setMyCommands([]);
-      console.log('✅ Меню команд Telegram очищено');
-    }
-  } catch (error) {
-    console.error('❌ Ошибка при обновлении команд бота:', error.message);
-    if (error.response && error.response.error_code === 401) {
-      throw new Error('Токен бота невалидный или истек. Проверьте токен в настройках бота.');
-    }
-    throw error;
+  const commands = blocks
+    .filter(block => block.command)
+    .map(block => ({
+      command: block.command.replace(/^\//, ''),
+      description: (block.description || '').substring(0, 50)
+    }))
+    .sort((a, b) => a.command.localeCompare(b.command));
+  if (commands.length > 0) {
+    await bot.telegram.setMyCommands(commands);
+    console.log('Меню команд Telegram обновлено:', commands);
+  } else {
+    await bot.telegram.setMyCommands([]);
+    console.log('Меню команд Telegram очищено');
   }
 }
 
@@ -2134,8 +2098,6 @@ async function loadCompletedQuizzes() {
 
 async function startBot() {
   console.log('=== [BOOT] startBot вызван ===');
-  console.log(`=== [BOOT] Используемый токен: ${token.substring(0, 10)}...${token.substring(token.length - 5)} (длина: ${token.length}) ===`);
-  console.log(`=== [BOOT] Формат токена: ${token.includes(':') ? '✅ содержит двоеточие' : '❌ НЕТ двоеточия'} ===`);
   bot = new Telegraf(token);
   
   // Счетчик ошибок для автоматического перезапуска
@@ -2163,38 +2125,11 @@ async function startBot() {
   // Загружаем завершенные квизы из MongoDB
   await loadCompletedQuizzes();
   
-  // ПРОВЕРЯЕМ ТОКЕН ПЕРЕД ВСЕМ ОСТАЛЬНЫМ
-  // Это критично, так как невалидный токен приведет к ошибкам во всех последующих операциях
-  try {
-    console.log('=== [BOOT] Проверяем подключение к Telegram API... ===');
-    const botInfo = await bot.telegram.getMe();
-    console.log('=== [BOOT] Telegram API доступен, bot info:', botInfo);
-    console.log(`=== [BOOT] Bot username: @${botInfo.username}, id: ${botInfo.id} ===`);
-  } catch (apiError) {
-    console.error('=== [BOOT] ❌ Ошибка подключения к Telegram API ===');
-    console.error('=== [BOOT] Error message:', apiError.message);
-    console.error('=== [BOOT] Error code:', apiError.code);
-    console.error('=== [BOOT] Error response:', apiError.response);
-    console.error('=== [BOOT] Проверьте:');
-    console.error('=== [BOOT] 1. Интернет-соединение');
-    console.error('=== [BOOT] 2. Доступность api.telegram.org');
-    console.error('=== [BOOT] 3. Валидность токена бота');
-    console.error('=== [BOOT] 4. Токен должен начинаться с цифр и содержать двоеточие');
-    console.error('=== [BOOT] 5. Токен может быть отозван или истек - проверьте в @BotFather');
-    process.exit(1);
-  }
-  
   // Настраиваем обработчики
   setupBotHandlers(bot, state.blocks, state.connections);
 
-  // Обновляем меню команд Telegram (после проверки токена)
-  try {
-    await updateBotCommands(bot, state.blocks);
-  } catch (cmdError) {
-    console.error('=== [BOOT] ⚠️ Ошибка при обновлении команд бота:', cmdError.message);
-    console.error('=== [BOOT] Бот продолжит работу, но команды могут быть не обновлены');
-    // Не завершаем процесс, так как токен уже проверен
-  }
+  // Обновляем меню команд Telegram
+  await updateBotCommands(bot, state.blocks);
   
   // Оптимизированный логгер для всех апдейтов Telegram
   bot.use((ctx, next) => {
@@ -2208,6 +2143,17 @@ async function startBot() {
     console.error('❌ Bot error:', err);
     handleCriticalError(err);
   });
+  
+  // Проверяем подключение к Telegram API
+  try {
+    console.log('=== [BOOT] Проверяем подключение к Telegram API... ===');
+    const botInfo = await bot.telegram.getMe();
+    console.log('=== [BOOT] Telegram API доступен, bot info:', botInfo);
+  } catch (apiError) {
+    console.error('=== [BOOT] Ошибка подключения к Telegram API:', apiError);
+    console.error('=== [BOOT] Проверьте интернет-соединение и доступность api.telegram.org');
+    process.exit(1);
+  }
 
   // Проверяем сетевые настройки
   try {
