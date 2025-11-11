@@ -1801,9 +1801,18 @@ async function startBot(bot) {
   }
   
   // Проверяем наличие токена
-  const token = botDoc.token || bot.token;
-  if (!token || !token.trim()) {
+  let token = (botDoc.token || bot.token || '').trim();
+  if (!token) {
     throw new Error('Bot token is missing or empty. Please set the token in bot settings.');
+  }
+  
+  // Проверяем формат токена
+  if (!token.includes(':')) {
+    throw new Error('Bot token has invalid format. Token must contain a colon (e.g., "123456789:ABC...").');
+  }
+  
+  if (token.length < 20) {
+    throw new Error('Bot token is too short. Please check the token in bot settings.');
   }
   
   // Проверяем наличие editorState
@@ -1811,7 +1820,8 @@ async function startBot(bot) {
     throw new Error('Bot editorState is invalid. Please configure the bot flow first.');
   }
   
-  console.log(`[START_BOT] Bot ${bot.id} token: ${token.substring(0, 10)}...`);
+  console.log(`[START_BOT] Bot ${bot.id} token: ${token.substring(0, 10)}...${token.substring(token.length - 5)} (length: ${token.length})`);
+  console.log(`[START_BOT] Bot ${bot.id} token format: ${token.includes(':') ? '✅ valid' : '❌ invalid'}`);
   console.log(`[START_BOT] Bot ${bot.id} has ${botDoc.editorState.blocks.length} blocks`);
   
   const botProcess = spawn('node', [
