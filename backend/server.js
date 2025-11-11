@@ -1786,24 +1786,42 @@ setInterval(async () => {
 
 // Получение editorState из MongoDB для запуска botProcess.js
 async function startBot(bot) {
-  console.log(`Starting bot ${bot.id}...`);
+  console.log(`[START_BOT] Starting bot ${bot.id}...`);
   
   // Проверяем, не запущен ли уже бот
   if (activeProcesses.has(bot.id)) {
-    console.log(`Bot ${bot.id} is already running`);
+    console.log(`[START_BOT] Bot ${bot.id} is already running`);
     return activeProcesses.get(bot.id);
   }
   
-  // Получаем editorState из MongoDB
+  // Получаем актуальные данные бота из MongoDB
   const botDoc = await Bot.findOne({ id: bot.id });
-  if (!botDoc) throw new Error('Bot not found in MongoDB');
+  if (!botDoc) {
+    throw new Error('Bot not found in MongoDB');
+  }
+  
+  // Проверяем наличие токена
+  const token = botDoc.token || bot.token;
+  if (!token || !token.trim()) {
+    throw new Error('Bot token is missing or empty. Please set the token in bot settings.');
+  }
+  
+  // Проверяем наличие editorState
+  if (!botDoc.editorState || !botDoc.editorState.blocks || !botDoc.editorState.connections) {
+    throw new Error('Bot editorState is invalid. Please configure the bot flow first.');
+  }
+  
+  console.log(`[START_BOT] Bot ${bot.id} token: ${token.substring(0, 10)}...`);
+  console.log(`[START_BOT] Bot ${bot.id} has ${botDoc.editorState.blocks.length} blocks`);
   
   const botProcess = spawn('node', [
     path.join(__dirname, 'botProcess.js'),
-    bot.token,
+    token,
     bot.id,
     JSON.stringify(botDoc.editorState)
-  ]);
+  ], {
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
 
   // Сохраняем процесс в карте
   activeProcesses.set(bot.id, botProcess);
@@ -1811,6 +1829,8 @@ async function startBot(bot) {
   return new Promise((resolve, reject) => {
     let isResolved = false;
     let startTimeout;
+    let errorMessages = [];
+    let outputMessages = [];
 
     const cleanup = () => {
       clearTimeout(startTimeout);
@@ -1821,7 +1841,8 @@ async function startBot(bot) {
 
     botProcess.stdout.on('data', (data) => {
       const output = data.toString();
-      console.log(`Bot ${bot.id} output:`, output);
+      outputMessages.push(output);
+      console.log(`[BOT ${bot.id} STDOUT]:`, output);
       
       if (output.includes('Bot started successfully')) {
         isResolved = true;
@@ -1832,22 +1853,37 @@ async function startBot(bot) {
 
     botProcess.stderr.on('data', (data) => {
       const error = data.toString();
-      console.error(`Bot ${bot.id} error:`, error);
+      errorMessages.push(error);
+      console.error(`[BOT ${bot.id} STDERR]:`, error);
     });
 
-    botProcess.on('exit', (code) => {
-      console.log(`Bot ${bot.id} process exited with code ${code}`);
+    botProcess.on('exit', (code, signal) => {
+      console.log(`[START_BOT] Bot ${bot.id} process exited with code ${code}, signal ${signal}`);
       activeProcesses.delete(bot.id);
       if (!isResolved) {
         cleanup();
-        reject(new Error(`Bot process exited with code ${code}`));
+        const errorText = errorMessages.length > 0 
+          ? `\nError details:\n${errorMessages.join('\n')}`
+          : '';
+        const outputText = outputMessages.length > 0
+          ? `\nOutput:\n${outputMessages.join('\n')}`
+          : '';
+        reject(new Error(`Bot process exited with code ${code}${errorText}${outputText}`));
       }
+    });
+
+    // Обработка ошибок запуска процесса
+    botProcess.on('error', (error) => {
+      console.error(`[START_BOT] Failed to start bot ${bot.id} process:`, error);
+      activeProcesses.delete(bot.id);
+      cleanup();
+      reject(new Error(`Failed to start bot process: ${error.message}`));
     });
 
     startTimeout = setTimeout(() => {
       if (!isResolved) {
         cleanup();
-        console.log(`Bot ${bot.id} launch timeout, assuming it's running`);
+        console.log(`[START_BOT] Bot ${bot.id} launch timeout, assuming it's running`);
         resolve(botProcess);
       }
     }, 20000); // Увеличиваем таймаут до 20 секунд
@@ -1954,32 +1990,52 @@ app.patch('/api/bots/:id/settings', async (req, res) => {
 // Активация бота
 app.post('/api/bots/:id/activate', async (req, res) => {
   try {
+    console.log(`[ACTIVATE] Activation request for bot ${req.params.id}`);
     const bot = await Bot.findOne({ id: req.params.id });
     if (!bot) {
-      console.error('Bot not found for activation:', req.params.id);
+      console.error('[ACTIVATE] Bot not found for activation:', req.params.id);
       return res.status(404).json({ error: 'Bot not found' });
     }
-    if (!bot.token) {
-      console.error('Bot token is missing for activation:', req.params.id);
-      return res.status(400).json({ error: 'Bot token is missing' });
+    
+    // Проверяем токен
+    if (!bot.token || !bot.token.trim()) {
+      console.error('[ACTIVATE] Bot token is missing or empty for activation:', req.params.id);
+      return res.status(400).json({ 
+        error: 'Bot token is missing or empty. Please set the token in bot settings before activation.' 
+      });
     }
+    
+    // Проверяем editorState
     if (!bot.editorState || !bot.editorState.blocks || !bot.editorState.connections) {
-      console.error('Invalid editor state for activation:', req.params.id, bot.editorState);
-      return res.status(400).json({ error: 'Invalid editor state' });
+      console.error('[ACTIVATE] Invalid editor state for activation:', req.params.id);
+      return res.status(400).json({ 
+        error: 'Invalid editor state. Please configure the bot flow before activation.' 
+      });
     }
+    
+    console.log(`[ACTIVATE] All validations passed for bot ${req.params.id}`);
+    console.log(`[ACTIVATE] Token: ${bot.token.substring(0, 10)}...`);
+    console.log(`[ACTIVATE] Blocks count: ${bot.editorState.blocks.length}`);
+    
     // Обновляем isActive в базе
     await Bot.updateOne({ id: req.params.id }, { $set: { isActive: true } });
-    console.log('All validations passed, starting bot activation for:', req.params.id);
+    console.log(`[ACTIVATE] Bot ${req.params.id} marked as active in database`);
+    
     try {
       await startBot(bot);
-      console.log('Bot process started successfully for:', req.params.id);
+      console.log(`[ACTIVATE] Bot ${req.params.id} process started successfully`);
       res.json({ success: true });
     } catch (error) {
-      console.error('Error starting bot process:', error);
-      res.status(500).json({ error: 'Failed to start bot process', details: error.message });
+      console.error(`[ACTIVATE] Error starting bot ${req.params.id} process:`, error);
+      // Откатываем isActive в случае ошибки
+      await Bot.updateOne({ id: req.params.id }, { $set: { isActive: false } });
+      res.status(500).json({ 
+        error: 'Failed to start bot process', 
+        details: error.message 
+      });
     }
   } catch (error) {
-    console.error('Error in activate endpoint:', error);
+    console.error('[ACTIVATE] Error in activate endpoint:', error);
     res.status(500).json({ error: 'Failed to activate bot', details: error.message });
   }
 });

@@ -29,7 +29,20 @@ mongoose.connect(MONGO_URI, {
 const [token, botId, stateJson] = process.argv.slice(2);
 
 if (!token || !botId || !stateJson) {
-  console.error('Missing required arguments: token, botId, stateJson');
+  console.error('❌ [BOT_PROCESS] Missing required arguments');
+  console.error('❌ [BOT_PROCESS] Expected: token, botId, stateJson');
+  console.error('❌ [BOT_PROCESS] Received:', { 
+    token: token ? `${token.substring(0, 10)}...` : 'missing',
+    botId: botId || 'missing',
+    stateJson: stateJson ? `${stateJson.substring(0, 50)}...` : 'missing'
+  });
+  process.exit(1);
+}
+
+// Проверяем валидность токена
+if (!token.trim() || token.length < 10) {
+  console.error('❌ [BOT_PROCESS] Invalid token format');
+  console.error('❌ [BOT_PROCESS] Token should be a valid Telegram bot token');
   process.exit(1);
 }
 
@@ -38,10 +51,12 @@ let state;
 try {
   state = JSON.parse(stateJson);
   if (!state.blocks || !state.connections) {
-    throw new Error('Invalid state format');
+    throw new Error('Invalid state format: missing blocks or connections');
   }
+  console.log(`✅ [BOT_PROCESS] State parsed successfully: ${state.blocks.length} blocks, ${state.connections.length} connections`);
 } catch (error) {
-  console.error('Failed to parse state:', error);
+  console.error('❌ [BOT_PROCESS] Failed to parse state:', error.message);
+  console.error('❌ [BOT_PROCESS] State JSON length:', stateJson.length);
   process.exit(1);
 }
 
@@ -2149,9 +2164,17 @@ async function startBot() {
     console.log('=== [BOOT] Проверяем подключение к Telegram API... ===');
     const botInfo = await bot.telegram.getMe();
     console.log('=== [BOOT] Telegram API доступен, bot info:', botInfo);
+    console.log(`=== [BOOT] Bot username: @${botInfo.username}, id: ${botInfo.id} ===`);
   } catch (apiError) {
-    console.error('=== [BOOT] Ошибка подключения к Telegram API:', apiError);
-    console.error('=== [BOOT] Проверьте интернет-соединение и доступность api.telegram.org');
+    console.error('=== [BOOT] ❌ Ошибка подключения к Telegram API ===');
+    console.error('=== [BOOT] Error message:', apiError.message);
+    console.error('=== [BOOT] Error code:', apiError.code);
+    console.error('=== [BOOT] Error response:', apiError.response);
+    console.error('=== [BOOT] Проверьте:');
+    console.error('=== [BOOT] 1. Интернет-соединение');
+    console.error('=== [BOOT] 2. Доступность api.telegram.org');
+    console.error('=== [BOOT] 3. Валидность токена бота');
+    console.error('=== [BOOT] 4. Токен должен начинаться с цифр и содержать двоеточие');
     process.exit(1);
   }
 
