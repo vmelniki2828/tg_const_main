@@ -83,7 +83,24 @@ function App() {
 
       if (!activateResponse.ok) {
         const errorData = await activateResponse.json();
-        throw new Error(`Не удалось подключить бота: ${errorData.error || activateResponse.statusText}`);
+        let errorMessage = errorData.error || activateResponse.statusText;
+        
+        // Проверяем, содержит ли ошибка информацию о невалидном токене
+        if (errorData.details && (
+          errorData.details.includes('401') || 
+          errorData.details.includes('Unauthorized') ||
+          errorData.details.includes('токен') ||
+          errorData.details.includes('token')
+        )) {
+          errorMessage = `❌ Токен бота невалидный или истек!\n\n` +
+            `Для решения проблемы:\n` +
+            `1. Откройте настройки бота (кнопка "⚙️ Настройки")\n` +
+            `2. Получите новый токен от @BotFather в Telegram\n` +
+            `3. Обновите токен в настройках бота\n` +
+            `4. Попробуйте активировать бота снова`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       // Немедленно обновляем статус на "Запущен"
@@ -190,8 +207,8 @@ function App() {
         </div>
 
         {error && (
-          <div className="error-message">
-            ❌ {error}
+          <div className="error-message" style={{ whiteSpace: 'pre-line' }}>
+            {error}
           </div>
         )}
 
