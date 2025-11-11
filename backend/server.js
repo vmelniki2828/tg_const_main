@@ -1798,11 +1798,30 @@ async function startBot(bot) {
   const botDoc = await Bot.findOne({ id: bot.id });
   if (!botDoc) throw new Error('Bot not found in MongoDB');
   
+  // Дополнительные проверки перед запуском
+  if (!bot.token || bot.token.trim() === '') {
+    throw new Error('Bot token is missing or empty');
+  }
+  
+  if (!botDoc.editorState) {
+    throw new Error('Bot editorState is missing');
+  }
+  
+  // Сериализуем editorState с проверкой
+  let editorStateJson;
+  try {
+    editorStateJson = JSON.stringify(botDoc.editorState);
+  } catch (jsonError) {
+    throw new Error(`Failed to serialize editorState: ${jsonError.message}`);
+  }
+  
+  console.log(`[BOT_START] Starting bot ${bot.id} with token length: ${bot.token.length}`);
+  
   const botProcess = spawn('node', [
     path.join(__dirname, 'botProcess.js'),
-    bot.token,
+    bot.token.trim(),
     bot.id,
-    JSON.stringify(botDoc.editorState)
+    editorStateJson
   ]);
 
   // Сохраняем процесс в карте
@@ -1811,6 +1830,9 @@ async function startBot(bot) {
   return new Promise((resolve, reject) => {
     let isResolved = false;
     let startTimeout;
+    let errorMessages = [];
+    let stdoutBuffer = '';
+    let stderrBuffer = '';
 
     const cleanup = () => {
       clearTimeout(startTimeout);
@@ -1821,6 +1843,7 @@ async function startBot(bot) {
 
     botProcess.stdout.on('data', (data) => {
       const output = data.toString();
+      stdoutBuffer += output;
       console.log(`Bot ${bot.id} output:`, output);
       
       if (output.includes('Bot started successfully')) {
@@ -1832,6 +1855,8 @@ async function startBot(bot) {
 
     botProcess.stderr.on('data', (data) => {
       const error = data.toString();
+      stderrBuffer += error;
+      errorMessages.push(error.trim());
       console.error(`Bot ${bot.id} error:`, error);
     });
 
@@ -1840,7 +1865,27 @@ async function startBot(bot) {
       activeProcesses.delete(bot.id);
       if (!isResolved) {
         cleanup();
-        reject(new Error(`Bot process exited with code ${code}`));
+        // Формируем детальное сообщение об ошибке
+        let errorMessage = `Bot process exited with code ${code}`;
+        if (stderrBuffer) {
+          errorMessage += `\nStderr: ${stderrBuffer}`;
+        }
+        if (stdoutBuffer) {
+          // Ищем ключевые ошибки в stdout
+          const lines = stdoutBuffer.split('\n');
+          const errorLines = lines.filter(line => 
+            line.includes('error') || 
+            line.includes('Error') || 
+            line.includes('ERROR') ||
+            line.includes('Missing') ||
+            line.includes('Failed') ||
+            line.includes('❌')
+          );
+          if (errorLines.length > 0) {
+            errorMessage += `\nErrors in output: ${errorLines.join('; ')}`;
+          }
+        }
+        reject(new Error(errorMessage));
       }
     });
 
@@ -1944,14 +1989,31 @@ app.post('/api/bots/:id/activate', async (req, res) => {
       console.error('Bot not found for activation:', req.params.id);
       return res.status(404).json({ error: 'Bot not found' });
     }
-    if (!bot.token) {
-      console.error('Bot token is missing for activation:', req.params.id);
-      return res.status(400).json({ error: 'Bot token is missing' });
+    if (!bot.token || bot.token.trim() === '') {
+      console.error('Bot token is missing or empty for activation:', req.params.id);
+      return res.status(400).json({ error: 'Bot token is missing or empty. Please set a valid token in bot settings.' });
     }
+    
+    // Проверяем формат токена (должен быть примерно 123456789:ABCdefGHIjklMNOpqrsTUVwxyz)
+    const tokenPattern = /^\d+:[A-Za-z0-9_-]+$/;
+    if (!tokenPattern.test(bot.token.trim())) {
+      console.error('Invalid bot token format for activation:', req.params.id);
+      return res.status(400).json({ error: 'Invalid bot token format. Token should be in format: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz' });
+    }
+    
     if (!bot.editorState || !bot.editorState.blocks || !bot.editorState.connections) {
       console.error('Invalid editor state for activation:', req.params.id, bot.editorState);
-      return res.status(400).json({ error: 'Invalid editor state' });
+      return res.status(400).json({ error: 'Invalid editor state. Please configure the bot flow first.' });
     }
+    
+    // Проверяем, что editorState можно сериализовать
+    try {
+      JSON.stringify(bot.editorState);
+    } catch (jsonError) {
+      console.error('Cannot serialize editor state:', jsonError);
+      return res.status(400).json({ error: 'Invalid editor state format. Please reconfigure the bot.' });
+    }
+    
     // Обновляем isActive в базе
     await Bot.updateOne({ id: req.params.id }, { $set: { isActive: true } });
     console.log('All validations passed, starting bot activation for:', req.params.id);
@@ -1961,6 +2023,8 @@ app.post('/api/bots/:id/activate', async (req, res) => {
       res.json({ success: true });
     } catch (error) {
       console.error('Error starting bot process:', error);
+      // Откатываем isActive если не удалось запустить
+      await Bot.updateOne({ id: req.params.id }, { $set: { isActive: false } });
       res.status(500).json({ error: 'Failed to start bot process', details: error.message });
     }
   } catch (error) {

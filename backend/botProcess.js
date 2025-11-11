@@ -29,7 +29,10 @@ mongoose.connect(MONGO_URI, {
 const [token, botId, stateJson] = process.argv.slice(2);
 
 if (!token || !botId || !stateJson) {
-  console.error('Missing required arguments: token, botId, stateJson');
+  console.error('❌ Missing required arguments:');
+  console.error('   - token:', token ? 'provided' : 'MISSING');
+  console.error('   - botId:', botId ? 'provided' : 'MISSING');
+  console.error('   - stateJson:', stateJson ? 'provided' : 'MISSING');
   process.exit(1);
 }
 
@@ -38,10 +41,16 @@ let state;
 try {
   state = JSON.parse(stateJson);
   if (!state.blocks || !state.connections) {
-    throw new Error('Invalid state format');
+    console.error('❌ Invalid state format:');
+    console.error('   - blocks:', state.blocks ? 'present' : 'MISSING');
+    console.error('   - connections:', state.connections ? 'present' : 'MISSING');
+    throw new Error('Invalid state format: missing blocks or connections');
   }
 } catch (error) {
-  console.error('Failed to parse state:', error);
+  console.error('❌ Failed to parse state:', error.message);
+  if (error instanceof SyntaxError) {
+    console.error('   JSON parse error. State may be corrupted.');
+  }
   process.exit(1);
 }
 
@@ -2152,6 +2161,25 @@ async function startBot() {
   } catch (apiError) {
     console.error('=== [BOOT] Ошибка подключения к Telegram API:', apiError);
     console.error('=== [BOOT] Проверьте интернет-соединение и доступность api.telegram.org');
+    console.error('=== [BOOT] Error details:', {
+      message: apiError.message,
+      code: apiError.code,
+      response: apiError.response
+    });
+    
+    // Более детальная информация об ошибке
+    if (apiError.response) {
+      const errorCode = apiError.response.error_code;
+      const description = apiError.response.description;
+      console.error(`=== [BOOT] Telegram API Error: ${errorCode} - ${description}`);
+      
+      if (errorCode === 401) {
+        console.error('=== [BOOT] Invalid bot token! Please check the token in bot settings.');
+      } else if (errorCode === 409) {
+        console.error('=== [BOOT] Conflict: Another instance of the bot may be running.');
+      }
+    }
+    
     process.exit(1);
   }
 
