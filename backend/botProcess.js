@@ -756,20 +756,21 @@ function setupBotHandlers(bot, blocks, connections) {
   function getEffectiveSubscriptionTime(user) {
     if (!user) return 0;
     
-    const now = new Date();
-    
-    // Если пользователь участвует в программе лояльности, рассчитываем время с момента начала участия
-    if (user.loyaltyStartedAt) {
-      let totalTime = now.getTime() - user.loyaltyStartedAt.getTime();
-      
-      // Вычитаем время паузы (если пользователь отписывался)
-      totalTime -= (user.pausedTime || 0);
-      
-      return Math.max(0, totalTime); // Не может быть отрицательным
+    if (!user.loyaltyStartedAt) {
+      return 0;
     }
     
-    // Если программа лояльности не была активирована, возвращаем 0
-    return 0;
+    const now = Date.now();
+    const loyaltyStartTime = user.loyaltyStartedAt.getTime();
+    
+    // Если пользователь не подписан, возвращаем время до последней отписки
+    if (!user.isSubscribed && user.lastUnsubscribedAt) {
+      const lastUnsubscribedTime = user.lastUnsubscribedAt.getTime();
+      return Math.max(0, lastUnsubscribedTime - loyaltyStartTime - (user.pausedTime || 0));
+    }
+    
+    // Если пользователь подписан, возвращаем общее время минус паузы
+    return Math.max(0, now - loyaltyStartTime - (user.pausedTime || 0));
   }
 
 
@@ -1856,13 +1857,15 @@ async function checkAndRewardLoyalty(userId, thresholdKey) {
 function startLoyaltyChecker() {
   console.log('[LOYALTY] Запуск периодической проверки программы лояльности');
   
-  // Проверяем каждую минуту
+  // Проверяем каждые 30 секунд для более точного отслеживания коротких периодов (1 минута)
+  const checkInterval = 30 * 1000; // 30 секунд
+  
   setInterval(async () => {
     // Проверяем, что бот инициализирован
     if (!bot) {
       console.log('[LOYALTY] Бот еще не инициализирован, пропускаем проверку');
-              return;
-            }
+      return;
+    }
     try {
       console.log('[LOYALTY] Периодическая проверка программы лояльности');
       
@@ -2022,47 +2025,84 @@ function startLoyaltyChecker() {
                 activated: false
               });
               
+              let selectedPromoCode = null;
+              
               if (availablePromoCodes.length > 0) {
                 // Выбираем случайный промокод
                 const randomIndex = Math.floor(Math.random() * availablePromoCodes.length);
-                const selectedPromoCode = availablePromoCodes[randomIndex];
+                selectedPromoCode = availablePromoCodes[randomIndex];
                 
                 message += `\n\n🎁 Ваш промокод:`;
                 message += `\n🎫 \`${selectedPromoCode.code}\``;
                 message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
-                
-                // Помечаем промокод как использованный
-                await LoyaltyPromoCode.updateOne(
-                  { _id: selectedPromoCode._id },
-                  { 
-                    activated: true, 
-                    activatedBy: user.userId, 
-                    activatedAt: new Date() 
-                  }
-                );
-                console.log(`[LOYALTY] Промокод ${selectedPromoCode.code} активирован для пользователя ${user.userId} за период ${period.key}`);
               } else {
                 console.log(`[LOYALTY] Нет доступных промокодов для периода ${period.key}`);
                 message += `\n\n⚠️ Для этого периода нет доступных промокодов. Пожалуйста, попробуйте позже.`;
               }
               
-              // Отправляем сообщение пользователю
-              await bot.telegram.sendMessage(user.userId, message, { parse_mode: 'Markdown' });
-              console.log(`[LOYALTY] Сообщение отправлено пользователю ${user.userId}`);
-              
-              // Отмечаем, что награда выдана
-              await Loyalty.updateOne(
-                { botId, userId: user.userId },
-                { $set: { [`rewards.${period.key}`]: true } }
-              );
-              
-              // Также обновляем статус в User
-              await User.updateOne(
-                { botId, userId: user.userId },
-                { $set: { [`loyaltyRewards.${period.key}`]: true } }
-              );
-              
-              console.log(`[LOYALTY] Награда за период ${period.key} выдана пользователю ${user.userId}`);
+              // Отправляем сообщение пользователю с обработкой ошибок
+              try {
+                await bot.telegram.sendMessage(user.userId, message, { parse_mode: 'Markdown' });
+                console.log(`✅ [LOYALTY] Сообщение успешно отправлено пользователю ${user.userId} за период ${period.key}`);
+                
+                // Если промокод был выбран, помечаем его как использованный только после успешной отправки
+                if (selectedPromoCode) {
+                  await LoyaltyPromoCode.updateOne(
+                    { _id: selectedPromoCode._id },
+                    { 
+                      activated: true, 
+                      activatedBy: user.userId, 
+                      activatedAt: new Date() 
+                    }
+                  );
+                  console.log(`✅ [LOYALTY] Промокод ${selectedPromoCode.code} активирован для пользователя ${user.userId} за период ${period.key}`);
+                }
+                
+                // Отмечаем, что награда выдана только после успешной отправки
+                await Loyalty.updateOne(
+                  { botId, userId: user.userId },
+                  { $set: { [`rewards.${period.key}`]: true } }
+                );
+                
+                // Также обновляем статус в User
+                await User.updateOne(
+                  { botId, userId: user.userId },
+                  { $set: { [`loyaltyRewards.${period.key}`]: true } }
+                );
+                
+                console.log(`✅ [LOYALTY] Награда за период ${period.key} выдана пользователю ${user.userId}`);
+              } catch (sendError) {
+                console.error(`❌ [LOYALTY] Ошибка отправки сообщения пользователю ${user.userId}:`, sendError);
+                
+                // Если ошибка связана с блокировкой бота пользователем, отмечаем награду как выданную
+                if (sendError.response && sendError.response.error_code === 403) {
+                  console.log(`⚠️ [LOYALTY] Пользователь ${user.userId} заблокировал бота, отмечаем награду как выданную`);
+                  
+                  // Активируем промокод, если он был выбран
+                  if (selectedPromoCode) {
+                    await LoyaltyPromoCode.updateOne(
+                      { _id: selectedPromoCode._id },
+                      { 
+                        activated: true, 
+                        activatedBy: user.userId, 
+                        activatedAt: new Date() 
+                      }
+                    );
+                  }
+                  
+                  await Loyalty.updateOne(
+                    { botId, userId: user.userId },
+                    { $set: { [`rewards.${period.key}`]: true } }
+                  );
+                  await User.updateOne(
+                    { botId, userId: user.userId },
+                    { $set: { [`loyaltyRewards.${period.key}`]: true } }
+                  );
+                } else {
+                  // Для других ошибок не отмечаем награду, чтобы попробовать отправить снова при следующей проверке
+                  console.log(`⚠️ [LOYALTY] Промокод ${selectedPromoCode?.code || 'N/A'} не был активирован из-за ошибки отправки, попробуем снова при следующей проверке`);
+                }
+              }
             }
           }
           
@@ -2073,8 +2113,9 @@ function startLoyaltyChecker() {
       
     } catch (error) {
       console.error('[LOYALTY] Ошибка при периодической проверке программы лояльности:', error);
+      // Не прерываем выполнение, продолжаем работу
     }
-  }, 2 * 60 * 1000); // Проверяем каждые 2 минуты для оптимизации
+  }, checkInterval); // Проверяем каждые 30 секунд для более точного отслеживания
 }
 
 // Функция для загрузки завершенных квизов из MongoDB
