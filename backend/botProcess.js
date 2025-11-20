@@ -397,6 +397,27 @@ const userQuizStates = new Map();
 const userLastActivity = new Map();
 const completedQuizzes = new Map();
 
+// Функция для получения эффективного времени подписки (с учетом пауз) - ГЛОБАЛЬНАЯ
+function getEffectiveSubscriptionTime(user) {
+  if (!user) return 0;
+  
+  if (!user.loyaltyStartedAt) {
+    return 0;
+  }
+  
+  const now = Date.now();
+  const loyaltyStartTime = user.loyaltyStartedAt.getTime();
+  
+  // Если пользователь не подписан, возвращаем время до последней отписки
+  if (!user.isSubscribed && user.lastUnsubscribedAt) {
+    const lastUnsubscribedTime = user.lastUnsubscribedAt.getTime();
+    return Math.max(0, lastUnsubscribedTime - loyaltyStartTime - (user.pausedTime || 0));
+  }
+  
+  // Если пользователь подписан, возвращаем общее время минус паузы
+  return Math.max(0, now - loyaltyStartTime - (user.pausedTime || 0));
+}
+
 // Кэш для проверки подписки на канал (избегаем повторных API-вызовов)
 const subscriptionCache = new Map();
 const CACHE_DURATION = 30 * 1000; // 30 секунд кэш (сокращено для оперативности)
@@ -784,26 +805,7 @@ function setupBotHandlers(bot, blocks, connections) {
     }
   }
 
-  // Функция для получения эффективного времени подписки (с учетом пауз)
-  function getEffectiveSubscriptionTime(user) {
-    if (!user) return 0;
-    
-    if (!user.loyaltyStartedAt) {
-      return 0;
-    }
-    
-    const now = Date.now();
-    const loyaltyStartTime = user.loyaltyStartedAt.getTime();
-    
-    // Если пользователь не подписан, возвращаем время до последней отписки
-    if (!user.isSubscribed && user.lastUnsubscribedAt) {
-      const lastUnsubscribedTime = user.lastUnsubscribedAt.getTime();
-      return Math.max(0, lastUnsubscribedTime - loyaltyStartTime - (user.pausedTime || 0));
-    }
-    
-    // Если пользователь подписан, возвращаем общее время минус паузы
-    return Math.max(0, now - loyaltyStartTime - (user.pausedTime || 0));
-  }
+  // Функция getEffectiveSubscriptionTime теперь определена глобально выше
 
 
   // Функция для создания клавиатуры с кнопкой "Назад"
