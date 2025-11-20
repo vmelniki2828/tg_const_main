@@ -322,33 +322,65 @@ async function saveUserToMongo(ctx) {
         lastName: ctx.from.last_name
       };
       
+      // Автоматически устанавливаем loyaltyStartedAt если его нет и пользователь подписан
+      let shouldCheckLoyalty = false;
+      if (!existingUser.loyaltyStartedAt && existingUser.isSubscribed) {
+        updateData.loyaltyStartedAt = existingUser.firstSubscribedAt || new Date();
+        shouldCheckLoyalty = true;
+        console.log(`[MongoDB] saveUserToMongo: устанавливаем loyaltyStartedAt для пользователя ${userId}: ${updateData.loyaltyStartedAt}`);
+      }
+      
       // Обновляем lastSubscribedAt только если пользователь был отписан
       if (!existingUser.isSubscribed) {
         updateData.lastSubscribedAt = new Date();
         console.log('[MongoDB] saveUserToMongo: пользователь переподписался, обновляем время');
       }
       
-    const updateResult = await User.updateOne(
-      { botId, userId },
+      const updateResult = await User.updateOne(
+        { botId, userId },
         { $set: updateData }
       );
       console.log('[MongoDB] saveUserToMongo: пользователь обновлен:', updateResult);
+      
+      // Запускаем немедленную проверку программы лояльности, если обновили loyaltyStartedAt
+      if (shouldCheckLoyalty) {
+        setImmediate(async () => {
+          try {
+            console.log(`[MongoDB] 🚀 Запускаем немедленную проверку лояльности для пользователя ${userId} (обновлен loyaltyStartedAt)`);
+            await runLoyaltyCheck();
+          } catch (err) {
+            console.error(`[MongoDB] Ошибка при немедленной проверке лояльности:`, err);
+          }
+        });
+      }
     } else {
       // Создаем нового пользователя
+      const now = new Date();
       const newUser = new User({
           botId,
           userId,
           username: ctx.from.username,
           firstName: ctx.from.first_name,
           lastName: ctx.from.last_name,
-          firstSubscribedAt: new Date(),
-          lastSubscribedAt: new Date(),
-        isSubscribed: true,
-        subscriptionHistory: [{ subscribedAt: new Date() }]
+          firstSubscribedAt: now,
+          lastSubscribedAt: now,
+          isSubscribed: true,
+          loyaltyStartedAt: now, // Автоматически устанавливаем время начала лояльности
+          subscriptionHistory: [{ subscribedAt: now }]
       });
       
       const saveResult = await newUser.save();
-      console.log('[MongoDB] saveUserToMongo: новый пользователь создан:', saveResult._id);
+      console.log(`[MongoDB] saveUserToMongo: новый пользователь создан: ${saveResult._id}, loyaltyStartedAt=${now}`);
+      
+      // Запускаем немедленную проверку программы лояльности для нового пользователя
+      setImmediate(async () => {
+        try {
+          console.log(`[MongoDB] 🚀 Запускаем немедленную проверку лояльности для нового пользователя ${userId}`);
+          await runLoyaltyCheck();
+        } catch (err) {
+          console.error(`[MongoDB] Ошибка при немедленной проверке лояльности:`, err);
+        }
+      });
     }
     
     // Программа лояльности теперь работает через периодическую проверку
@@ -1911,10 +1943,16 @@ async function runLoyaltyCheck() {
       
       // Получаем ВСЕХ пользователей бота без ограничений
       const users = await User.find({ botId });
-      console.log(`[LOYALTY] Найдено ${users.length} пользователей для проверки`);
+      console.log(`[LOYALTY] 📋 Найдено ${users.length} пользователей для проверки (botId=${botId})`);
+      
+      if (users.length === 0) {
+        console.log(`[LOYALTY] ⚠️ ВНИМАНИЕ: Пользователи не найдены! Проверьте, что пользователи сохраняются в MongoDB при взаимодействии с ботом.`);
+      }
       
       for (const user of users) {
         try {
+          console.log(`[LOYALTY] 🔍 Проверяем пользователя ${user.userId}: isSubscribed=${user.isSubscribed}, loyaltyStartedAt=${user.loyaltyStartedAt || 'НЕТ'}`);
+          
           // АВТОМАТИЧЕСКИ ИНИЦИАЛИЗИРУЕМ программу лояльности для всех подписанных пользователей
           if (!user.loyaltyStartedAt && user.isSubscribed) {
             console.log(`[LOYALTY] 🔧 Автоматически инициализируем программу лояльности для пользователя ${user.userId}`);
