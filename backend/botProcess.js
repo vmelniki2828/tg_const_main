@@ -1892,23 +1892,36 @@ function startLoyaltyChecker() {
   // Проверяем каждые 30 секунд для более точного отслеживания коротких периодов (1 минута)
   const checkInterval = 30 * 1000; // 30 секунд
   
+  // Останавливаем предыдущий интервал, если он существует
+  if (global.loyaltyCheckerInterval) {
+    clearInterval(global.loyaltyCheckerInterval);
+    console.log('[LOYALTY] 🔄 Остановлен предыдущий интервал проверки');
+  }
+  
   // Запускаем первую проверку сразу (с небольшой задержкой для инициализации бота)
   setTimeout(async () => {
     console.log('[LOYALTY] 🚀 Запуск первой проверки программы лояльности');
-    await runLoyaltyCheck();
+    try {
+      await runLoyaltyCheck();
+    } catch (error) {
+      console.error('[LOYALTY] ❌ Ошибка при первой проверке:', error);
+    }
   }, 2000); // Первая проверка через 2 секунды после запуска
   
   // Затем проверяем периодически
   const intervalId = setInterval(async () => {
-    await runLoyaltyCheck();
+    try {
+      await runLoyaltyCheck();
+    } catch (error) {
+      console.error('[LOYALTY] ❌ Ошибка при периодической проверке:', error);
+      // НЕ останавливаем интервал при ошибке, продолжаем работу
+    }
   }, checkInterval);
   
   console.log(`[LOYALTY] ✅ Проверка настроена: первая проверка через 2 секунды, затем каждые ${checkInterval/1000} секунд`);
   
   // Сохраняем intervalId для возможной остановки в будущем
-  if (typeof global.loyaltyCheckerInterval === 'undefined') {
-    global.loyaltyCheckerInterval = intervalId;
-  }
+  global.loyaltyCheckerInterval = intervalId;
 }
 
 // Отдельная функция для выполнения проверки
@@ -2127,36 +2140,154 @@ async function runLoyaltyCheck() {
               console.log(`[LOYALTY] 📝 Подготовлено сообщение для отправки пользователю ${user.userId}: ${message.substring(0, 100)}...`);
               
               // Отправляем сообщение пользователю с обработкой ошибок
+              // Используем прямой вызов API для надежности (как в принудительной проверке)
+              let messageSent = false;
               try {
-                await bot.telegram.sendMessage(user.userId, message, { parse_mode: 'Markdown' });
-                console.log(`✅ [LOYALTY] Сообщение успешно отправлено пользователю ${user.userId} за период ${period.key}`);
-                
-                // Если промокод был выбран, помечаем его как использованный только после успешной отправки
-                if (selectedPromoCode) {
-                  await LoyaltyPromoCode.updateOne(
-                    { _id: selectedPromoCode._id },
-                    { 
-                      activated: true, 
-                      activatedBy: user.userId, 
-                      activatedAt: new Date() 
+                // Пробуем использовать bot.telegram если доступен
+                if (bot && bot.telegram) {
+                  try {
+                    await bot.telegram.sendMessage(user.userId, message, { parse_mode: 'Markdown' });
+                    messageSent = true;
+                    console.log(`✅ [LOYALTY] Сообщение успешно отправлено через bot.telegram пользователю ${user.userId} за период ${period.key}`);
+                  } catch (telegramError) {
+                    console.log(`⚠️ [LOYALTY] Ошибка отправки через bot.telegram, пробуем прямой API:`, telegramError.message);
+                    // Пробуем прямой вызов API через https
+                    const Bot = require('./models').Bot;
+                    const botModel = await Bot.findOne({ id: botId });
+                    if (botModel && botModel.token) {
+                      const https = require('https');
+                      const url = require('url');
+                      
+                      const apiUrl = `https://api.telegram.org/bot${botModel.token}/sendMessage`;
+                      const postData = JSON.stringify({
+                        chat_id: user.userId,
+                        text: message,
+                        parse_mode: 'Markdown'
+                      });
+                      
+                      const parsedUrl = url.parse(apiUrl);
+                      const options = {
+                        hostname: parsedUrl.hostname,
+                        port: parsedUrl.port || 443,
+                        path: parsedUrl.path,
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Content-Length': Buffer.byteLength(postData)
+                        }
+                      };
+                      
+                      await new Promise((resolve, reject) => {
+                        const req = https.request(options, (res) => {
+                          let data = '';
+                          res.on('data', (chunk) => { data += chunk; });
+                          res.on('end', () => {
+                            if (res.statusCode === 200) {
+                              const result = JSON.parse(data);
+                              if (result.ok) {
+                                messageSent = true;
+                                console.log(`✅ [LOYALTY] Сообщение успешно отправлено через прямой API пользователю ${user.userId} за период ${period.key}`);
+                                resolve();
+                              } else {
+                                reject(new Error(`API Error: ${JSON.stringify(result)}`));
+                              }
+                            } else {
+                              reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                            }
+                          });
+                        });
+                        req.on('error', reject);
+                        req.write(postData);
+                        req.end();
+                      });
+                    } else {
+                      throw new Error('Bot token not found');
                     }
-                  );
-                  console.log(`✅ [LOYALTY] Промокод ${selectedPromoCode.code} активирован для пользователя ${user.userId} за период ${period.key}`);
+                  }
+                } else {
+                  // Если bot.telegram недоступен, используем прямой API через https
+                  const Bot = require('./models').Bot;
+                  const botModel = await Bot.findOne({ id: botId });
+                  if (botModel && botModel.token) {
+                    const https = require('https');
+                    const url = require('url');
+                    
+                    const apiUrl = `https://api.telegram.org/bot${botModel.token}/sendMessage`;
+                    const postData = JSON.stringify({
+                      chat_id: user.userId,
+                      text: message,
+                      parse_mode: 'Markdown'
+                    });
+                    
+                    const parsedUrl = url.parse(apiUrl);
+                    const options = {
+                      hostname: parsedUrl.hostname,
+                      port: parsedUrl.port || 443,
+                      path: parsedUrl.path,
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Content-Length': Buffer.byteLength(postData)
+                      }
+                    };
+                    
+                    await new Promise((resolve, reject) => {
+                      const req = https.request(options, (res) => {
+                        let data = '';
+                        res.on('data', (chunk) => { data += chunk; });
+                        res.on('end', () => {
+                          if (res.statusCode === 200) {
+                            const result = JSON.parse(data);
+                            if (result.ok) {
+                              messageSent = true;
+                              console.log(`✅ [LOYALTY] Сообщение успешно отправлено через прямой API пользователю ${user.userId} за период ${period.key}`);
+                              resolve();
+                            } else {
+                              reject(new Error(`API Error: ${JSON.stringify(result)}`));
+                            }
+                          } else {
+                            reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                          }
+                        });
+                      });
+                      req.on('error', reject);
+                      req.write(postData);
+                      req.end();
+                    });
+                  } else {
+                    throw new Error('Bot token not found');
+                  }
                 }
                 
-                // Отмечаем, что награда выдана только после успешной отправки
-                await Loyalty.updateOne(
-                  { botId, userId: user.userId },
-                  { $set: { [`rewards.${period.key}`]: true } }
-                );
-                
-                // Также обновляем статус в User
-                await User.updateOne(
-                  { botId, userId: user.userId },
-                  { $set: { [`loyaltyRewards.${period.key}`]: true } }
-                );
-                
-                console.log(`✅ [LOYALTY] Награда за период ${period.key} выдана пользователю ${user.userId}`);
+                // Если сообщение отправлено успешно, активируем промокод и отмечаем награду
+                if (messageSent) {
+                  // Если промокод был выбран, помечаем его как использованный только после успешной отправки
+                  if (selectedPromoCode) {
+                    await LoyaltyPromoCode.updateOne(
+                      { _id: selectedPromoCode._id },
+                      { 
+                        activated: true, 
+                        activatedBy: user.userId, 
+                        activatedAt: new Date() 
+                      }
+                    );
+                    console.log(`✅ [LOYALTY] Промокод ${selectedPromoCode.code} активирован для пользователя ${user.userId} за период ${period.key}`);
+                  }
+                  
+                  // Отмечаем, что награда выдана только после успешной отправки
+                  await Loyalty.updateOne(
+                    { botId, userId: user.userId },
+                    { $set: { [`rewards.${period.key}`]: true } }
+                  );
+                  
+                  // Также обновляем статус в User
+                  await User.updateOne(
+                    { botId, userId: user.userId },
+                    { $set: { [`loyaltyRewards.${period.key}`]: true } }
+                  );
+                  
+                  console.log(`✅ [LOYALTY] Награда за период ${period.key} выдана пользователю ${user.userId}`);
+                }
               } catch (sendError) {
                 console.error(`❌ [LOYALTY] Ошибка отправки сообщения пользователю ${user.userId}:`, sendError);
                 
@@ -2201,7 +2332,10 @@ async function runLoyaltyCheck() {
       console.error('[LOYALTY] ❌ КРИТИЧЕСКАЯ ОШИБКА при периодической проверке программы лояльности:', error);
       console.error('[LOYALTY] Стек ошибки:', error.stack);
       // НЕ прерываем выполнение, продолжаем работу - следующая проверка произойдет через интервал
+      console.log('[LOYALTY] ⚠️ Проверка завершена с ошибкой, но продолжит работу при следующем цикле');
     }
+    
+    console.log(`[LOYALTY] ✅ Проверка завершена в ${new Date().toISOString()}, следующая проверка через 30 секунд`);
 }
 
 // Функция для загрузки завершенных квизов из MongoDB
