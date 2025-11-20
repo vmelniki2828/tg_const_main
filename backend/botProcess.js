@@ -1860,17 +1860,23 @@ function startLoyaltyChecker() {
   // Проверяем каждые 30 секунд для более точного отслеживания коротких периодов (1 минута)
   const checkInterval = 30 * 1000; // 30 секунд
   
-  // Запускаем первую проверку сразу
+  // Запускаем первую проверку сразу (с небольшой задержкой для инициализации бота)
   setTimeout(async () => {
+    console.log('[LOYALTY] 🚀 Запуск первой проверки программы лояльности');
     await runLoyaltyCheck();
-  }, 5000); // Первая проверка через 5 секунд после запуска
+  }, 2000); // Первая проверка через 2 секунды после запуска
   
   // Затем проверяем периодически
-  setInterval(async () => {
+  const intervalId = setInterval(async () => {
     await runLoyaltyCheck();
   }, checkInterval);
   
-  console.log(`[LOYALTY] ✅ Проверка настроена: первая проверка через 5 секунд, затем каждые ${checkInterval/1000} секунд`);
+  console.log(`[LOYALTY] ✅ Проверка настроена: первая проверка через 2 секунды, затем каждые ${checkInterval/1000} секунд`);
+  
+  // Сохраняем intervalId для возможной остановки в будущем
+  if (typeof global.loyaltyCheckerInterval === 'undefined') {
+    global.loyaltyCheckerInterval = intervalId;
+  }
 }
 
 // Отдельная функция для выполнения проверки
@@ -1881,8 +1887,14 @@ async function runLoyaltyCheck() {
     return;
   }
   
+  // Проверяем, что botId определен
+  if (!botId) {
+    console.log('[LOYALTY] ⚠️ botId не определен, пропускаем проверку');
+    return;
+  }
+  
   try {
-    console.log('[LOYALTY] 🔄 Начало периодической проверки программы лояльности');
+    console.log(`[LOYALTY] 🔄 Начало периодической проверки программы лояльности для бота ${botId}`);
       
       // Получаем конфигурацию программы лояльности
       const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
@@ -1905,20 +1917,24 @@ async function runLoyaltyCheck() {
         try {
           // АВТОМАТИЧЕСКИ ИНИЦИАЛИЗИРУЕМ программу лояльности для всех подписанных пользователей
           if (!user.loyaltyStartedAt && user.isSubscribed) {
-            console.log(`[LOYALTY] Автоматически инициализируем программу лояльности для пользователя ${user.userId}`);
+            console.log(`[LOYALTY] 🔧 Автоматически инициализируем программу лояльности для пользователя ${user.userId}`);
+            const startTime = user.firstSubscribedAt || new Date();
             await User.updateOne(
               { botId, userId: user.userId },
-              { $set: { loyaltyStartedAt: user.firstSubscribedAt || new Date() } }
+              { $set: { loyaltyStartedAt: startTime } }
             );
             // Обновляем объект пользователя для текущей итерации
-            user.loyaltyStartedAt = user.firstSubscribedAt || new Date();
+            user.loyaltyStartedAt = startTime;
+            console.log(`[LOYALTY] ✅ Время начала лояльности установлено: ${startTime}`);
           }
           
           // Пропускаем только тех, кто не подписан и не имеет времени начала
           if (!user.loyaltyStartedAt) {
-            console.log(`[LOYALTY] Пользователь ${user.userId} не подписан и не участвует в программе лояльности, пропускаем`);
+            console.log(`[LOYALTY] ⏭️ Пользователь ${user.userId} не подписан (isSubscribed=${user.isSubscribed}) и не участвует в программе лояльности, пропускаем`);
             continue;
           }
+          
+          console.log(`[LOYALTY] 👤 Обрабатываем пользователя ${user.userId}, loyaltyStartedAt=${user.loyaltyStartedAt}, isSubscribed=${user.isSubscribed}`);
           
           // Перепроверяем подписку на канал, если требуется
           if (loyaltyConfig.channelSettings && loyaltyConfig.channelSettings.isRequired) {
@@ -1989,11 +2005,11 @@ async function runLoyaltyCheck() {
             // ИСПРАВЛЕНО: Проверяем, достиг ли пользователь этого периода по времени
             const hasReachedPeriod = effectiveTime >= period.time;
             
-            console.log(`[LOYALTY] Период ${period.key}: достигнут=${hasReachedPeriod}, уже получен=${loyaltyRecord.rewards[period.key]}`);
+            console.log(`[LOYALTY] 📊 Период ${period.key} (${period.name}): effectiveTime=${effectiveTime}мс, требуется=${period.time}мс, достигнут=${hasReachedPeriod}, уже получен=${loyaltyRecord.rewards[period.key]}`);
             
             // Проверяем, не получал ли уже награду за этот период
             if (hasReachedPeriod && !loyaltyRecord.rewards[period.key]) {
-              console.log(`[LOYALTY] Пользователь ${user.userId} достиг периода ${period.key}, проверяем наличие промокода...`);
+              console.log(`[LOYALTY] 🎯 Пользователь ${user.userId} достиг периода ${period.key} (${period.name})! Проверяем наличие промокода...`);
               
               // ЗАЩИТА ОТ ДУБЛИКАТОВ: Проверяем, не получил ли уже промокод за этот период
               const existingPromoCode = await LoyaltyPromoCode.findOne({
@@ -2004,7 +2020,7 @@ async function runLoyaltyCheck() {
               });
               
               if (existingPromoCode) {
-                console.log(`[LOYALTY] Пользователь ${user.userId} уже получил промокод ${existingPromoCode.code} за период ${period.key}, пропускаем`);
+                console.log(`[LOYALTY] ⚠️ Пользователь ${user.userId} уже получил промокод ${existingPromoCode.code} за период ${period.key}, пропускаем`);
                 // Отмечаем награду как выданную, но не отправляем новый промокод
                 await Loyalty.updateOne(
                   { botId, userId: user.userId },
@@ -2017,7 +2033,7 @@ async function runLoyaltyCheck() {
                 continue;
               }
               
-              console.log(`[LOYALTY] Пользователь ${user.userId} достиг периода ${period.key}, отправляем сообщение`);
+              console.log(`[LOYALTY] 📤 Пользователь ${user.userId} достиг периода ${period.key}, готовим и отправляем сообщение...`);
               
               // Форматируем время для отображения в сообщении
               const formatTime = (effectiveTime) => {
@@ -2051,6 +2067,8 @@ async function runLoyaltyCheck() {
                 activated: false
               });
               
+              console.log(`[LOYALTY] 🔍 Найдено ${availablePromoCodes.length} доступных промокодов для периода ${period.key}`);
+              
               let selectedPromoCode = null;
               
               if (availablePromoCodes.length > 0) {
@@ -2058,13 +2076,17 @@ async function runLoyaltyCheck() {
                 const randomIndex = Math.floor(Math.random() * availablePromoCodes.length);
                 selectedPromoCode = availablePromoCodes[randomIndex];
                 
+                console.log(`[LOYALTY] 🎫 Выбран промокод: ${selectedPromoCode.code} для пользователя ${user.userId}`);
+                
                 message += `\n\n🎁 Ваш промокод:`;
                 message += `\n🎫 \`${selectedPromoCode.code}\``;
                 message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
               } else {
-                console.log(`[LOYALTY] Нет доступных промокодов для периода ${period.key}`);
+                console.log(`[LOYALTY] ⚠️ Нет доступных промокодов для периода ${period.key}, отправляем сообщение без промокода`);
                 message += `\n\n⚠️ Для этого периода нет доступных промокодов. Пожалуйста, попробуйте позже.`;
               }
+              
+              console.log(`[LOYALTY] 📝 Подготовлено сообщение для отправки пользователю ${user.userId}: ${message.substring(0, 100)}...`);
               
               // Отправляем сообщение пользователю с обработкой ошибок
               try {
@@ -2252,14 +2274,15 @@ async function startBot() {
   // Запускаем бота синхронно
   console.log('=== [BOOT] Запускаем bot.launch() синхронно... ===');
   
+  // Запускаем проверку программы лояльности СРАЗУ, не дожидаясь завершения bot.launch()
+  // так как bot.launch() может не завершиться синхронно
+  console.log('=== [BOOT] Запускаем автоматическую проверку программы лояльности ===');
+  startLoyaltyChecker();
+  
   try {
     await bot.launch();
     console.log('=== [BOOT] Bot started successfully in polling mode ===');
     console.log('Bot started successfully');
-    
-    // Запускаем проверку программы лояльности ПОСЛЕ успешного запуска бота
-    console.log('=== [BOOT] Запускаем автоматическую проверку программы лояльности ===');
-    startLoyaltyChecker();
   } catch (launchError) {
     console.error('=== [BOOT] Bot launch failed:', launchError);
     console.error('=== [BOOT] Пробуем запуск без await...');
@@ -2267,9 +2290,6 @@ async function startBot() {
     // Альтернативный запуск
     bot.launch().then(() => {
       console.log('=== [BOOT] Bot started successfully (alternative) ===');
-      // Запускаем проверку программы лояльности после альтернативного запуска
-      console.log('=== [BOOT] Запускаем автоматическую проверку программы лояльности ===');
-      startLoyaltyChecker();
     }).catch((altError) => {
       console.error('=== [BOOT] Alternative launch failed:', altError);
     });
