@@ -1887,18 +1887,33 @@ async function checkAndRewardLoyalty(userId, thresholdKey) {
   return false; // Уже получал
 }
 
+// Кэш для конфигурации лояльности (обновляется каждые 5 минут)
+let loyaltyConfigCache = null;
+let loyaltyConfigCacheTime = 0;
+const LOYALTY_CONFIG_CACHE_DURATION = 5 * 60 * 1000; // 5 минут
+
+// Кэш для токена бота (обновляется редко)
+let botTokenCache = null;
+
+// Счетчик для батчинга пользователей
+let userBatchOffset = 0;
+const USERS_BATCH_SIZE = 50; // Проверяем по 50 пользователей за раз
+
 // Функция для периодической проверки программы лояльности
 function startLoyaltyChecker() {
-  console.log('[LOYALTY] ✅ Запуск периодической проверки программы лояльности');
+  console.log('[LOYALTY] ✅ Запуск периодической проверки программы лояльности (оптимизированная версия)');
   
-  // Проверяем каждые 30 секунд для более точного отслеживания коротких периодов (1 минута)
-  const checkInterval = 30 * 1000; // 30 секунд
+  // ОПТИМИЗАЦИЯ: Увеличиваем интервал до 1 минуты для снижения нагрузки
+  const checkInterval = 60 * 1000; // 1 минута (было 30 секунд)
   
   // Останавливаем предыдущий интервал, если он существует
   if (global.loyaltyCheckerInterval) {
     clearInterval(global.loyaltyCheckerInterval);
     console.log('[LOYALTY] 🔄 Остановлен предыдущий интервал проверки');
   }
+  
+  // Сбрасываем offset при перезапуске
+  userBatchOffset = 0;
   
   // Запускаем первую проверку сразу (с небольшой задержкой для инициализации бота)
   setTimeout(async () => {
@@ -1908,7 +1923,7 @@ function startLoyaltyChecker() {
     } catch (error) {
       console.error('[LOYALTY] ❌ Ошибка при первой проверке:', error);
     }
-  }, 2000); // Первая проверка через 2 секунды после запуска
+  }, 5000); // Первая проверка через 5 секунд после запуска
   
   // Затем проверяем периодически
   const intervalId = setInterval(async () => {
@@ -1920,7 +1935,8 @@ function startLoyaltyChecker() {
     }
   }, checkInterval);
   
-  console.log(`[LOYALTY] ✅ Проверка настроена: первая проверка через 2 секунды, затем каждые ${checkInterval/1000} секунд`);
+  console.log(`[LOYALTY] ✅ Проверка настроена: первая проверка через 5 секунд, затем каждые ${checkInterval/1000} секунд`);
+  console.log(`[LOYALTY] ⚡ Оптимизации: батчинг по ${USERS_BATCH_SIZE} пользователей, интервал ${checkInterval/1000}с, кэширование конфигурации`);
   
   // Сохраняем intervalId для возможной остановки в будущем
   global.loyaltyCheckerInterval = intervalId;
@@ -1941,74 +1957,114 @@ async function runLoyaltyCheck() {
   }
   
   try {
-    console.log(`[LOYALTY] 🔄 Начало периодической проверки программы лояльности для бота ${botId}`);
-      
-      // Получаем конфигурацию программы лояльности
-      const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
-      if (!loyaltyConfig) {
-        console.log('[LOYALTY] Конфигурация программы лояльности не найдена для бота', botId);
-        return;
+    const startTime = Date.now();
+    
+    // ОПТИМИЗАЦИЯ: Кэшируем конфигурацию лояльности
+    const now = Date.now();
+    let loyaltyConfig = loyaltyConfigCache;
+    if (!loyaltyConfig || (now - loyaltyConfigCacheTime) > LOYALTY_CONFIG_CACHE_DURATION) {
+      loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+      if (loyaltyConfig) {
+        loyaltyConfigCache = loyaltyConfig;
+        loyaltyConfigCacheTime = now;
       }
-      if (!loyaltyConfig.isEnabled) {
-        console.log('[LOYALTY] Программа лояльности отключена');
-                return;
-              }
-      
-      console.log('[LOYALTY] Программа лояльности включена, проверяем пользователей');
-      
-      // Получаем ВСЕХ пользователей бота без ограничений
-      const users = await User.find({ botId });
-      console.log(`[LOYALTY] 📋 Найдено ${users.length} пользователей для проверки (botId=${botId})`);
-      
-      if (users.length === 0) {
-        console.log(`[LOYALTY] ⚠️ ВНИМАНИЕ: Пользователи не найдены! Проверьте, что пользователи сохраняются в MongoDB при взаимодействии с ботом.`);
+    }
+    
+    if (!loyaltyConfig) {
+      console.log('[LOYALTY] Конфигурация программы лояльности не найдена для бота', botId);
+      return;
+    }
+    if (!loyaltyConfig.isEnabled) {
+      // Не логируем каждый раз, чтобы не засорять логи
+      return;
+    }
+    
+    // ОПТИМИЗАЦИЯ: Получаем только активных пользователей с нужными полями (батчинг)
+    // Выбираем только подписанных пользователей с loyaltyStartedAt
+    const users = await User.find(
+      { 
+        botId, 
+        isSubscribed: true,
+        loyaltyStartedAt: { $exists: true, $ne: null }
+      },
+      { 
+        userId: 1, 
+        loyaltyStartedAt: 1, 
+        isSubscribed: 1, 
+        firstSubscribedAt: 1,
+        lastUnsubscribedAt: 1,
+        pausedTime: 1,
+        loyaltyRewards: 1
       }
+    )
+    .skip(userBatchOffset)
+    .limit(USERS_BATCH_SIZE)
+    .lean(); // Используем lean() для более быстрого получения данных
+    
+    // Обновляем offset для следующей проверки
+    if (users.length < USERS_BATCH_SIZE) {
+      // Если получили меньше пользователей, чем батч, значит прошли всех - начинаем заново
+      userBatchOffset = 0;
+    } else {
+      userBatchOffset += USERS_BATCH_SIZE;
+    }
+    
+    if (users.length === 0) {
+      // Сбрасываем offset если пользователей нет
+      userBatchOffset = 0;
+      return;
+    }
+      
+      // ОПТИМИЗАЦИЯ: Получаем все записи лояльности одним запросом
+      const userIds = users.map(u => u.userId);
+      const loyaltyRecords = await Loyalty.find(
+        { botId, userId: { $in: userIds } }
+      ).lean();
+      
+      const loyaltyMap = new Map();
+      loyaltyRecords.forEach(record => {
+        loyaltyMap.set(record.userId, record);
+      });
+      
+      // ОПТИМИЗАЦИЯ: Батчинг обновлений БД
+      const bulkUpdates = [];
+      const newLoyaltyRecords = [];
       
       for (const user of users) {
         try {
-          console.log(`[LOYALTY] 🔍 Проверяем пользователя ${user.userId}: isSubscribed=${user.isSubscribed}, loyaltyStartedAt=${user.loyaltyStartedAt || 'НЕТ'}`);
-          
-          // АВТОМАТИЧЕСКИ ИНИЦИАЛИЗИРУЕМ программу лояльности для всех подписанных пользователей
-          if (!user.loyaltyStartedAt && user.isSubscribed) {
-            console.log(`[LOYALTY] 🔧 Автоматически инициализируем программу лояльности для пользователя ${user.userId}`);
-            const startTime = user.firstSubscribedAt || new Date();
-            await User.updateOne(
-              { botId, userId: user.userId },
-              { $set: { loyaltyStartedAt: startTime } }
-            );
-            // Обновляем объект пользователя для текущей итерации
-            user.loyaltyStartedAt = startTime;
-            console.log(`[LOYALTY] ✅ Время начала лояльности установлено: ${startTime}`);
-          }
-          
-          // Пропускаем только тех, кто не подписан и не имеет времени начала
+          // Пропускаем пользователей без loyaltyStartedAt (не должно быть, но на всякий случай)
           if (!user.loyaltyStartedAt) {
-            console.log(`[LOYALTY] ⏭️ Пользователь ${user.userId} не подписан (isSubscribed=${user.isSubscribed}) и не участвует в программе лояльности, пропускаем`);
             continue;
           }
           
-          console.log(`[LOYALTY] 👤 Обрабатываем пользователя ${user.userId}, loyaltyStartedAt=${user.loyaltyStartedAt}, isSubscribed=${user.isSubscribed}`);
-          
-          // Перепроверяем подписку на канал, если требуется
+          // ОПТИМИЗАЦИЯ: Проверяем подписку на канал только если требуется (кэшируем результат)
           if (loyaltyConfig.channelSettings && loyaltyConfig.channelSettings.isRequired) {
             const channelId = loyaltyConfig.channelSettings.channelId;
             if (channelId) {
-              console.log(`[LOYALTY] Перепроверяем подписку пользователя ${user.userId} на канал ${channelId}`);
-              const isSubscribed = await checkChannelSubscription(user.userId, channelId);
+              const cacheKey = `${user.userId}_${channelId}`;
+              const cached = subscriptionCache.get(cacheKey);
               
-              if (!isSubscribed) {
-                console.log(`[LOYALTY] Пользователь ${user.userId} не подписан на канал ${channelId}, пропускаем`);
-                continue; // Пропускаем этого пользователя
+              if (cached && (Date.now() - cached.time) < CACHE_DURATION) {
+                if (!cached.isSubscribed) {
+                  continue; // Пропускаем этого пользователя
+                }
               } else {
-                console.log(`[LOYALTY] Пользователь ${user.userId} подписан на канал ${channelId}, продолжаем`);
+                // Проверяем подписку только если нет в кэше
+                const isSubscribed = await checkChannelSubscription(user.userId, channelId);
+                subscriptionCache.set(cacheKey, { isSubscribed, time: Date.now() });
+                
+                if (!isSubscribed) {
+                  continue; // Пропускаем этого пользователя
+                }
               }
             }
           }
           
-          // Получаем или создаем запись лояльности
-          let loyaltyRecord = await Loyalty.findOne({ botId, userId: user.userId });
+          // Получаем запись лояльности из мапы
+          let loyaltyRecord = loyaltyMap.get(user.userId);
           if (!loyaltyRecord) {
-            loyaltyRecord = new Loyalty({
+            // Создаем новую запись (добавим в батч позже)
+            loyaltyRecord = {
               botId,
               userId: user.userId,
               rewards: {
@@ -2020,22 +2076,13 @@ async function runLoyaltyCheck() {
                 '180d': false,
                 '360d': false
               }
-            });
-            await loyaltyRecord.save();
-            console.log(`[LOYALTY] Создана запись лояльности для пользователя ${user.userId}`);
-            
-            // АВТОМАТИЧЕСКИ ВЫДАЕМ ВСЕ ПРОПУЩЕННЫЕ ПРОМОКОДЫ
-            console.log(`🎁 [AUTO_REWARD] Автоматически выдаем пропущенные промокоды пользователю ${user.userId}`);
-            await giveMissedLoyaltyPromoCodes(user.userId, loyaltyRecord);
+            };
+            newLoyaltyRecords.push(loyaltyRecord);
+            loyaltyMap.set(user.userId, loyaltyRecord);
           }
           
           // ИСПРАВЛЕНО: Используем правильную функцию для вычисления эффективного времени
           const effectiveTime = getEffectiveSubscriptionTime(user);
-          const currentMinutes = Math.floor(effectiveTime / (1000 * 60));
-          const currentHours = Math.floor(effectiveTime / (1000 * 60 * 60));
-          const currentDays = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
-          
-          console.log(`[LOYALTY] Пользователь ${user.userId}: эффективное время участия ${currentMinutes} минут, ${currentHours} часов, ${currentDays} дней`);
           
           // Проверяем каждый период
           const periods = [
@@ -2051,42 +2098,38 @@ async function runLoyaltyCheck() {
           for (const period of periods) {
             const config = loyaltyConfig.messages[period.key];
             if (!config || !config.enabled) {
-              console.log(`[LOYALTY] Период ${period.key} отключен`);
-              continue;
+              continue; // Пропускаем отключенные периоды без логирования
             }
             
             // ИСПРАВЛЕНО: Проверяем, достиг ли пользователь этого периода по времени
             const hasReachedPeriod = effectiveTime >= period.time;
             
-            console.log(`[LOYALTY] 📊 Период ${period.key} (${period.name}): effectiveTime=${effectiveTime}мс, требуется=${period.time}мс, достигнут=${hasReachedPeriod}, уже получен=${loyaltyRecord.rewards[period.key]}`);
-            
             // Проверяем, не получал ли уже награду за этот период
             if (hasReachedPeriod && !loyaltyRecord.rewards[period.key]) {
-              console.log(`[LOYALTY] 🎯 Пользователь ${user.userId} достиг периода ${period.key} (${period.name})! Проверяем наличие промокода...`);
-              
-              // ЗАЩИТА ОТ ДУБЛИКАТОВ: Проверяем, не получил ли уже промокод за этот период
+              // ОПТИМИЗАЦИЯ: Проверяем существующий промокод только один раз
               const existingPromoCode = await LoyaltyPromoCode.findOne({
                 botId,
                 activatedBy: user.userId,
                 period: period.key,
                 activated: true
-              });
+              }).lean();
               
               if (existingPromoCode) {
-                console.log(`[LOYALTY] ⚠️ Пользователь ${user.userId} уже получил промокод ${existingPromoCode.code} за период ${period.key}, пропускаем`);
                 // Отмечаем награду как выданную, но не отправляем новый промокод
-                await Loyalty.updateOne(
-                  { botId, userId: user.userId },
-                  { $set: { [`rewards.${period.key}`]: true } }
-                );
-                await User.updateOne(
-                  { botId, userId: user.userId },
-                  { $set: { [`loyaltyRewards.${period.key}`]: true } }
-                );
+                bulkUpdates.push({
+                  updateOne: {
+                    filter: { botId, userId: user.userId },
+                    update: { $set: { [`rewards.${period.key}`]: true } }
+                  }
+                });
+                bulkUpdates.push({
+                  updateOne: {
+                    filter: { botId, userId: user.userId },
+                    update: { $set: { [`loyaltyRewards.${period.key}`]: true } }
+                  }
+                });
                 continue;
               }
-              
-              console.log(`[LOYALTY] 📤 Пользователь ${user.userId} достиг периода ${period.key}, готовим и отправляем сообщение...`);
               
               // Форматируем время для отображения в сообщении
               const formatTime = (effectiveTime) => {
@@ -2113,33 +2156,20 @@ async function runLoyaltyCheck() {
               // Добавляем информацию о времени участия
               message = `📅 Вы с нами: ${currentTimeFormatted}\n\n${message}`;
               
-              // Ищем доступный промокод для этого периода
-              const availablePromoCodes = await LoyaltyPromoCode.find({
+              // ОПТИМИЗАЦИЯ: Ищем доступный промокод (только один, не все)
+              const selectedPromoCode = await LoyaltyPromoCode.findOne({
                 botId,
                 period: period.key,
                 activated: false
-              });
+              }).lean();
               
-              console.log(`[LOYALTY] 🔍 Найдено ${availablePromoCodes.length} доступных промокодов для периода ${period.key}`);
-              
-              let selectedPromoCode = null;
-              
-              if (availablePromoCodes.length > 0) {
-                // Выбираем случайный промокод
-                const randomIndex = Math.floor(Math.random() * availablePromoCodes.length);
-                selectedPromoCode = availablePromoCodes[randomIndex];
-                
-                console.log(`[LOYALTY] 🎫 Выбран промокод: ${selectedPromoCode.code} для пользователя ${user.userId}`);
-                
+              if (selectedPromoCode) {
                 message += `\n\n🎁 Ваш промокод:`;
                 message += `\n🎫 \`${selectedPromoCode.code}\``;
                 message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
               } else {
-                console.log(`[LOYALTY] ⚠️ Нет доступных промокодов для периода ${period.key}, отправляем сообщение без промокода`);
                 message += `\n\n⚠️ Для этого периода нет доступных промокодов. Пожалуйста, попробуйте позже.`;
               }
-              
-              console.log(`[LOYALTY] 📝 Подготовлено сообщение для отправки пользователю ${user.userId}: ${message.substring(0, 100)}...`);
               
               // Отправляем сообщение пользователю с обработкой ошибок
               // Используем прямой вызов API для надежности (как в принудительной проверке)
@@ -2150,17 +2180,22 @@ async function runLoyaltyCheck() {
                   try {
                     await bot.telegram.sendMessage(user.userId, message, { parse_mode: 'Markdown' });
                     messageSent = true;
-                    console.log(`✅ [LOYALTY] Сообщение успешно отправлено через bot.telegram пользователю ${user.userId} за период ${period.key}`);
                   } catch (telegramError) {
-                    console.log(`⚠️ [LOYALTY] Ошибка отправки через bot.telegram, пробуем прямой API:`, telegramError.message);
-                    // Пробуем прямой вызов API через https
-                    const Bot = require('./models').Bot;
-                    const botModel = await Bot.findOne({ id: botId });
-                    if (botModel && botModel.token) {
+                    // Пробуем прямой API без лишнего логирования
+                    // ОПТИМИЗАЦИЯ: Используем кэшированный токен
+                    if (!botTokenCache) {
+                      const Bot = require('./models').Bot;
+                      const botModel = await Bot.findOne({ id: botId }, { token: 1 }).lean();
+                      if (botModel && botModel.token) {
+                        botTokenCache = botModel.token;
+                      }
+                    }
+                    
+                    if (botTokenCache) {
                       const https = require('https');
                       const url = require('url');
                       
-                      const apiUrl = `https://api.telegram.org/bot${botModel.token}/sendMessage`;
+                      const apiUrl = `https://api.telegram.org/bot${botTokenCache}/sendMessage`;
                       const postData = JSON.stringify({
                         chat_id: user.userId,
                         text: message,
@@ -2188,7 +2223,6 @@ async function runLoyaltyCheck() {
                               const result = JSON.parse(data);
                               if (result.ok) {
                                 messageSent = true;
-                                console.log(`✅ [LOYALTY] Сообщение успешно отправлено через прямой API пользователю ${user.userId} за период ${period.key}`);
                                 resolve();
                               } else {
                                 reject(new Error(`API Error: ${JSON.stringify(result)}`));
@@ -2208,13 +2242,20 @@ async function runLoyaltyCheck() {
                   }
                 } else {
                   // Если bot.telegram недоступен, используем прямой API через https
-                  const Bot = require('./models').Bot;
-                  const botModel = await Bot.findOne({ id: botId });
-                  if (botModel && botModel.token) {
+                  // ОПТИМИЗАЦИЯ: Используем кэшированный токен
+                  if (!botTokenCache) {
+                    const Bot = require('./models').Bot;
+                    const botModel = await Bot.findOne({ id: botId }, { token: 1 }).lean();
+                    if (botModel && botModel.token) {
+                      botTokenCache = botModel.token;
+                    }
+                  }
+                  
+                  if (botTokenCache) {
                     const https = require('https');
                     const url = require('url');
                     
-                    const apiUrl = `https://api.telegram.org/bot${botModel.token}/sendMessage`;
+                    const apiUrl = `https://api.telegram.org/bot${botTokenCache}/sendMessage`;
                     const postData = JSON.stringify({
                       chat_id: user.userId,
                       text: message,
@@ -2261,83 +2302,144 @@ async function runLoyaltyCheck() {
                   }
                 }
                 
-                // Если сообщение отправлено успешно, активируем промокод и отмечаем награду
+                // Если сообщение отправлено успешно, активируем промокод и отмечаем награду (батчинг)
                 if (messageSent) {
                   // Если промокод был выбран, помечаем его как использованный только после успешной отправки
                   if (selectedPromoCode) {
-                    await LoyaltyPromoCode.updateOne(
-                      { _id: selectedPromoCode._id },
-                      { 
-                        activated: true, 
-                        activatedBy: user.userId, 
-                        activatedAt: new Date() 
+                    bulkUpdates.push({
+                      updateOne: {
+                        filter: { _id: selectedPromoCode._id },
+                        update: { 
+                          $set: { 
+                            activated: true, 
+                            activatedBy: user.userId, 
+                            activatedAt: new Date() 
+                          }
+                        }
                       }
-                    );
-                    console.log(`✅ [LOYALTY] Промокод ${selectedPromoCode.code} активирован для пользователя ${user.userId} за период ${period.key}`);
+                    });
                   }
                   
-                  // Отмечаем, что награда выдана только после успешной отправки
-                  await Loyalty.updateOne(
-                    { botId, userId: user.userId },
-                    { $set: { [`rewards.${period.key}`]: true } }
-                  );
+                  // Отмечаем, что награда выдана только после успешной отправки (батчинг)
+                  bulkUpdates.push({
+                    updateOne: {
+                      filter: { botId, userId: user.userId },
+                      update: { $set: { [`rewards.${period.key}`]: true } }
+                    }
+                  });
                   
-                  // Также обновляем статус в User
-                  await User.updateOne(
-                    { botId, userId: user.userId },
-                    { $set: { [`loyaltyRewards.${period.key}`]: true } }
-                  );
-                  
-                  console.log(`✅ [LOYALTY] Награда за период ${period.key} выдана пользователю ${user.userId}`);
+                  bulkUpdates.push({
+                    updateOne: {
+                      filter: { botId, userId: user.userId },
+                      update: { $set: { [`loyaltyRewards.${period.key}`]: true } }
+                    }
+                  });
                 }
               } catch (sendError) {
-                console.error(`❌ [LOYALTY] Ошибка отправки сообщения пользователю ${user.userId}:`, sendError);
+                // Логируем только критичные ошибки (не 403 - блокировка пользователем)
+                if (!sendError.response || sendError.response.error_code !== 403) {
+                  console.error(`❌ [LOYALTY] Ошибка отправки сообщения пользователю ${user.userId}:`, sendError.message);
+                }
                 
-                // Если ошибка связана с блокировкой бота пользователем, отмечаем награду как выданную
+                // Если ошибка связана с блокировкой бота пользователем, отмечаем награду как выданную (батчинг)
                 if (sendError.response && sendError.response.error_code === 403) {
-                  console.log(`⚠️ [LOYALTY] Пользователь ${user.userId} заблокировал бота, отмечаем награду как выданную`);
-                  
                   // Активируем промокод, если он был выбран
                   if (selectedPromoCode) {
-                    await LoyaltyPromoCode.updateOne(
-                      { _id: selectedPromoCode._id },
-                      { 
-                        activated: true, 
-                        activatedBy: user.userId, 
-                        activatedAt: new Date() 
+                    bulkUpdates.push({
+                      updateOne: {
+                        filter: { _id: selectedPromoCode._id },
+                        update: { 
+                          $set: { 
+                            activated: true, 
+                            activatedBy: user.userId, 
+                            activatedAt: new Date() 
+                          }
+                        }
                       }
-                    );
+                    });
                   }
                   
-                  await Loyalty.updateOne(
-                    { botId, userId: user.userId },
-                    { $set: { [`rewards.${period.key}`]: true } }
-                  );
-                  await User.updateOne(
-                    { botId, userId: user.userId },
-                    { $set: { [`loyaltyRewards.${period.key}`]: true } }
-                  );
-                } else {
-                  // Для других ошибок не отмечаем награду, чтобы попробовать отправить снова при следующей проверке
-                  console.log(`⚠️ [LOYALTY] Промокод ${selectedPromoCode?.code || 'N/A'} не был активирован из-за ошибки отправки, попробуем снова при следующей проверке`);
+                  bulkUpdates.push({
+                    updateOne: {
+                      filter: { botId, userId: user.userId },
+                      update: { $set: { [`rewards.${period.key}`]: true } }
+                    }
+                  });
+                  
+                  bulkUpdates.push({
+                    updateOne: {
+                      filter: { botId, userId: user.userId },
+                      update: { $set: { [`loyaltyRewards.${period.key}`]: true } }
+                    }
+                  });
                 }
+                // Для других ошибок не отмечаем награду, чтобы попробовать отправить снова при следующей проверке
               }
             }
           }
           
         } catch (userError) {
-          console.error(`[LOYALTY] Ошибка при проверке пользователя ${user.userId}:`, userError);
+          // Логируем только критичные ошибки
+          if (userError.message && !userError.message.includes('not found')) {
+            console.error(`[LOYALTY] Ошибка при проверке пользователя ${user.userId}:`, userError.message);
+          }
         }
       }
       
+      // ОПТИМИЗАЦИЯ: Выполняем все обновления БД одним батчем
+      if (bulkUpdates.length > 0) {
+        try {
+          // Разделяем обновления по коллекциям
+          const loyaltyUpdates = bulkUpdates.filter(u => 
+            u.updateOne.filter.botId && 
+            u.updateOne.filter.userId && 
+            !u.updateOne.filter._id &&
+            u.updateOne.update['$set']['rewards']
+          );
+          
+          const userUpdates = bulkUpdates.filter(u => 
+            u.updateOne.filter.botId && 
+            u.updateOne.filter.userId && 
+            u.updateOne.update['$set']['loyaltyRewards']
+          );
+          
+          const promoUpdates = bulkUpdates.filter(u => u.updateOne.filter._id);
+          
+          // Выполняем батч-обновления
+          if (loyaltyUpdates.length > 0) {
+            await Loyalty.bulkWrite(loyaltyUpdates);
+          }
+          if (userUpdates.length > 0) {
+            await User.bulkWrite(userUpdates);
+          }
+          if (promoUpdates.length > 0) {
+            await LoyaltyPromoCode.bulkWrite(promoUpdates);
+          }
+        } catch (bulkError) {
+          console.error('[LOYALTY] Ошибка при батч-обновлении БД:', bulkError.message);
+        }
+      }
+      
+      // ОПТИМИЗАЦИЯ: Сохраняем новые записи лояльности батчем
+      if (newLoyaltyRecords.length > 0) {
+        try {
+          await Loyalty.insertMany(newLoyaltyRecords);
+        } catch (insertError) {
+          // Игнорируем ошибки дубликатов (если запись уже существует)
+          if (!insertError.message.includes('duplicate')) {
+            console.error('[LOYALTY] Ошибка при батч-вставке записей лояльности:', insertError.message);
+          }
+        }
+      }
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      console.log(`[LOYALTY] ✅ Проверка завершена за ${duration}мс: обработано ${users.length} пользователей, обновлений: ${bulkUpdates.length}, следующая проверка через 60 секунд`);
+      
     } catch (error) {
-      console.error('[LOYALTY] ❌ КРИТИЧЕСКАЯ ОШИБКА при периодической проверке программы лояльности:', error);
-      console.error('[LOYALTY] Стек ошибки:', error.stack);
+      console.error('[LOYALTY] ❌ КРИТИЧЕСКАЯ ОШИБКА при периодической проверке программы лояльности:', error.message);
       // НЕ прерываем выполнение, продолжаем работу - следующая проверка произойдет через интервал
-      console.log('[LOYALTY] ⚠️ Проверка завершена с ошибкой, но продолжит работу при следующем цикле');
     }
-    
-    console.log(`[LOYALTY] ✅ Проверка завершена в ${new Date().toISOString()}, следующая проверка через 30 секунд`);
 }
 
 // Функция для загрузки завершенных квизов из MongoDB
