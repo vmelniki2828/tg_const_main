@@ -3120,7 +3120,7 @@ app.get('/api/diagnose-duplicate-promocodes/:botId', async (req, res) => {
   }
 });
 
-// Эндпоинт для очистки дублированных промокодов
+// Эндпоинт для очистки дублированных промокодов для конкретного бота
 app.post('/api/cleanup-duplicate-promocodes/:botId', async (req, res) => {
   try {
     const { botId } = req.params;
@@ -3161,23 +3161,33 @@ app.post('/api/cleanup-duplicate-promocodes/:botId', async (req, res) => {
     
     const cleanupResults = [];
     
-    // Удаляем дублированные промокоды
+    // Деактивируем дублированные промокоды (не удаляем, чтобы сохранить историю)
     for (const promoCode of duplicatesToRemove) {
       try {
-        await LoyaltyPromoCode.deleteOne({ _id: promoCode._id });
+        // Деактивируем промокод вместо удаления
+        await LoyaltyPromoCode.updateOne(
+          { _id: promoCode._id },
+          {
+            $set: {
+              activated: false,
+              activatedBy: null,
+              activatedAt: null
+            }
+          }
+        );
         
         cleanupResults.push({
           userId: promoCode.activatedBy,
           period: promoCode.period,
           removedPromoCode: promoCode.code,
           removedAt: promoCode.activatedAt,
-          status: 'removed'
+          status: 'deactivated'
         });
         
-        console.log(`✅ [CLEANUP_DUPLICATES] Удален дублированный промокод ${promoCode.code} для пользователя ${promoCode.activatedBy}, периода ${promoCode.period}`);
+        console.log(`✅ [CLEANUP_DUPLICATES] Деактивирован дублированный промокод ${promoCode.code} для пользователя ${promoCode.activatedBy}, периода ${promoCode.period}`);
         
       } catch (error) {
-        console.error(`❌ [CLEANUP_DUPLICATES] Ошибка удаления промокода ${promoCode.code}:`, error);
+        console.error(`❌ [CLEANUP_DUPLICATES] Ошибка деактивации промокода ${promoCode.code}:`, error);
         
         cleanupResults.push({
           userId: promoCode.activatedBy,
@@ -3190,14 +3200,14 @@ app.post('/api/cleanup-duplicate-promocodes/:botId', async (req, res) => {
       }
     }
     
-    console.log(`🧹 [CLEANUP_DUPLICATES] Очистка завершена: удалено ${cleanupResults.filter(r => r.status === 'removed').length} промокодов`);
+    console.log(`🧹 [CLEANUP_DUPLICATES] Очистка завершена: деактивировано ${cleanupResults.filter(r => r.status === 'deactivated').length} промокодов`);
     
     res.json({
       success: true,
       message: `Очистка дублированных промокодов завершена`,
       statistics: {
         totalDuplicatesFound: duplicatesToRemove.length,
-        successfullyRemoved: cleanupResults.filter(r => r.status === 'removed').length,
+        successfullyDeactivated: cleanupResults.filter(r => r.status === 'deactivated').length,
         errors: cleanupResults.filter(r => r.status === 'error').length
       },
       cleanupResults
@@ -3205,6 +3215,108 @@ app.post('/api/cleanup-duplicate-promocodes/:botId', async (req, res) => {
     
   } catch (error) {
     console.error('❌ [CLEANUP_DUPLICATES] Критическая ошибка:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Подробности в логах сервера'
+    });
+  }
+});
+
+// Эндпоинт для очистки дублированных промокодов для ВСЕХ ботов
+app.post('/api/cleanup-duplicate-promocodes-all', async (req, res) => {
+  try {
+    console.log(`🧹 [CLEANUP_DUPLICATES_ALL] Очистка дублированных промокодов для всех ботов`);
+    
+    // Получаем все боты
+    const bots = await Bot.find({}, { id: 1 });
+    console.log(`🧹 [CLEANUP_DUPLICATES_ALL] Найдено ${bots.length} ботов`);
+    
+    const allResults = [];
+    
+    for (const bot of bots) {
+      try {
+        // Получаем дублированные промокоды для этого бота
+        const activatedPromoCodes = await LoyaltyPromoCode.find({
+          botId: bot.id,
+          activated: true
+        }).sort({ activatedBy: 1, period: 1, activatedAt: 1 });
+        
+        const userPeriodMap = {};
+        const duplicatesToRemove = [];
+        
+        // Группируем промокоды по пользователям и периодам
+        activatedPromoCodes.forEach(promoCode => {
+          const key = `${promoCode.activatedBy}_${promoCode.period}`;
+          
+          if (!userPeriodMap[key]) {
+            userPeriodMap[key] = [];
+          }
+          
+          userPeriodMap[key].push(promoCode);
+        });
+        
+        // Находим дубликаты для удаления
+        Object.entries(userPeriodMap).forEach(([key, promoCodes]) => {
+          if (promoCodes.length > 1) {
+            // Сортируем по дате активации (оставляем первый, деактивируем остальные)
+            promoCodes.sort((a, b) => new Date(a.activatedAt) - new Date(b.activatedAt));
+            
+            // Добавляем все кроме первого в список для деактивации
+            duplicatesToRemove.push(...promoCodes.slice(1));
+          }
+        });
+        
+        if (duplicatesToRemove.length > 0) {
+          console.log(`🧹 [CLEANUP_DUPLICATES_ALL] Бот ${bot.id}: найдено ${duplicatesToRemove.length} дубликатов`);
+          
+          // Деактивируем дублированные промокоды
+          for (const promoCode of duplicatesToRemove) {
+            await LoyaltyPromoCode.updateOne(
+              { _id: promoCode._id },
+              {
+                $set: {
+                  activated: false,
+                  activatedBy: null,
+                  activatedAt: null
+                }
+              }
+            );
+          }
+          
+          allResults.push({
+            botId: bot.id,
+            duplicatesFound: duplicatesToRemove.length,
+            status: 'cleaned'
+          });
+        }
+      } catch (botError) {
+        console.error(`❌ [CLEANUP_DUPLICATES_ALL] Ошибка для бота ${bot.id}:`, botError.message);
+        allResults.push({
+          botId: bot.id,
+          status: 'error',
+          error: botError.message
+        });
+      }
+    }
+    
+    const totalDuplicates = allResults.reduce((sum, r) => sum + (r.duplicatesFound || 0), 0);
+    
+    console.log(`🧹 [CLEANUP_DUPLICATES_ALL] Очистка завершена: деактивировано ${totalDuplicates} дубликатов для ${allResults.length} ботов`);
+    
+    res.json({
+      success: true,
+      message: `Очистка дублированных промокодов завершена для всех ботов`,
+      statistics: {
+        totalBots: bots.length,
+        totalDuplicatesDeactivated: totalDuplicates,
+        botsProcessed: allResults.filter(r => r.status === 'cleaned').length,
+        errors: allResults.filter(r => r.status === 'error').length
+      },
+      results: allResults
+    });
+    
+  } catch (error) {
+    console.error('❌ [CLEANUP_DUPLICATES_ALL] Критическая ошибка:', error);
     res.status(500).json({ 
       error: error.message,
       details: 'Подробности в логах сервера'

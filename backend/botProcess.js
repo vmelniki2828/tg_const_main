@@ -336,8 +336,8 @@ async function saveUserToMongo(ctx) {
         console.log('[MongoDB] saveUserToMongo: пользователь переподписался, обновляем время');
       }
       
-      const updateResult = await User.updateOne(
-        { botId, userId },
+    const updateResult = await User.updateOne(
+      { botId, userId },
         { $set: updateData }
       );
       console.log('[MongoDB] saveUserToMongo: пользователь обновлен:', updateResult);
@@ -364,7 +364,7 @@ async function saveUserToMongo(ctx) {
           lastName: ctx.from.last_name,
           firstSubscribedAt: now,
           lastSubscribedAt: now,
-          isSubscribed: true,
+        isSubscribed: true,
           loyaltyStartedAt: now, // Автоматически устанавливаем время начала лояльности
           subscriptionHistory: [{ subscribedAt: now }]
       });
@@ -455,14 +455,45 @@ async function giveMissedLoyaltyPromoCodes(userId, loyaltyRecord) {
     // Выдаем промокоды за все пройденные периоды
     for (const period of passedPeriods) {
       if (!loyaltyRecord.rewards[period.key]) {
+        // СТРОГАЯ ПРОВЕРКА: Проверяем, не получил ли уже промокод за этот период
+        const existingPromoCode = await LoyaltyPromoCode.findOne({
+          botId,
+          activatedBy: userId,
+          period: period.key,
+          activated: true
+        }).lean();
+        
+        if (existingPromoCode) {
+          console.log(`ℹ️ [MISSED_PROMOCODES] Пользователь ${userId} уже получил промокод ${existingPromoCode.code} за период ${period.key}, пропускаем`);
+          // Отмечаем награду как выданную
+          await Loyalty.updateOne(
+            { botId, userId },
+            { $set: { [`rewards.${period.key}`]: true } }
+          );
+          continue;
+        }
+        
         console.log(`🎁 [MISSED_PROMOCODES] Выдаем промокод за период ${period.key} пользователю ${userId}`);
         
-        // Ищем доступный промокод для этого периода
-        const availablePromoCode = await LoyaltyPromoCode.findOne({
-          botId,
-          period: period.key,
-          activated: false
-        });
+        // Ищем доступный промокод для этого периода (атомарная активация)
+        const availablePromoCode = await LoyaltyPromoCode.findOneAndUpdate(
+          {
+            botId,
+            period: period.key,
+            activated: false
+          },
+          {
+            $set: {
+              activated: true,
+              activatedBy: userId,
+              activatedAt: new Date()
+            }
+          },
+          {
+            new: false,
+            lean: true
+          }
+        );
         
         if (availablePromoCode) {
           try {
@@ -474,26 +505,32 @@ async function giveMissedLoyaltyPromoCodes(userId, loyaltyRecord) {
             
             await bot.telegram.sendMessage(userId, message, { parse_mode: 'Markdown' });
             
-            // Активируем промокод
-            await LoyaltyPromoCode.updateOne(
-              { _id: availablePromoCode._id },
-              { 
-                activated: true, 
-                activatedBy: userId, 
-                activatedAt: new Date() 
-              }
-            );
-            
             // Отмечаем награду как выданную
             await Loyalty.updateOne(
               { botId, userId },
               { $set: { [`rewards.${period.key}`]: true } }
             );
             
+            await User.updateOne(
+              { botId, userId },
+              { $set: { [`loyaltyRewards.${period.key}`]: true } }
+            );
+            
             console.log(`✅ [MISSED_PROMOCODES] Промокод ${availablePromoCode.code} выдан пользователю ${userId} за период ${period.key}`);
             
           } catch (sendError) {
             console.error(`❌ [MISSED_PROMOCODES] Ошибка отправки промокода ${availablePromoCode.code} пользователю ${userId}:`, sendError);
+            // Деактивируем промокод при ошибке отправки
+            await LoyaltyPromoCode.updateOne(
+              { _id: availablePromoCode._id },
+              {
+                $set: {
+                  activated: false,
+                  activatedBy: null,
+                  activatedAt: null
+                }
+              }
+            );
           }
         } else {
           console.log(`⚠️ [MISSED_PROMOCODES] Нет доступных промокодов для периода ${period.key}`);
@@ -1944,11 +1981,11 @@ function startLoyaltyChecker() {
 
 // Отдельная функция для выполнения проверки
 async function runLoyaltyCheck() {
-  // Проверяем, что бот инициализирован
-  if (!bot) {
+    // Проверяем, что бот инициализирован
+    if (!bot) {
     console.log('[LOYALTY] ⚠️ Бот еще не инициализирован, пропускаем проверку');
-    return;
-  }
+              return;
+            }
   
   // Проверяем, что botId определен
   if (!botId) {
@@ -1970,15 +2007,15 @@ async function runLoyaltyCheck() {
       }
     }
     
-    if (!loyaltyConfig) {
-      console.log('[LOYALTY] Конфигурация программы лояльности не найдена для бота', botId);
-      return;
-    }
-    if (!loyaltyConfig.isEnabled) {
+      if (!loyaltyConfig) {
+        console.log('[LOYALTY] Конфигурация программы лояльности не найдена для бота', botId);
+        return;
+      }
+      if (!loyaltyConfig.isEnabled) {
       // Не логируем каждый раз, чтобы не засорять логи
-      return;
-    }
-    
+                return;
+              }
+      
     // ОПТИМИЗАЦИЯ: Получаем только активных пользователей с нужными полями (батчинг)
     // Выбираем только подписанных пользователей с loyaltyStartedAt
     const users = await User.find(
@@ -2050,11 +2087,11 @@ async function runLoyaltyCheck() {
                 }
               } else {
                 // Проверяем подписку только если нет в кэше
-                const isSubscribed = await checkChannelSubscription(user.userId, channelId);
+              const isSubscribed = await checkChannelSubscription(user.userId, channelId);
                 subscriptionCache.set(cacheKey, { isSubscribed, time: Date.now() });
-                
-                if (!isSubscribed) {
-                  continue; // Пропускаем этого пользователя
+              
+              if (!isSubscribed) {
+                continue; // Пропускаем этого пользователя
                 }
               }
             }
@@ -2106,7 +2143,8 @@ async function runLoyaltyCheck() {
             
             // Проверяем, не получал ли уже награду за этот период
             if (hasReachedPeriod && !loyaltyRecord.rewards[period.key]) {
-              // ОПТИМИЗАЦИЯ: Проверяем существующий промокод только один раз
+              // СТРОГАЯ ПРОВЕРКА: Проверяем в двух местах для защиты от дубликатов
+              // 1. Проверяем в LoyaltyPromoCode
               const existingPromoCode = await LoyaltyPromoCode.findOne({
                 botId,
                 activatedBy: user.userId,
@@ -2114,21 +2152,27 @@ async function runLoyaltyCheck() {
                 activated: true
               }).lean();
               
-              if (existingPromoCode) {
-                // Отмечаем награду как выданную, но не отправляем новый промокод
-                bulkUpdates.push({
-                  updateOne: {
-                    filter: { botId, userId: user.userId },
-                    update: { $set: { [`rewards.${period.key}`]: true } }
-                  }
-                });
-                bulkUpdates.push({
-                  updateOne: {
-                    filter: { botId, userId: user.userId },
-                    update: { $set: { [`loyaltyRewards.${period.key}`]: true } }
-                  }
-                });
-                continue;
+              // 2. Проверяем в User.loyaltyRewards
+              const userRewardStatus = user.loyaltyRewards && user.loyaltyRewards[period.key];
+              
+              // Если промокод уже выдан ИЛИ награда уже отмечена - пропускаем
+              if (existingPromoCode || userRewardStatus) {
+                // Синхронизируем данные - если промокод есть, но награда не отмечена, отмечаем
+                if (existingPromoCode && !userRewardStatus) {
+                  bulkUpdates.push({
+                    updateOne: {
+                      filter: { botId, userId: user.userId },
+                      update: { $set: { [`rewards.${period.key}`]: true } }
+                    }
+                  });
+                  bulkUpdates.push({
+                    updateOne: {
+                      filter: { botId, userId: user.userId },
+                      update: { $set: { [`loyaltyRewards.${period.key}`]: true } }
+                    }
+                  });
+                }
+                continue; // Пропускаем, промокод уже выдан
               }
               
               // Форматируем время для отображения в сообщении
@@ -2157,13 +2201,53 @@ async function runLoyaltyCheck() {
               message = `📅 Вы с нами: ${currentTimeFormatted}\n\n${message}`;
               
               // ОПТИМИЗАЦИЯ: Ищем доступный промокод (только один, не все)
-              const selectedPromoCode = await LoyaltyPromoCode.findOne({
-                botId,
-                period: period.key,
-                activated: false
-              }).lean();
+              // ВАЖНО: Используем findOneAndUpdate для атомарной активации (защита от race condition)
+              const selectedPromoCode = await LoyaltyPromoCode.findOneAndUpdate(
+                {
+                  botId,
+                  period: period.key,
+                  activated: false
+                },
+                {
+                  $set: {
+                    activated: true,
+                    activatedBy: user.userId,
+                    activatedAt: new Date()
+                  }
+                },
+                {
+                  new: false, // Возвращаем исходный документ до обновления
+                  lean: true
+                }
+              );
               
+              // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Убеждаемся, что промокод не был активирован между проверками
               if (selectedPromoCode) {
+                // Проверяем еще раз, что у пользователя нет другого промокода за этот период
+                const duplicateCheck = await LoyaltyPromoCode.findOne({
+                  botId,
+                  activatedBy: user.userId,
+                  period: period.key,
+                  activated: true,
+                  _id: { $ne: selectedPromoCode._id } // Исключаем только что активированный
+                }).lean();
+                
+                if (duplicateCheck) {
+                  // Найден дубликат! Деактивируем только что активированный промокод
+                  await LoyaltyPromoCode.updateOne(
+                    { _id: selectedPromoCode._id },
+                    {
+                      $set: {
+                        activated: false,
+                        activatedBy: null,
+                        activatedAt: null
+                      }
+                    }
+                  );
+                  console.log(`⚠️ [LOYALTY] Обнаружен дубликат промокода для пользователя ${user.userId}, периода ${period.key}. Деактивирован новый промокод.`);
+                  continue; // Пропускаем этого пользователя
+                }
+                
                 message += `\n\n🎁 Ваш промокод:`;
                 message += `\n🎫 \`${selectedPromoCode.code}\``;
                 message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
@@ -2302,23 +2386,10 @@ async function runLoyaltyCheck() {
                   }
                 }
                 
-                // Если сообщение отправлено успешно, активируем промокод и отмечаем награду (батчинг)
+                // Если сообщение отправлено успешно, отмечаем награду (батчинг)
+                // Промокод уже активирован атомарно выше через findOneAndUpdate
                 if (messageSent) {
-                  // Если промокод был выбран, помечаем его как использованный только после успешной отправки
-                  if (selectedPromoCode) {
-                    bulkUpdates.push({
-                      updateOne: {
-                        filter: { _id: selectedPromoCode._id },
-                        update: { 
-                          $set: { 
-                            activated: true, 
-                            activatedBy: user.userId, 
-                            activatedAt: new Date() 
-                          }
-                        }
-                      }
-                    });
-                  }
+                  // Промокод уже активирован, ничего не делаем
                   
                   // Отмечаем, что награда выдана только после успешной отправки (батчинг)
                   bulkUpdates.push({
@@ -2372,8 +2443,21 @@ async function runLoyaltyCheck() {
                       update: { $set: { [`loyaltyRewards.${period.key}`]: true } }
                     }
                   });
+                } else {
+                  // Для других ошибок деактивируем промокод, чтобы попробовать отправить снова при следующей проверке
+                  if (selectedPromoCode) {
+                    await LoyaltyPromoCode.updateOne(
+                      { _id: selectedPromoCode._id },
+                      {
+                        $set: {
+                          activated: false,
+                          activatedBy: null,
+                          activatedAt: null
+                        }
+                      }
+                    );
+                  }
                 }
-                // Для других ошибок не отмечаем награду, чтобы попробовать отправить снова при следующей проверке
               }
             }
           }
