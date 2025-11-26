@@ -38,7 +38,22 @@ const UserSchema = new mongoose.Schema({
     '90d': { type: Boolean, default: false },
     '180d': { type: Boolean, default: false },
     '360d': { type: Boolean, default: false }
-  }
+  },
+  // Поля для отслеживания источника трафика
+  firstSource: { type: String, default: 'direct' }, // Первый источник (direct, google_ads, facebook и т.д.)
+  firstSourceDate: Date, // Дата первого перехода
+  sourceDetails: { // Детали первого источника
+    type: { type: String, enum: ['deep_link', 'utm', 'referral', 'direct'], default: 'direct' },
+    campaign: String, // Название кампании (если есть)
+    medium: String, // Канал (если есть)
+    content: String // Контент (если есть)
+  },
+  // Поля для отслеживания активного времени
+  sourceActiveTime: { type: Number, default: 0 }, // Общее активное время в миллисекундах (только для firstSource)
+  lastActivityTime: Date, // Время последнего действия
+  lastActivityAction: { type: String, enum: ['message', 'callback', 'command'], default: null }, // Тип последнего действия
+  sessionStartTime: Date, // Время начала текущей сессии
+  totalSessions: { type: Number, default: 0 } // Количество сессий
 });
 
 const QuizStatsSchema = new mongoose.Schema({

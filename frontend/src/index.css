@@ -1026,6 +1026,16 @@ body {
   transform: translateY(-2px);
 }
 
+.source-stats-button {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+}
+
+.source-stats-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e082ea 0%, #e44d5f 100%);
+  transform: translateY(-2px);
+}
+
 .cleanup-button {
   background: #dc3545;
   color: white;

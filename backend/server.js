@@ -4607,6 +4607,373 @@ async function shutdownServer(signal) {
 process.on('SIGINT', () => shutdownServer('SIGINT'));
 process.on('SIGTERM', () => shutdownServer('SIGTERM'));
 
+// ==================== API ENDPOINTS ДЛЯ СТАТИСТИКИ ПО ИСТОЧНИКАМ ====================
+
+// Получение статистики по источникам
+app.get('/api/statistics/sources/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { startDate, endDate } = req.query;
+    
+    // Парсим даты, если указаны
+    const start = startDate ? new Date(startDate) : new Date(0); // Начало эпохи, если не указано
+    const end = endDate ? new Date(endDate) : new Date(); // Текущая дата, если не указано
+    
+    // Получаем всех пользователей бота
+    const users = await User.find({ botId }).lean();
+    
+    // Группируем по источникам
+    const sourceStats = {};
+    let totalUsers = 0;
+    let totalActiveTime = 0;
+    let totalSubscribed = 0;
+    let totalPromoCodes = 0;
+    let totalQuizzes = 0;
+    
+    for (const user of users) {
+      // Фильтруем по дате регистрации, если указан период
+      if (user.firstSourceDate && (user.firstSourceDate < start || user.firstSourceDate > end)) {
+        continue;
+      }
+      
+      totalUsers++;
+      const source = user.firstSource || 'direct';
+      
+      if (!sourceStats[source]) {
+        sourceStats[source] = {
+          source: source,
+          users: 0,
+          activeTime: 0,
+          subscribed: 0,
+          promoCodes: 0,
+          quizzes: 0,
+          avgActiveTime: 0
+        };
+      }
+      
+      sourceStats[source].users++;
+      sourceStats[source].activeTime += user.sourceActiveTime || 0;
+      totalActiveTime += user.sourceActiveTime || 0;
+      
+      if (user.isSubscribed) {
+        sourceStats[source].subscribed++;
+        totalSubscribed++;
+      }
+    }
+    
+    // Получаем статистику по промокодам
+    const promoCodes = await LoyaltyPromoCode.find({ 
+      botId, 
+      activated: true,
+      activatedAt: { $gte: start, $lte: end }
+    }).lean();
+    
+    for (const promoCode of promoCodes) {
+      const user = users.find(u => u.userId === promoCode.activatedBy);
+      if (user) {
+        const source = user.firstSource || 'direct';
+        if (sourceStats[source]) {
+          sourceStats[source].promoCodes++;
+          totalPromoCodes++;
+        }
+      }
+    }
+    
+    // Получаем статистику по квизам
+    const quizzes = await QuizStats.find({ 
+      botId,
+      completedAt: { $gte: start, $lte: end }
+    }).lean();
+    
+    for (const quiz of quizzes) {
+      const user = users.find(u => u.userId === quiz.userId);
+      if (user) {
+        const source = user.firstSource || 'direct';
+        if (sourceStats[source]) {
+          sourceStats[source].quizzes++;
+          totalQuizzes++;
+        }
+      }
+    }
+    
+    // Вычисляем среднее активное время для каждого источника
+    Object.values(sourceStats).forEach(stat => {
+      stat.avgActiveTime = stat.users > 0 ? Math.round(stat.activeTime / stat.users / 1000 / 60) : 0; // в минутах
+      stat.activeTimeHours = Math.round(stat.activeTime / 1000 / 60 / 60 * 100) / 100; // в часах
+      stat.conversionRate = stat.users > 0 ? Math.round((stat.subscribed / stat.users) * 100 * 100) / 100 : 0; // в процентах
+    });
+    
+    // Общая статистика
+    const generalStats = {
+      totalUsers,
+      totalActiveTime: Math.round(totalActiveTime / 1000 / 60 / 60 * 100) / 100, // в часах
+      avgActiveTime: totalUsers > 0 ? Math.round(totalActiveTime / totalUsers / 1000 / 60) : 0, // в минутах
+      totalSubscribed,
+      subscriptionRate: totalUsers > 0 ? Math.round((totalSubscribed / totalUsers) * 100 * 100) / 100 : 0,
+      totalPromoCodes,
+      totalQuizzes
+    };
+    
+    res.json({
+      success: true,
+      general: generalStats,
+      bySource: Object.values(sourceStats).sort((a, b) => b.users - a.users), // Сортируем по количеству пользователей
+      period: {
+        start: start.toISOString(),
+        end: end.toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('❌ Ошибка при получении статистики:', error);
+    res.status(500).json({ error: 'Failed to get statistics', details: error.message });
+  }
+});
+
+// Экспорт статистики в Excel
+app.post('/api/statistics/export/:botId', async (req, res) => {
+  try {
+    const ExcelJS = require('exceljs');
+    const { botId } = req.params;
+    const { startDate, endDate } = req.body;
+    
+    // Парсим даты
+    const start = startDate ? new Date(startDate) : new Date(0);
+    const end = endDate ? new Date(endDate) : new Date();
+    
+    // Получаем статистику (используем ту же логику, что и в GET endpoint)
+    const users = await User.find({ botId }).lean();
+    const sourceStats = {};
+    let totalUsers = 0;
+    let totalActiveTime = 0;
+    let totalSubscribed = 0;
+    let totalPromoCodes = 0;
+    let totalQuizzes = 0;
+    
+    for (const user of users) {
+      if (user.firstSourceDate && (user.firstSourceDate < start || user.firstSourceDate > end)) {
+        continue;
+      }
+      
+      totalUsers++;
+      const source = user.firstSource || 'direct';
+      
+      if (!sourceStats[source]) {
+        sourceStats[source] = {
+          source: source,
+          users: 0,
+          activeTime: 0,
+          subscribed: 0,
+          promoCodes: 0,
+          quizzes: 0
+        };
+      }
+      
+      sourceStats[source].users++;
+      sourceStats[source].activeTime += user.sourceActiveTime || 0;
+      totalActiveTime += user.sourceActiveTime || 0;
+      
+      if (user.isSubscribed) {
+        sourceStats[source].subscribed++;
+        totalSubscribed++;
+      }
+    }
+    
+    const promoCodes = await LoyaltyPromoCode.find({ 
+      botId, 
+      activated: true,
+      activatedAt: { $gte: start, $lte: end }
+    }).lean();
+    
+    for (const promoCode of promoCodes) {
+      const user = users.find(u => u.userId === promoCode.activatedBy);
+      if (user) {
+        const source = user.firstSource || 'direct';
+        if (sourceStats[source]) {
+          sourceStats[source].promoCodes++;
+          totalPromoCodes++;
+        }
+      }
+    }
+    
+    const quizzes = await QuizStats.find({ 
+      botId,
+      completedAt: { $gte: start, $lte: end }
+    }).lean();
+    
+    for (const quiz of quizzes) {
+      const user = users.find(u => u.userId === quiz.userId);
+      if (user) {
+        const source = user.firstSource || 'direct';
+        if (sourceStats[source]) {
+          sourceStats[source].quizzes++;
+          totalQuizzes++;
+        }
+      }
+    }
+    
+    // Создаем Excel файл
+    const workbook = new ExcelJS.Workbook();
+    
+    // Лист 1: Общая статистика
+    const generalSheet = workbook.addWorksheet('Общая статистика');
+    generalSheet.columns = [
+      { header: 'Метрика', key: 'metric', width: 30 },
+      { header: 'Значение', key: 'value', width: 20 }
+    ];
+    
+    generalSheet.addRow({ metric: 'Общее количество пользователей', value: totalUsers });
+    generalSheet.addRow({ metric: 'Активных за период', value: totalUsers });
+    generalSheet.addRow({ metric: 'Общее активное время (часы)', value: Math.round(totalActiveTime / 1000 / 60 / 60 * 100) / 100 });
+    generalSheet.addRow({ metric: 'Среднее время на пользователя (минуты)', value: totalUsers > 0 ? Math.round(totalActiveTime / totalUsers / 1000 / 60) : 0 });
+    generalSheet.addRow({ metric: 'Конверсия в подписку (%)', value: totalUsers > 0 ? Math.round((totalSubscribed / totalUsers) * 100 * 100) / 100 : 0 });
+    generalSheet.addRow({ metric: 'Выдано промокодов', value: totalPromoCodes });
+    generalSheet.addRow({ metric: 'Завершено квизов', value: totalQuizzes });
+    generalSheet.addRow({ metric: 'Период', value: `${start.toLocaleDateString('ru-RU')} - ${end.toLocaleDateString('ru-RU')}` });
+    
+    // Лист 2: По источникам
+    const sourcesSheet = workbook.addWorksheet('По источникам');
+    sourcesSheet.columns = [
+      { header: 'Источник', key: 'source', width: 25 },
+      { header: 'Пользователей', key: 'users', width: 15 },
+      { header: 'Активное время (часы)', key: 'activeTime', width: 20 },
+      { header: 'Среднее время (минуты)', key: 'avgTime', width: 20 },
+      { header: 'Конверсия (%)', key: 'conversion', width: 15 },
+      { header: 'Промокоды', key: 'promoCodes', width: 15 },
+      { header: 'Квизы', key: 'quizzes', width: 15 }
+    ];
+    
+    const sourceStatsArray = Object.values(sourceStats).sort((a, b) => b.users - a.users);
+    for (const stat of sourceStatsArray) {
+      sourcesSheet.addRow({
+        source: stat.source,
+        users: stat.users,
+        activeTime: Math.round(stat.activeTime / 1000 / 60 / 60 * 100) / 100,
+        avgTime: stat.users > 0 ? Math.round(stat.activeTime / stat.users / 1000 / 60) : 0,
+        conversion: stat.users > 0 ? Math.round((stat.subscribed / stat.users) * 100 * 100) / 100 : 0,
+        promoCodes: stat.promoCodes,
+        quizzes: stat.quizzes
+      });
+    }
+    
+    // Лист 3: Детализация по дням
+    const dailySheet = workbook.addWorksheet('Детализация по дням');
+    dailySheet.columns = [
+      { header: 'Дата', key: 'date', width: 15 },
+      { header: 'Источник', key: 'source', width: 25 },
+      { header: 'Новые пользователи', key: 'newUsers', width: 18 },
+      { header: 'Активное время (часы)', key: 'activeTime', width: 20 },
+      { header: 'Промокоды', key: 'promoCodes', width: 15 },
+      { header: 'Квизы', key: 'quizzes', width: 15 }
+    ];
+    
+    // Группируем по дням
+    const dailyStats = {};
+    for (const user of users) {
+      if (!user.firstSourceDate || user.firstSourceDate < start || user.firstSourceDate > end) {
+        continue;
+      }
+      
+      const dateKey = user.firstSourceDate.toISOString().split('T')[0];
+      const source = user.firstSource || 'direct';
+      const key = `${dateKey}_${source}`;
+      
+      if (!dailyStats[key]) {
+        dailyStats[key] = {
+          date: dateKey,
+          source: source,
+          newUsers: 0,
+          activeTime: 0,
+          promoCodes: 0,
+          quizzes: 0
+        };
+      }
+      
+      dailyStats[key].newUsers++;
+      dailyStats[key].activeTime += user.sourceActiveTime || 0;
+    }
+    
+    // Добавляем промокоды и квизы по дням
+    for (const promoCode of promoCodes) {
+      const user = users.find(u => u.userId === promoCode.activatedBy);
+      if (user && user.firstSourceDate) {
+        const dateKey = promoCode.activatedAt.toISOString().split('T')[0];
+        const source = user.firstSource || 'direct';
+        const key = `${dateKey}_${source}`;
+        if (dailyStats[key]) {
+          dailyStats[key].promoCodes++;
+        }
+      }
+    }
+    
+    for (const quiz of quizzes) {
+      const user = users.find(u => u.userId === quiz.userId);
+      if (user && user.firstSourceDate) {
+        const dateKey = quiz.completedAt.toISOString().split('T')[0];
+        const source = user.firstSource || 'direct';
+        const key = `${dateKey}_${source}`;
+        if (dailyStats[key]) {
+          dailyStats[key].quizzes++;
+        }
+      }
+    }
+    
+    const dailyStatsArray = Object.values(dailyStats).sort((a, b) => a.date.localeCompare(b.date));
+    for (const stat of dailyStatsArray) {
+      dailySheet.addRow({
+        date: new Date(stat.date).toLocaleDateString('ru-RU'),
+        source: stat.source,
+        newUsers: stat.newUsers,
+        activeTime: Math.round(stat.activeTime / 1000 / 60 / 60 * 100) / 100,
+        promoCodes: stat.promoCodes,
+        quizzes: stat.quizzes
+      });
+    }
+    
+    // Лист 4: Топ пользователей
+    const topUsersSheet = workbook.addWorksheet('Топ пользователей');
+    topUsersSheet.columns = [
+      { header: 'User ID', key: 'userId', width: 15 },
+      { header: 'Источник', key: 'source', width: 20 },
+      { header: 'Активное время (часы)', key: 'activeTime', width: 20 },
+      { header: 'Промокоды', key: 'promoCodes', width: 15 },
+      { header: 'Квизы', key: 'quizzes', width: 15 },
+      { header: 'Дата регистрации', key: 'regDate', width: 20 }
+    ];
+    
+    // Получаем топ пользователей по активному времени
+    const topUsers = users
+      .filter(u => u.sourceActiveTime > 0)
+      .sort((a, b) => (b.sourceActiveTime || 0) - (a.sourceActiveTime || 0))
+      .slice(0, 100); // Топ 100
+    
+    for (const user of topUsers) {
+      const userPromoCodes = promoCodes.filter(p => p.activatedBy === user.userId).length;
+      const userQuizzes = quizzes.filter(q => q.userId === user.userId).length;
+      
+      topUsersSheet.addRow({
+        userId: user.userId,
+        source: user.firstSource || 'direct',
+        activeTime: Math.round((user.sourceActiveTime || 0) / 1000 / 60 / 60 * 100) / 100,
+        promoCodes: userPromoCodes,
+        quizzes: userQuizzes,
+        regDate: user.firstSourceDate ? user.firstSourceDate.toLocaleDateString('ru-RU') : 'N/A'
+      });
+    }
+    
+    // Генерируем файл
+    const buffer = await workbook.xlsx.writeBuffer();
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=statistics_${botId}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    res.send(buffer);
+  } catch (error) {
+    console.error('❌ Ошибка при экспорте статистики:', error);
+    res.status(500).json({ error: 'Failed to export statistics', details: error.message });
+  }
+});
+
+// ==================== КОНЕЦ API ENDPOINTS ДЛЯ СТАТИСТИКИ ====================
+
 // Запускаем сервер
 app.listen(PORT, HOST, async () => {
   console.log(`🚀 Server running on ${HOST}:${PORT}`);

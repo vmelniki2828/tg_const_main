@@ -3,6 +3,7 @@ import FlowEditor from './FlowEditor';
 import BotsList from './BotsList';
 import QuizStats from './QuizStats';
 import LoyaltyProgram from './LoyaltyProgram';
+import SourceStatistics from './SourceStatistics';
 import config from '../config';
 
 function App() {
@@ -12,6 +13,7 @@ function App() {
   const [botStatus, setBotStatus] = useState(null);
   const [showStats, setShowStats] = useState(false);
   const [showLoyalty, setShowLoyalty] = useState(false);
+  const [showSourceStats, setShowSourceStats] = useState(false);
   const flowEditorRef = useRef();
 
   // Функция для получения статуса бота
@@ -167,6 +169,12 @@ function App() {
           >
             🎁 Программа лояльности
           </button>
+          <button 
+            onClick={() => setShowSourceStats(true)}
+            className="editor-button source-stats-button"
+          >
+            📈 Статистика по источникам
+          </button>
           <div className="bot-status">
             Статус бота: {botStatus ? '🟢 Запущен' : '🔴 Остановлен'}
           </div>
@@ -210,6 +218,18 @@ function App() {
             botId={selectedBotId}
             onClose={() => setShowLoyalty(false)}
           />
+        )}
+        
+        {showSourceStats && (
+          <div className="modal-overlay" onClick={() => setShowSourceStats(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Статистика по источникам</h2>
+                <button className="close-button" onClick={() => setShowSourceStats(false)}>×</button>
+              </div>
+              <SourceStatistics botId={selectedBotId} />
+            </div>
+          </div>
         )}
       </div>
     );

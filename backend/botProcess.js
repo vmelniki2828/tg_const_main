@@ -304,11 +304,112 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
 }
 
 // Универсальная функция для сохранения пользователя в MongoDB
+// Функция для обработки источника из параметра start
+function parseSourceFromStart(startParam) {
+  if (!startParam) {
+    return {
+      source: 'direct',
+      type: 'direct',
+      details: {}
+    };
+  }
+  
+  // Обрабатываем deep link параметр (например: google_ads, facebook_campaign1)
+  const source = startParam.trim();
+  
+  return {
+    source: source,
+    type: 'deep_link',
+    details: {
+      campaign: source.includes('_') ? source.split('_').slice(1).join('_') : null,
+      medium: source.split('_')[0] || null
+    }
+  };
+}
+
+// Функция для отслеживания активности пользователя
+async function trackUserActivity(userId, actionType = 'message') {
+  try {
+    const user = await User.findOne({ botId, userId });
+    if (!user) {
+      return;
+    }
+    
+    const now = new Date();
+    const currentTime = now.getTime();
+    
+    // Если у пользователя нет источника, пропускаем
+    if (!user.firstSource || user.firstSource === 'direct') {
+      return;
+    }
+    
+    // Если это первое действие пользователя
+    if (!user.lastActivityTime) {
+      await User.updateOne(
+        { botId, userId },
+        {
+          $set: {
+            lastActivityTime: now,
+            lastActivityAction: actionType,
+            sessionStartTime: now,
+            totalSessions: 1
+          }
+        }
+      );
+      return;
+    }
+    
+    const lastActivityTime = user.lastActivityTime.getTime();
+    const timeDiff = currentTime - lastActivityTime;
+    
+    // Если прошло меньше или равно 5 минут - добавляем время к активному времени
+    if (timeDiff <= MAX_SESSION_INTERVAL) {
+      const newActiveTime = (user.sourceActiveTime || 0) + timeDiff;
+      
+      await User.updateOne(
+        { botId, userId },
+        {
+          $set: {
+            sourceActiveTime: newActiveTime,
+            lastActivityTime: now,
+            lastActivityAction: actionType
+          }
+        }
+      );
+    } else {
+      // Если прошло больше 5 минут - начинаем новую сессию
+      await User.updateOne(
+        { botId, userId },
+        {
+          $set: {
+            lastActivityTime: now,
+            lastActivityAction: actionType,
+            sessionStartTime: now
+          },
+          $inc: { totalSessions: 1 }
+        }
+      );
+    }
+  } catch (error) {
+    console.error(`[TRACKING] Ошибка отслеживания активности пользователя ${userId}:`, error);
+  }
+}
+
 async function saveUserToMongo(ctx) {
   if (!ctx.from) return;
   const userId = ctx.from.id;
   try {
     console.log(`[MongoDB] saveUserToMongo: попытка сохранить пользователя:`, { botId, userId, from: ctx.from });
+    
+    // Обрабатываем источник из параметра start (если есть)
+    let sourceData = null;
+    if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/start')) {
+      const startParam = ctx.message.text.split(' ')[1]; // Получаем параметр после /start
+      sourceData = parseSourceFromStart(startParam);
+    } else if (ctx.startParam) {
+      // Если параметр передан через ctx.startParam (для deep links)
+      sourceData = parseSourceFromStart(ctx.startParam);
+    }
     
     // Сначала проверяем, существует ли пользователь
     const existingUser = await User.findOne({ botId, userId });
@@ -321,6 +422,19 @@ async function saveUserToMongo(ctx) {
         firstName: ctx.from.first_name,
         lastName: ctx.from.last_name
       };
+      
+      // Устанавливаем источник только если его еще нет (сохраняем первый источник)
+      if (sourceData && (!existingUser.firstSource || existingUser.firstSource === 'direct')) {
+        updateData.firstSource = sourceData.source;
+        updateData.firstSourceDate = new Date();
+        updateData.sourceDetails = {
+          type: sourceData.type,
+          campaign: sourceData.details.campaign || null,
+          medium: sourceData.details.medium || null,
+          content: sourceData.details.content || null
+        };
+        console.log(`[MongoDB] saveUserToMongo: установлен источник ${sourceData.source} для пользователя ${userId}`);
+      }
       
       // Автоматически устанавливаем loyaltyStartedAt если его нет и пользователь подписан
       let shouldCheckLoyalty = false;
@@ -350,6 +464,12 @@ async function saveUserToMongo(ctx) {
     } else {
       // Создаем нового пользователя
       const now = new Date();
+      
+      // Определяем источник для нового пользователя
+      const source = sourceData ? sourceData.source : 'direct';
+      const sourceType = sourceData ? sourceData.type : 'direct';
+      const sourceDetails = sourceData ? sourceData.details : {};
+      
       const newUser = new User({
           botId,
           userId,
@@ -360,16 +480,34 @@ async function saveUserToMongo(ctx) {
           lastSubscribedAt: now,
         isSubscribed: true,
           loyaltyStartedAt: now, // Автоматически устанавливаем время начала лояльности
-          subscriptionHistory: [{ subscribedAt: now }]
+          subscriptionHistory: [{ subscribedAt: now }],
+          // Отслеживание источника
+          firstSource: source,
+          firstSourceDate: now,
+          sourceDetails: {
+            type: sourceType,
+            campaign: sourceDetails.campaign || null,
+            medium: sourceDetails.medium || null,
+            content: sourceDetails.content || null
+          },
+          // Инициализация отслеживания активности
+          sourceActiveTime: 0,
+          sessionStartTime: now,
+          lastActivityTime: now,
+          lastActivityAction: 'command',
+          totalSessions: 1
       });
       
       const saveResult = await newUser.save();
-      console.log(`[MongoDB] saveUserToMongo: новый пользователь создан: ${saveResult._id}, loyaltyStartedAt=${now}`);
+      console.log(`[MongoDB] saveUserToMongo: новый пользователь создан: ${saveResult._id}, источник: ${source}, loyaltyStartedAt=${now}`);
       
       // НЕ запускаем немедленную проверку - периодическая проверка сама обработает всех пользователей
       // Это предотвращает множественные вызовы и спам промокодами
       console.log(`[MongoDB] ℹ️ Новый пользователь ${userId} будет обработан при следующей периодической проверке`);
     }
+    
+    // Отслеживаем активность пользователя
+    await trackUserActivity(userId, 'command');
     
     // Программа лояльности теперь работает через периодическую проверку
   } catch (err) {
@@ -384,6 +522,9 @@ const userNavigationHistory = new Map();
 const userQuizStates = new Map();
 const userLastActivity = new Map();
 const completedQuizzes = new Map();
+
+// Константа для максимального интервала между действиями (5 минут в миллисекундах)
+const MAX_SESSION_INTERVAL = 5 * 60 * 1000; // 5 минут
 
 // Функция для получения эффективного времени подписки (с учетом пауз) - ГЛОБАЛЬНАЯ
 function getEffectiveSubscriptionTime(user) {
@@ -509,7 +650,7 @@ async function giveMissedLoyaltyPromoCodes(userId, loyaltyRecord) {
             // Найден дубликат! Деактивируем только что активированный промокод
             await LoyaltyPromoCode.updateOne(
               { _id: availablePromoCode._id },
-              {
+              { 
                 $set: {
                   activated: false,
                   activatedBy: null,
@@ -620,17 +761,17 @@ async function giveMissedLoyaltyPromoCodes(userId, loyaltyRecord) {
             
             // Отмечаем награду как выданную только после успешной отправки
             if (messageSent) {
-              await Loyalty.updateOne(
-                { botId, userId },
-                { $set: { [`rewards.${period.key}`]: true } }
-              );
+            await Loyalty.updateOne(
+              { botId, userId },
+              { $set: { [`rewards.${period.key}`]: true } }
+            );
               
               await User.updateOne(
                 { botId, userId },
                 { $set: { [`loyaltyRewards.${period.key}`]: true } }
-              );
-              
-              console.log(`✅ [MISSED_PROMOCODES] Промокод ${availablePromoCode.code} выдан пользователю ${userId} за период ${period.key}`);
+            );
+            
+            console.log(`✅ [MISSED_PROMOCODES] Промокод ${availablePromoCode.code} выдан пользователю ${userId} за период ${period.key}`);
             } else {
               // Деактивируем промокод при ошибке отправки, чтобы попробовать снова
               await LoyaltyPromoCode.updateOne(
@@ -1099,27 +1240,27 @@ function setupBotHandlers(bot, blocks, connections) {
         const existingLoyalty = await Loyalty.findOne({ botId, userId });
         if (!existingLoyalty) {
           // Создаем новую запись только если её действительно нет
-          const newLoyalty = new Loyalty({
-            botId,
-            userId,
-            rewards: {
-              '1m': false,
-              '24h': false,
-              '7d': false,
-              '30d': false,
-              '90d': false,
-              '180d': false,
-              '360d': false
-            }
-          });
+        const newLoyalty = new Loyalty({
+          botId,
+          userId,
+          rewards: {
+            '1m': false,
+            '24h': false,
+            '7d': false,
+            '30d': false,
+            '90d': false,
+            '180d': false,
+            '360d': false
+          }
+        });
           try {
-            await newLoyalty.save();
-            console.log(`🎁 Создана запись лояльности для пользователя ${userId}`);
+        await newLoyalty.save();
+        console.log(`🎁 Создана запись лояльности для пользователя ${userId}`);
             loyalty = newLoyalty;
-            
-            // АВТОМАТИЧЕСКИ ВЫДАЕМ ВСЕ ПРОПУЩЕННЫЕ ПРОМОКОДЫ
-            console.log(`🎁 [AUTO_REWARD] Автоматически выдаем пропущенные промокоды пользователю ${userId}`);
-            await giveMissedLoyaltyPromoCodes(userId, newLoyalty);
+        
+        // АВТОМАТИЧЕСКИ ВЫДАЕМ ВСЕ ПРОПУЩЕННЫЕ ПРОМОКОДЫ
+        console.log(`🎁 [AUTO_REWARD] Автоматически выдаем пропущенные промокоды пользователю ${userId}`);
+        await giveMissedLoyaltyPromoCodes(userId, newLoyalty);
           } catch (saveError) {
             // Если запись уже существует (race condition), просто получаем её
             if (saveError.code === 11000 || saveError.message.includes('duplicate')) {
@@ -1431,6 +1572,15 @@ function setupBotHandlers(bot, blocks, connections) {
   bot.command('start', async (ctx) => {
     console.log('[DEBUG] /start ctx:', JSON.stringify(ctx, null, 2));
     console.log('[DEBUG] /start ctx.from:', ctx.from);
+    
+    // Обрабатываем параметр start для определения источника
+    const startParam = ctx.message?.text?.split(' ')[1] || ctx.startParam;
+    if (startParam) {
+      console.log(`[SOURCE] Параметр start: ${startParam}`);
+      // Сохраняем параметр в ctx для использования в saveUserToMongo
+      ctx.startParam = startParam;
+    }
+    
     await saveUserToMongo(ctx);
     
     // Обрабатываем подписку пользователя
@@ -1467,6 +1617,8 @@ function setupBotHandlers(bot, blocks, connections) {
     const userId = ctx.from?.id;
     if (userId) {
       await handleUserSubscription(userId);
+      // Отслеживаем активность пользователя
+      await trackUserActivity(userId, 'command');
     }
     let currentBlockId = userCurrentBlock.get(userId);
     
@@ -1528,6 +1680,11 @@ function setupBotHandlers(bot, blocks, connections) {
     try {
       const userId = ctx.from?.id;
       const messageText = ctx.message.text;
+      
+      // Отслеживаем активность пользователя
+      if (userId) {
+        await trackUserActivity(userId, 'message');
+      }
       
       // Быстрая валидация входных данных
       if (!userId || !messageText || messageText.startsWith('/')) {
@@ -2058,6 +2215,9 @@ function setupBotHandlers(bot, blocks, connections) {
     const userId = ctx.from?.id;
     if (!userId) return;
     
+    // Отслеживаем активность пользователя
+    await trackUserActivity(userId, 'callback');
+    
     // Асинхронно обрабатываем подписку и сохранение (не блокируем ответ)
     setImmediate(async () => {
       try {
@@ -2180,8 +2340,8 @@ async function runLoyaltyCheck() {
     // Проверяем, что бот инициализирован
     if (!bot) {
       console.log('[LOYALTY] ⚠️ Бот еще не инициализирован, пропускаем проверку');
-      return;
-    }
+              return;
+            }
   
     // Проверяем, что botId определен
     if (!botId) {
@@ -2459,9 +2619,9 @@ async function runLoyaltyCheck() {
                 
                 if (duplicateCheck) {
                   // Найден дубликат! Деактивируем только что активированный промокод
-                  await LoyaltyPromoCode.updateOne(
-                    { _id: selectedPromoCode._id },
-                    {
+                await LoyaltyPromoCode.updateOne(
+                  { _id: selectedPromoCode._id },
+                  { 
                       $set: {
                         activated: false,
                         activatedBy: null,
@@ -2500,7 +2660,7 @@ async function runLoyaltyCheck() {
                 // Пробуем использовать bot.telegram если доступен
                 if (bot && bot.telegram) {
                   try {
-                    await bot.telegram.sendMessage(user.userId, message, { parse_mode: 'Markdown' });
+              await bot.telegram.sendMessage(user.userId, message, { parse_mode: 'Markdown' });
                     messageSent = true;
                   } catch (telegramError) {
                     // Пробуем прямой API без лишнего логирования
