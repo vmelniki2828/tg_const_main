@@ -4729,6 +4729,135 @@ app.get('/api/statistics/sources/:botId', async (req, res) => {
   }
 });
 
+// Получение списка пользователей с детальной информацией
+app.get('/api/statistics/users/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { startDate, endDate, source, page = 1, limit = 50, search } = req.query;
+    
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+    
+    // Парсим даты
+    const start = startDate ? new Date(startDate) : new Date(0);
+    const end = endDate ? new Date(endDate) : new Date();
+    
+    // Строим фильтр
+    const filter = { botId };
+    
+    if (startDate || endDate) {
+      filter.firstSourceDate = {};
+      if (startDate) filter.firstSourceDate.$gte = start;
+      if (endDate) filter.firstSourceDate.$lte = end;
+    }
+    
+    if (source && source !== 'all') {
+      filter.firstSource = source;
+    }
+    
+    if (search) {
+      const searchConditions = [
+        { username: { $regex: search, $options: 'i' } },
+        { firstName: { $regex: search, $options: 'i' } },
+        { lastName: { $regex: search, $options: 'i' } }
+      ];
+      
+      // Если поисковый запрос - число, добавляем поиск по userId
+      if (!isNaN(search) && search.trim() !== '') {
+        searchConditions.push({ userId: parseInt(search) });
+      }
+      
+      if (searchConditions.length > 0) {
+        filter.$or = searchConditions;
+      }
+    }
+    
+    // Получаем пользователей с пагинацией
+    const users = await User.find(filter)
+      .sort({ firstSourceDate: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+    
+    // Получаем общее количество для пагинации
+    const totalUsers = await User.countDocuments(filter);
+    
+    // Получаем статистику по промокодам и квизам для каждого пользователя
+    const userIds = users.map(u => u.userId);
+    
+    const promoCodes = await LoyaltyPromoCode.find({
+      botId,
+      activatedBy: { $in: userIds },
+      activated: true
+    }).lean();
+    
+    const quizzes = await QuizStats.find({
+      botId,
+      userId: { $in: userIds }
+    }).lean();
+    
+    // Группируем промокоды и квизы по пользователям
+    const promoCodesByUser = {};
+    promoCodes.forEach(pc => {
+      if (!promoCodesByUser[pc.activatedBy]) {
+        promoCodesByUser[pc.activatedBy] = 0;
+      }
+      promoCodesByUser[pc.activatedBy]++;
+    });
+    
+    const quizzesByUser = {};
+    quizzes.forEach(q => {
+      if (!quizzesByUser[q.userId]) {
+        quizzesByUser[q.userId] = 0;
+      }
+      quizzesByUser[q.userId]++;
+    });
+    
+    // Формируем ответ с детальной информацией о каждом пользователе
+    const usersWithStats = users.map(user => {
+      const activeTimeHours = Math.round((user.sourceActiveTime || 0) / 1000 / 60 / 60 * 100) / 100;
+      const activeTimeMinutes = Math.round((user.sourceActiveTime || 0) / 1000 / 60);
+      
+      return {
+        userId: user.userId,
+        username: user.username || 'N/A',
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        source: user.firstSource || 'direct',
+        sourceDate: user.firstSourceDate ? user.firstSourceDate.toISOString() : null,
+        activeTime: user.sourceActiveTime || 0,
+        activeTimeHours: activeTimeHours,
+        activeTimeMinutes: activeTimeMinutes,
+        sessions: user.totalSessions || 0,
+        isSubscribed: user.isSubscribed || false,
+        promoCodes: promoCodesByUser[user.userId] || 0,
+        quizzes: quizzesByUser[user.userId] || 0,
+        registeredAt: user.firstSubscribedAt ? user.firstSubscribedAt.toISOString() : null,
+        lastActivity: user.lastActivityTime ? user.lastActivityTime.toISOString() : null
+      };
+    });
+    
+    res.json({
+      success: true,
+      users: usersWithStats,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalUsers,
+        pages: Math.ceil(totalUsers / limitNum)
+      },
+      period: {
+        start: start.toISOString(),
+        end: end.toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('❌ Ошибка при получении списка пользователей:', error);
+    res.status(500).json({ error: 'Failed to get users list', details: error.message });
+  }
+});
+
 // Экспорт статистики в Excel
 app.post('/api/statistics/export/:botId', async (req, res) => {
   try {

@@ -338,9 +338,12 @@ async function trackUserActivity(userId, actionType = 'message') {
     const now = new Date();
     const currentTime = now.getTime();
     
-    // Если у пользователя нет источника, пропускаем
-    if (!user.firstSource || user.firstSource === 'direct') {
-      return;
+    // Если у пользователя нет источника, устанавливаем 'direct' по умолчанию
+    if (!user.firstSource) {
+      await User.updateOne(
+        { botId, userId },
+        { $set: { firstSource: 'direct', firstSourceDate: now } }
+      );
     }
     
     // Если это первое действие пользователя
@@ -1574,11 +1577,21 @@ function setupBotHandlers(bot, blocks, connections) {
     console.log('[DEBUG] /start ctx.from:', ctx.from);
     
     // Обрабатываем параметр start для определения источника
-    const startParam = ctx.message?.text?.split(' ')[1] || ctx.startParam;
+    // В Telegraf параметр start доступен через ctx.startParam или через ctx.message.text
+    let startParam = ctx.startParam;
+    if (!startParam && ctx.message?.text) {
+      const parts = ctx.message.text.split(' ');
+      if (parts.length > 1) {
+        startParam = parts.slice(1).join(' '); // Берем все после /start
+      }
+    }
+    
     if (startParam) {
       console.log(`[SOURCE] Параметр start: ${startParam}`);
       // Сохраняем параметр в ctx для использования в saveUserToMongo
       ctx.startParam = startParam;
+    } else {
+      console.log(`[SOURCE] Параметр start не найден, источник будет 'direct'`);
     }
     
     await saveUserToMongo(ctx);

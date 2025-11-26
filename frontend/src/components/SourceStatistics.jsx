@@ -4,17 +4,27 @@ import './SourceStatistics.css';
 
 function SourceStatistics({ botId }) {
   const [statistics, setStatistics] = useState(null);
+  const [users, setUsers] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [error, setError] = useState(null);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+  const [activeTab, setActiveTab] = useState('sources'); // 'sources' или 'users'
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersSource, setUsersSource] = useState('all');
+  const [usersSearch, setUsersSearch] = useState('');
 
   useEffect(() => {
     if (botId) {
-      loadStatistics();
+      if (activeTab === 'sources') {
+        loadStatistics();
+      } else {
+        loadUsers();
+      }
     }
-  }, [botId, startDate, endDate]);
+  }, [botId, startDate, endDate, activeTab, usersPage, usersSource, usersSearch]);
 
   const loadStatistics = async () => {
     try {
@@ -78,6 +88,38 @@ function SourceStatistics({ botId }) {
     }
   };
 
+  const loadUsers = async () => {
+    try {
+      setIsLoadingUsers(true);
+      setError(null);
+      
+      let url = `${config.API_BASE_URL}/api/statistics/users/${botId}`;
+      const params = new URLSearchParams();
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+      if (usersSource && usersSource !== 'all') params.append('source', usersSource);
+      if (usersSearch) params.append('search', usersSearch);
+      params.append('page', usersPage);
+      params.append('limit', '50');
+      
+      if (params.toString()) {
+        url += '?' + params.toString();
+      }
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error('Не удалось загрузить список пользователей');
+      }
+      const data = await response.json();
+      setUsers(data);
+    } catch (err) {
+      console.error('Error loading users:', err);
+      setError(err.message);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
   const formatTime = (minutes) => {
     if (minutes < 60) {
       return `${Math.round(minutes)} мин.`;
@@ -85,6 +127,17 @@ function SourceStatistics({ botId }) {
     const hours = Math.floor(minutes / 60);
     const mins = Math.round(minutes % 60);
     return `${hours} ч. ${mins} мин.`;
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('ru-RU', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   if (!botId) {
@@ -95,6 +148,20 @@ function SourceStatistics({ botId }) {
     <div className="source-statistics">
       <div className="source-statistics-header">
         <h2>📊 Статистика по источникам</h2>
+        <div className="tabs">
+          <button
+            className={activeTab === 'sources' ? 'tab-active' : 'tab'}
+            onClick={() => setActiveTab('sources')}
+          >
+            📈 По источникам
+          </button>
+          <button
+            className={activeTab === 'users' ? 'tab-active' : 'tab'}
+            onClick={() => setActiveTab('users')}
+          >
+            👥 Список пользователей
+          </button>
+        </div>
         <div className="source-statistics-filters">
           <div className="filter-group">
             <label>С:</label>
@@ -124,9 +191,11 @@ function SourceStatistics({ botId }) {
 
       {error && <div className="error-message">❌ {error}</div>}
 
-      {isLoading ? (
-        <div className="loading">Загрузка статистики...</div>
-      ) : statistics ? (
+      {activeTab === 'sources' ? (
+        <>
+          {isLoading ? (
+            <div className="loading">Загрузка статистики...</div>
+          ) : statistics ? (
         <>
           {/* Общая статистика */}
           <div className="general-stats">
@@ -202,7 +271,113 @@ function SourceStatistics({ botId }) {
             </div>
           )}
         </>
-      ) : null}
+          ) : null}
+        </>
+      ) : (
+        <>
+          {/* Фильтры для списка пользователей */}
+          <div className="users-filters">
+            <div className="filter-group">
+              <label>Поиск:</label>
+              <input
+                type="text"
+                placeholder="ID, username, имя..."
+                value={usersSearch}
+                onChange={(e) => {
+                  setUsersSearch(e.target.value);
+                  setUsersPage(1);
+                }}
+                className="search-input"
+              />
+            </div>
+            <div className="filter-group">
+              <label>Источник:</label>
+              <select
+                value={usersSource}
+                onChange={(e) => {
+                  setUsersSource(e.target.value);
+                  setUsersPage(1);
+                }}
+                className="source-select"
+              >
+                <option value="all">Все</option>
+                {statistics?.bySource?.map((source, index) => (
+                  <option key={index} value={source.source}>
+                    {source.source}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {isLoadingUsers ? (
+            <div className="loading">Загрузка пользователей...</div>
+          ) : users ? (
+            <>
+              <div className="users-table-container">
+                <table className="users-table">
+                  <thead>
+                    <tr>
+                      <th>User ID</th>
+                      <th>Username</th>
+                      <th>Имя</th>
+                      <th>Источник</th>
+                      <th>Активное время</th>
+                      <th>Сессии</th>
+                      <th>Промокоды</th>
+                      <th>Квизы</th>
+                      <th>Подписка</th>
+                      <th>Регистрация</th>
+                      <th>Последняя активность</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.users.map((user, index) => (
+                      <tr key={index}>
+                        <td>{user.userId}</td>
+                        <td>@{user.username || 'N/A'}</td>
+                        <td>{user.firstName || ''} {user.lastName || ''}</td>
+                        <td className="source-name">{user.source}</td>
+                        <td>{user.activeTimeHours.toFixed(2)} ч.</td>
+                        <td>{user.sessions}</td>
+                        <td>{user.promoCodes}</td>
+                        <td>{user.quizzes}</td>
+                        <td>{user.isSubscribed ? '🟢' : '🔴'}</td>
+                        <td>{formatDate(user.registeredAt)}</td>
+                        <td>{formatDate(user.lastActivity)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Пагинация */}
+              {users.pagination && users.pagination.pages > 1 && (
+                <div className="pagination">
+                  <button
+                    onClick={() => setUsersPage(prev => Math.max(1, prev - 1))}
+                    disabled={usersPage === 1}
+                    className="page-button"
+                  >
+                    ← Назад
+                  </button>
+                  <span className="page-info">
+                    Страница {users.pagination.page} из {users.pagination.pages} 
+                    (Всего: {users.pagination.total})
+                  </span>
+                  <button
+                    onClick={() => setUsersPage(prev => Math.min(users.pagination.pages, prev + 1))}
+                    disabled={usersPage === users.pagination.pages}
+                    className="page-button"
+                  >
+                    Вперед →
+                  </button>
+                </div>
+              )}
+            </>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
