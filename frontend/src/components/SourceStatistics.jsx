@@ -11,20 +11,34 @@ function SourceStatistics({ botId }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [isExporting, setIsExporting] = useState(false);
-  const [activeTab, setActiveTab] = useState('sources'); // 'sources' или 'users'
+  const [activeTab, setActiveTab] = useState('sources'); // 'sources', 'users', 'activity', 'popular', 'paths'
   const [usersPage, setUsersPage] = useState(1);
   const [usersSource, setUsersSource] = useState('all');
   const [usersSearch, setUsersSearch] = useState('');
+  const [activeUsersData, setActiveUsersData] = useState(null);
+  const [popularBlocks, setPopularBlocks] = useState(null);
+  const [popularButtons, setPopularButtons] = useState(null);
+  const [userPaths, setUserPaths] = useState(null);
+  const [dailyStats, setDailyStats] = useState(null);
+  const [activePeriod, setActivePeriod] = useState('day'); // day, week, month
 
   useEffect(() => {
     if (botId) {
       if (activeTab === 'sources') {
         loadStatistics();
-      } else {
+      } else if (activeTab === 'users') {
         loadUsers();
+      } else if (activeTab === 'activity') {
+        loadActiveUsers();
+        loadDailyStats();
+      } else if (activeTab === 'popular') {
+        loadPopularBlocks();
+        loadPopularButtons();
+      } else if (activeTab === 'paths') {
+        loadUserPaths();
       }
     }
-  }, [botId, startDate, endDate, activeTab, usersPage, usersSource, usersSearch]);
+  }, [botId, startDate, endDate, activeTab, usersPage, usersSource, usersSearch, activePeriod]);
 
   const loadStatistics = async () => {
     try {
@@ -150,6 +164,66 @@ function SourceStatistics({ botId }) {
     });
   };
 
+  const loadActiveUsers = async () => {
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/statistics/active-users/${botId}?period=${activePeriod}`);
+      if (!response.ok) throw new Error('Не удалось загрузить активных пользователей');
+      const data = await response.json();
+      setActiveUsersData(data);
+    } catch (err) {
+      console.error('Error loading active users:', err);
+      setError(err.message);
+    }
+  };
+
+  const loadDailyStats = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const response = await fetch(`${config.API_BASE_URL}/api/statistics/daily/${botId}?date=${today}`);
+      if (!response.ok) throw new Error('Не удалось загрузить ежедневную статистику');
+      const data = await response.json();
+      setDailyStats(data);
+    } catch (err) {
+      console.error('Error loading daily stats:', err);
+    }
+  };
+
+  const loadPopularBlocks = async () => {
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/statistics/popular-blocks/${botId}?limit=20`);
+      if (!response.ok) throw new Error('Не удалось загрузить популярные блоки');
+      const data = await response.json();
+      setPopularBlocks(data);
+    } catch (err) {
+      console.error('Error loading popular blocks:', err);
+      setError(err.message);
+    }
+  };
+
+  const loadPopularButtons = async () => {
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/statistics/popular-buttons/${botId}?limit=20`);
+      if (!response.ok) throw new Error('Не удалось загрузить популярные кнопки');
+      const data = await response.json();
+      setPopularButtons(data);
+    } catch (err) {
+      console.error('Error loading popular buttons:', err);
+      setError(err.message);
+    }
+  };
+
+  const loadUserPaths = async () => {
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/statistics/user-paths/${botId}?limit=30`);
+      if (!response.ok) throw new Error('Не удалось загрузить пути пользователей');
+      const data = await response.json();
+      setUserPaths(data);
+    } catch (err) {
+      console.error('Error loading user paths:', err);
+      setError(err.message);
+    }
+  };
+
   if (!botId) {
     return <div className="source-statistics">Выберите бота для просмотра статистики</div>;
   }
@@ -170,6 +244,24 @@ function SourceStatistics({ botId }) {
             onClick={() => setActiveTab('users')}
           >
             👥 Список пользователей
+          </button>
+          <button
+            className={activeTab === 'activity' ? 'tab-active' : 'tab'}
+            onClick={() => setActiveTab('activity')}
+          >
+            📊 Активность
+          </button>
+          <button
+            className={activeTab === 'popular' ? 'tab-active' : 'tab'}
+            onClick={() => setActiveTab('popular')}
+          >
+            🔥 Популярное
+          </button>
+          <button
+            className={activeTab === 'paths' ? 'tab-active' : 'tab'}
+            onClick={() => setActiveTab('paths')}
+          >
+            🛤️ Пути
           </button>
         </div>
         <div className="source-statistics-filters">
@@ -381,7 +473,164 @@ function SourceStatistics({ botId }) {
             </>
           ) : null}
         </>
-      )}
+      ) : activeTab === 'activity' ? (
+        <>
+          <div className="activity-stats">
+            <h3>📊 Активность пользователей</h3>
+            <div className="filter-group" style={{ marginBottom: '20px' }}>
+              <label>Период:</label>
+              <select value={activePeriod} onChange={(e) => setActivePeriod(e.target.value)}>
+                <option value="day">День</option>
+                <option value="week">Неделя</option>
+                <option value="month">Месяц</option>
+              </select>
+            </div>
+            
+            {activeUsersData && (
+              <div className="stats-grid" style={{ marginBottom: '30px' }}>
+                <div className="stat-card">
+                  <div className="stat-label">Активных пользователей</div>
+                  <div className="stat-value">{activeUsersData.totalActiveUsers}</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">Дней в периоде</div>
+                  <div className="stat-value">{activeUsersData.totalDays}</div>
+                </div>
+              </div>
+            )}
+            
+            {dailyStats && (
+              <div className="daily-stats-section">
+                <h4>📅 Статистика за сегодня</h4>
+                <div className="stats-grid">
+                  <div className="stat-card">
+                    <div className="stat-label">Активных пользователей</div>
+                    <div className="stat-value">{dailyStats.activeUsers}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Нажали /start</div>
+                    <div className="stat-value">{dailyStats.startCommandUsers}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Нажали кнопку</div>
+                    <div className="stat-value">{dailyStats.buttonClickUsers}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Всего нажатий кнопок</div>
+                    <div className="stat-value">{dailyStats.totalButtonClicks}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Всего команд</div>
+                    <div className="stat-value">{dailyStats.totalCommands}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      ) : activeTab === 'popular' ? (
+        <>
+          <div className="popular-stats">
+            <h3>🔥 Популярные блоки и кнопки</h3>
+            
+            {popularBlocks && (
+              <div className="popular-section" style={{ marginBottom: '30px' }}>
+                <h4>📦 Популярные блоки</h4>
+                <div className="table-container">
+                  <table className="sources-table">
+                    <thead>
+                      <tr>
+                        <th>Блок</th>
+                        <th>Название</th>
+                        <th>Входов</th>
+                        <th>Уникальных пользователей</th>
+                        <th>Последний вход</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {popularBlocks.blocks.map((block, index) => (
+                        <tr key={index}>
+                          <td>{block.blockId}</td>
+                          <td>{block.blockName}</td>
+                          <td>{block.enterCount}</td>
+                          <td>{block.uniqueUsers}</td>
+                          <td>{block.lastEnteredAt ? formatDate(block.lastEnteredAt) : 'N/A'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            
+            {popularButtons && (
+              <div className="popular-section">
+                <h4>🔘 Популярные кнопки</h4>
+                <div className="table-container">
+                  <table className="sources-table">
+                    <thead>
+                      <tr>
+                        <th>Блок</th>
+                        <th>Кнопка</th>
+                        <th>Нажатий</th>
+                        <th>Уникальных пользователей</th>
+                        <th>Последнее нажатие</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {popularButtons.buttons.map((button, index) => (
+                        <tr key={index}>
+                          <td>{button.blockId}</td>
+                          <td>{button.buttonText}</td>
+                          <td>{button.clickCount}</td>
+                          <td>{button.uniqueUsers}</td>
+                          <td>{button.lastClickedAt ? formatDate(button.lastClickedAt) : 'N/A'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      ) : activeTab === 'paths' ? (
+        <>
+          <div className="paths-stats">
+            <h3>🛤️ Пути пользователей</h3>
+            <p style={{ marginBottom: '20px', color: '#666' }}>
+              Наиболее популярные переходы между блоками
+            </p>
+            
+            {userPaths && (
+              <div className="table-container">
+                <table className="sources-table">
+                  <thead>
+                    <tr>
+                      <th>Откуда</th>
+                      <th>Куда</th>
+                      <th>Переходов</th>
+                      <th>Уникальных пользователей</th>
+                      <th>Последний переход</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {userPaths.paths.map((path, index) => (
+                      <tr key={index}>
+                        <td>{path.fromBlockId}</td>
+                        <td>{path.toBlockId}</td>
+                        <td>{path.transitionCount}</td>
+                        <td>{path.uniqueUsers}</td>
+                        <td>{path.lastTransitionAt ? formatDate(path.lastTransitionAt) : 'N/A'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

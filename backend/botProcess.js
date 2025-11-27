@@ -1,5 +1,12 @@
 const { Telegraf } = require('telegraf');
 const { User, QuizStats, PromoCode, Loyalty, LoyaltyConfig, LoyaltyPromoCode } = require('./models');
+const {
+  trackActiveUser,
+  trackStartCommand,
+  trackButtonClick,
+  trackBlockEnter,
+  trackBlockTransition
+} = require('./statisticsUtils');
 const mongoose = require('mongoose');
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://157.230.20.252:27017/tg_const_main';
 mongoose.connect(MONGO_URI, { 
@@ -393,6 +400,15 @@ async function trackUserActivity(userId, actionType = 'message') {
         }
       );
     }
+    
+    // Отслеживаем активного пользователя для статистики (асинхронно)
+    setImmediate(async () => {
+      try {
+        await trackActiveUser(botId, userId);
+      } catch (error) {
+        console.error('[STATS] Ошибка при отслеживании активного пользователя:', error);
+      }
+    });
   } catch (error) {
     console.error(`[TRACKING] Ошибка отслеживания активности пользователя ${userId}:`, error);
   }
@@ -1600,6 +1616,17 @@ function setupBotHandlers(bot, blocks, connections) {
     const userId = ctx.from?.id;
     if (userId) {
       await handleUserSubscription(userId);
+      
+      // Отслеживаем статистику
+      setImmediate(async () => {
+        try {
+          await trackStartCommand(botId, userId);
+          await trackActiveUser(botId, userId);
+          await trackBlockEnter(botId, userId, 'start', 'Стартовый блок');
+        } catch (error) {
+          console.error('[STATS] Ошибка при отслеживании /start:', error);
+        }
+      });
     }
     
     // Очищаем историю навигации пользователя
@@ -1761,6 +1788,18 @@ function setupBotHandlers(bot, blocks, connections) {
           
           const previousBlock = dialogMap.get(previousBlockId);
           if (previousBlock) {
+            // Отслеживаем статистику (асинхронно)
+            setImmediate(async () => {
+              try {
+                await trackButtonClick(botId, userId, currentBlockId, 'back', '⬅️ Назад');
+                await trackBlockTransition(botId, userId, currentBlockId, previousBlockId);
+                await trackBlockEnter(botId, userId, previousBlockId, previousBlock.message?.substring(0, 50) || '');
+                await trackActiveUser(botId, userId);
+              } catch (error) {
+                console.error('[STATS] Ошибка при отслеживании кнопки "Назад":', error);
+              }
+            });
+            
             const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(previousBlock.buttons, userId, previousBlockId);
             await sendMediaMessage(ctx, previousBlock.message, previousBlock.mediaFiles, keyboard, inlineKeyboard);
           }
@@ -2054,6 +2093,18 @@ function setupBotHandlers(bot, blocks, connections) {
             userCurrentBlock.set(userId, previousBlockId);
             userNavigationHistory.set(userId, userHistory);
             
+            // Отслеживаем статистику (асинхронно)
+            setImmediate(async () => {
+              try {
+                await trackButtonClick(botId, userId, currentBlockId, 'back', '⬅️ Назад');
+                await trackBlockTransition(botId, userId, currentBlockId, previousBlockId);
+                await trackBlockEnter(botId, userId, previousBlockId, prevBlock.message?.substring(0, 50) || '');
+                await trackActiveUser(botId, userId);
+              } catch (error) {
+                console.error('[STATS] Ошибка при отслеживании кнопки "Назад":', error);
+              }
+            });
+            
             const { keyboard, inlineKeyboard } = await createKeyboardWithBack(prevBlock.buttons, userId, previousBlockId);
             await sendMediaMessage(ctx, prevBlock.message, prevBlock.mediaFiles, keyboard, inlineKeyboard);
             console.log(`✅ Navigated back to block ${previousBlockId}`);
@@ -2086,6 +2137,16 @@ function setupBotHandlers(bot, blocks, connections) {
             
             // Проверяем, является ли кнопка ссылкой
             if (button.url && button.url.trim() !== '') {
+              // Отслеживаем нажатие кнопки-ссылки
+              setImmediate(async () => {
+                try {
+                  await trackButtonClick(botId, userId, currentBlockId, button.id, button.text);
+                  await trackActiveUser(botId, userId);
+                } catch (error) {
+                  console.error('[STATS] Ошибка при отслеживании кнопки-ссылки:', error);
+                }
+              });
+              
               await ctx.reply(`🔗 ${button.text}`, {
                 reply_markup: {
                   inline_keyboard: [[{ text: button.text, url: button.url.trim() }]]
@@ -2116,6 +2177,18 @@ function setupBotHandlers(bot, blocks, connections) {
               // Обновляем текущий блок пользователя
               userCurrentBlock.set(userId, nextBlockId);
       console.log(`🔍 DEBUG: Updated user current block to: ${nextBlockId}`);
+      
+      // Отслеживаем статистику (асинхронно, не блокируем ответ)
+      setImmediate(async () => {
+        try {
+          await trackButtonClick(botId, userId, currentBlockId, button.id, button.text);
+          await trackBlockTransition(botId, userId, currentBlockId, nextBlockId);
+          await trackBlockEnter(botId, userId, nextBlockId, nextBlock.message?.substring(0, 50) || '');
+          await trackActiveUser(botId, userId);
+        } catch (error) {
+          console.error('[STATS] Ошибка при отслеживании перехода:', error);
+        }
+      });
       
       // Если следующий блок - квиз, инициализируем состояние квиза и показываем первый вопрос
       if (nextBlock.type === 'quiz') {

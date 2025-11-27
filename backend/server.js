@@ -6,7 +6,19 @@ const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
 const mongoose = require('mongoose');
-const { QuizStats, Bot, User, PromoCode, Loyalty, LoyaltyConfig, LoyaltyPromoCode } = require('./models');
+const { 
+  QuizStats, 
+  Bot, 
+  User, 
+  PromoCode, 
+  Loyalty, 
+  LoyaltyConfig, 
+  LoyaltyPromoCode,
+  DailyActivityStats,
+  BlockStats,
+  ButtonStats,
+  UserPathStats
+} = require('./models');
 
 // Функция для вычисления эффективного времени подписки (копия из botProcess.js)
 function getEffectiveSubscriptionTime(user) {
@@ -4852,6 +4864,186 @@ app.get('/api/statistics/users/:botId', async (req, res) => {
   } catch (error) {
     console.error('❌ Ошибка при получении списка пользователей:', error);
     res.status(500).json({ error: 'Failed to get users list', details: error.message });
+  }
+});
+
+// Получение активных пользователей за период (день/неделя/месяц)
+app.get('/api/statistics/active-users/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { period = 'day' } = req.query; // day, week, month
+    
+    const now = new Date();
+    let startDate = new Date();
+    
+    switch (period) {
+      case 'day':
+        startDate.setDate(now.getDate() - 1);
+        break;
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      default:
+        startDate.setDate(now.getDate() - 1);
+    }
+    
+    startDate.setUTCHours(0, 0, 0, 0);
+    
+    // Получаем статистику по дням
+    const stats = await DailyActivityStats.find({
+      botId,
+      date: { $gte: startDate }
+    }).sort({ date: -1 }).lean();
+    
+    // Также считаем из User по lastActivityTime
+    const activeUsersFromUser = await User.countDocuments({
+      botId,
+      lastActivityTime: { $gte: startDate }
+    });
+    
+    res.json({
+      success: true,
+      period,
+      startDate: startDate.toISOString(),
+      endDate: now.toISOString(),
+      dailyStats: stats,
+      totalActiveUsers: activeUsersFromUser,
+      totalDays: stats.length
+    });
+  } catch (error) {
+    console.error('❌ Ошибка при получении активных пользователей:', error);
+    res.status(500).json({ error: 'Failed to get active users', details: error.message });
+  }
+});
+
+// Получение популярных блоков
+app.get('/api/statistics/popular-blocks/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { limit = 10 } = req.query;
+    
+    const blocks = await BlockStats.find({ botId })
+      .sort({ enterCount: -1 })
+      .limit(parseInt(limit))
+      .lean();
+    
+    res.json({
+      success: true,
+      blocks: blocks.map(b => ({
+        blockId: b.blockId,
+        blockName: b.blockName || b.blockId,
+        enterCount: b.enterCount,
+        uniqueUsers: b.uniqueUsers,
+        lastEnteredAt: b.lastEnteredAt
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Ошибка при получении популярных блоков:', error);
+    res.status(500).json({ error: 'Failed to get popular blocks', details: error.message });
+  }
+});
+
+// Получение популярных кнопок
+app.get('/api/statistics/popular-buttons/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { limit = 10, blockId } = req.query;
+    
+    const query = { botId };
+    if (blockId) {
+      query.blockId = blockId;
+    }
+    
+    const buttons = await ButtonStats.find(query)
+      .sort({ clickCount: -1 })
+      .limit(parseInt(limit))
+      .lean();
+    
+    res.json({
+      success: true,
+      buttons: buttons.map(b => ({
+        blockId: b.blockId,
+        buttonId: b.buttonId,
+        buttonText: b.buttonText || b.buttonId,
+        clickCount: b.clickCount,
+        uniqueUsers: b.uniqueUsers,
+        lastClickedAt: b.lastClickedAt
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Ошибка при получении популярных кнопок:', error);
+    res.status(500).json({ error: 'Failed to get popular buttons', details: error.message });
+  }
+});
+
+// Получение путей пользователей
+app.get('/api/statistics/user-paths/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { limit = 20 } = req.query;
+    
+    const paths = await UserPathStats.find({ botId })
+      .sort({ transitionCount: -1 })
+      .limit(parseInt(limit))
+      .lean();
+    
+    res.json({
+      success: true,
+      paths: paths.map(p => ({
+        fromBlockId: p.fromBlockId,
+        toBlockId: p.toBlockId,
+        transitionCount: p.transitionCount,
+        uniqueUsers: p.uniqueUsers,
+        lastTransitionAt: p.lastTransitionAt
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Ошибка при получении путей пользователей:', error);
+    res.status(500).json({ error: 'Failed to get user paths', details: error.message });
+  }
+});
+
+// Получение ежедневной статистики (команды /start, нажатия кнопок)
+app.get('/api/statistics/daily/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { date } = req.query; // YYYY-MM-DD или не указано (сегодня)
+    
+    let targetDate = new Date();
+    if (date) {
+      targetDate = new Date(date);
+    }
+    targetDate.setUTCHours(0, 0, 0, 0);
+    
+    const stats = await DailyActivityStats.findOne({ botId, date: targetDate }).lean();
+    
+    if (!stats) {
+      return res.json({
+        success: true,
+        date: targetDate.toISOString(),
+        activeUsers: 0,
+        startCommandUsers: 0,
+        buttonClickUsers: 0,
+        totalButtonClicks: 0,
+        totalCommands: 0
+      });
+    }
+    
+    res.json({
+      success: true,
+      date: stats.date.toISOString(),
+      activeUsers: stats.activeUsers || 0,
+      startCommandUsers: stats.startCommandUsers || 0,
+      buttonClickUsers: stats.buttonClickUsers || 0,
+      totalButtonClicks: stats.totalButtonClicks || 0,
+      totalCommands: stats.totalCommands || 0
+    });
+  } catch (error) {
+    console.error('❌ Ошибка при получении ежедневной статистики:', error);
+    res.status(500).json({ error: 'Failed to get daily statistics', details: error.message });
   }
 });
 

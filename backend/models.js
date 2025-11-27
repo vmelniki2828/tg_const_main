@@ -161,6 +161,86 @@ LoyaltyPromoCodeSchema.index({ botId: 1, period: 1, activated: 1 });
 // Индекс для уникальности промокода в рамках периода (разрешаем дублирование между периодами)
 LoyaltyPromoCodeSchema.index({ botId: 1, period: 1, code: 1 }, { unique: true });
 
+// Схема для ежедневной статистики активности
+const DailyActivityStatsSchema = new mongoose.Schema({
+  botId: { type: String, required: true },
+  date: { type: Date, required: true }, // Дата (начало дня в UTC)
+  activeUsers: { type: Number, default: 0 }, // Количество активных пользователей за день
+  startCommandUsers: { type: Number, default: 0 }, // Количество пользователей нажавших /start
+  buttonClickUsers: { type: Number, default: 0 }, // Количество пользователей нажавших хоть 1 кнопку
+  totalButtonClicks: { type: Number, default: 0 }, // Общее количество нажатий кнопок
+  totalCommands: { type: Number, default: 0 }, // Общее количество команд
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+// Схема для отслеживания уникальных пользователей за день (для подсчета уникальных)
+const DailyUserActivitySchema = new mongoose.Schema({
+  botId: { type: String, required: true },
+  date: { type: Date, required: true },
+  userId: { type: Number, required: true },
+  hasStarted: { type: Boolean, default: false }, // Нажал /start
+  hasClickedButton: { type: Boolean, default: false }, // Нажал кнопку
+  lastActivityAt: { type: Date, default: Date.now }
+});
+
+// Уникальный индекс для botId + date + userId
+DailyUserActivitySchema.index({ botId: 1, date: 1, userId: 1 }, { unique: true });
+DailyUserActivitySchema.index({ botId: 1, date: -1 });
+
+// Уникальный индекс для botId + date
+DailyActivityStatsSchema.index({ botId: 1, date: 1 }, { unique: true });
+DailyActivityStatsSchema.index({ botId: 1, date: -1 }); // Для сортировки
+
+// Схема для статистики по блокам
+const BlockStatsSchema = new mongoose.Schema({
+  botId: { type: String, required: true },
+  blockId: { type: String, required: true },
+  blockName: String, // Название блока (для удобства)
+  enterCount: { type: Number, default: 0 }, // Количество входов в блок
+  uniqueUsers: { type: Number, default: 0 }, // Количество уникальных пользователей (обновляется периодически)
+  lastEnteredAt: Date, // Последний вход
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+// Уникальный индекс для botId + blockId
+BlockStatsSchema.index({ botId: 1, blockId: 1 }, { unique: true });
+BlockStatsSchema.index({ botId: 1, enterCount: -1 }); // Для сортировки по популярности
+
+// Схема для статистики по кнопкам
+const ButtonStatsSchema = new mongoose.Schema({
+  botId: { type: String, required: true },
+  blockId: { type: String, required: true },
+  buttonId: { type: String, required: true },
+  buttonText: String, // Текст кнопки (для удобства)
+  clickCount: { type: Number, default: 0 }, // Количество нажатий
+  uniqueUsers: { type: Number, default: 0 }, // Количество уникальных пользователей (обновляется периодически)
+  lastClickedAt: Date, // Последнее нажатие
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+// Уникальный индекс для botId + blockId + buttonId
+ButtonStatsSchema.index({ botId: 1, blockId: 1, buttonId: 1 }, { unique: true });
+ButtonStatsSchema.index({ botId: 1, clickCount: -1 }); // Для сортировки по популярности
+
+// Схема для статистики по путям пользователей
+const UserPathStatsSchema = new mongoose.Schema({
+  botId: { type: String, required: true },
+  fromBlockId: { type: String, required: true }, // Откуда пришел
+  toBlockId: { type: String, required: true }, // Куда попал
+  transitionCount: { type: Number, default: 0 }, // Количество переходов
+  uniqueUsers: { type: Number, default: 0 }, // Количество уникальных пользователей (обновляется периодически)
+  lastTransitionAt: Date, // Последний переход
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+// Уникальный индекс для botId + fromBlockId + toBlockId
+UserPathStatsSchema.index({ botId: 1, fromBlockId: 1, toBlockId: 1 }, { unique: true });
+UserPathStatsSchema.index({ botId: 1, transitionCount: -1 }); // Для сортировки
+
 module.exports = {
   Bot: mongoose.model('Bot', BotSchema),
   User: mongoose.model('User', UserSchema),
@@ -168,5 +248,10 @@ module.exports = {
   PromoCode: mongoose.model('PromoCode', PromoCodeSchema),
   Loyalty: mongoose.model('Loyalty', LoyaltySchema),
   LoyaltyConfig: mongoose.model('LoyaltyConfig', LoyaltyConfigSchema),
-  LoyaltyPromoCode: mongoose.model('LoyaltyPromoCode', LoyaltyPromoCodeSchema)
+  LoyaltyPromoCode: mongoose.model('LoyaltyPromoCode', LoyaltyPromoCodeSchema),
+  DailyActivityStats: mongoose.model('DailyActivityStats', DailyActivityStatsSchema),
+  DailyUserActivity: mongoose.model('DailyUserActivity', DailyUserActivitySchema),
+  BlockStats: mongoose.model('BlockStats', BlockStatsSchema),
+  ButtonStats: mongoose.model('ButtonStats', ButtonStatsSchema),
+  UserPathStats: mongoose.model('UserPathStats', UserPathStatsSchema)
 };
