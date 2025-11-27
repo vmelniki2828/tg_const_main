@@ -298,78 +298,78 @@ function SourceStatistics({ botId }) {
           {isLoading ? (
             <div className="loading">Загрузка статистики...</div>
           ) : statistics ? (
-        <>
-          {/* Общая статистика */}
-          <div className="general-stats">
-            <h3>📈 Общая статистика</h3>
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-label">Всего пользователей</div>
-                <div className="stat-value">{statistics.general.totalUsers}</div>
+            <>
+              {/* Общая статистика */}
+              <div className="general-stats">
+                <h3>📈 Общая статистика</h3>
+                <div className="stats-grid">
+                  <div className="stat-card">
+                    <div className="stat-label">Всего пользователей</div>
+                    <div className="stat-value">{statistics.general.totalUsers}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Активное время</div>
+                    <div className="stat-value">{formatTimeFromHours(statistics.general.totalActiveTime)}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Среднее время на пользователя</div>
+                    <div className="stat-value">{formatTime(statistics.general.avgActiveTime)}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Выдано промокодов</div>
+                    <div className="stat-value">{statistics.general.totalPromoCodes}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Завершено квизов</div>
+                    <div className="stat-value">{statistics.general.totalQuizzes}</div>
+                  </div>
+                </div>
               </div>
-              <div className="stat-card">
-                <div className="stat-label">Активное время</div>
-                <div className="stat-value">{formatTimeFromHours(statistics.general.totalActiveTime)}</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Среднее время на пользователя</div>
-                <div className="stat-value">{formatTime(statistics.general.avgActiveTime)}</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Выдано промокодов</div>
-                <div className="stat-value">{statistics.general.totalPromoCodes}</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Завершено квизов</div>
-                <div className="stat-value">{statistics.general.totalQuizzes}</div>
-              </div>
-            </div>
-          </div>
 
-          {/* Статистика по источникам */}
-          <div className="source-stats">
-            <h3>🔍 Статистика по источникам</h3>
-            <div className="table-container">
-              <table className="sources-table">
-                <thead>
-                  <tr>
-                    <th>Источник</th>
-                    <th>Пользователей</th>
-                    <th>Активное время</th>
-                    <th>Среднее время</th>
-                    <th>Промокоды</th>
-                    <th>Квизы</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {statistics.bySource.map((source, index) => (
-                    <tr key={index}>
-                      <td className="source-name">{source.source}</td>
-                      <td>{source.users}</td>
-                      <td>{formatTimeFromHours(source.activeTimeHours)}</td>
-                      <td>{formatTime(source.avgActiveTime)}</td>
-                      <td>{source.promoCodes}</td>
-                      <td>{source.quizzes}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+              {/* Статистика по источникам */}
+              <div className="source-stats">
+                <h3>🔍 Статистика по источникам</h3>
+                <div className="table-container">
+                  <table className="sources-table">
+                    <thead>
+                      <tr>
+                        <th>Источник</th>
+                        <th>Пользователей</th>
+                        <th>Активное время</th>
+                        <th>Среднее время</th>
+                        <th>Промокоды</th>
+                        <th>Квизы</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statistics.bySource.map((source, index) => (
+                        <tr key={index}>
+                          <td className="source-name">{source.source}</td>
+                          <td>{source.users}</td>
+                          <td>{formatTimeFromHours(source.activeTimeHours)}</td>
+                          <td>{formatTime(source.avgActiveTime)}</td>
+                          <td>{source.promoCodes}</td>
+                          <td>{source.quizzes}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
-          {/* Период */}
-          {statistics.period && (
-            <div className="period-info">
-              <p>
-                Период: {new Date(statistics.period.start).toLocaleDateString('ru-RU')} -{' '}
-                {new Date(statistics.period.end).toLocaleDateString('ru-RU')}
-              </p>
-            </div>
-          )}
-        </>
+              {/* Период */}
+              {statistics.period && (
+                <div className="period-info">
+                  <p>
+                    Период: {new Date(statistics.period.start).toLocaleDateString('ru-RU')} -{' '}
+                    {new Date(statistics.period.end).toLocaleDateString('ru-RU')}
+                  </p>
+                </div>
+              )}
+            </>
           ) : null}
         </>
-      ) : (
+      ) : activeTab === 'users' ? (
         <>
           {/* Фильтры для списка пользователей */}
           <div className="users-filters">
