@@ -4700,7 +4700,6 @@ app.get('/api/statistics/sources/:botId', async (req, res) => {
     Object.values(sourceStats).forEach(stat => {
       stat.avgActiveTime = stat.users > 0 ? Math.round(stat.activeTime / stat.users / 1000 / 60) : 0; // в минутах
       stat.activeTimeHours = Math.round(stat.activeTime / 1000 / 60 / 60 * 100) / 100; // в часах
-      stat.conversionRate = stat.users > 0 ? Math.round((stat.subscribed / stat.users) * 100 * 100) / 100 : 0; // в процентах
     });
     
     // Общая статистика
@@ -4708,8 +4707,6 @@ app.get('/api/statistics/sources/:botId', async (req, res) => {
       totalUsers,
       totalActiveTime: Math.round(totalActiveTime / 1000 / 60 / 60 * 100) / 100, // в часах
       avgActiveTime: totalUsers > 0 ? Math.round(totalActiveTime / totalUsers / 1000 / 60) : 0, // в минутах
-      totalSubscribed,
-      subscriptionRate: totalUsers > 0 ? Math.round((totalSubscribed / totalUsers) * 100 * 100) / 100 : 0,
       totalPromoCodes,
       totalQuizzes
     };
@@ -4950,11 +4947,22 @@ app.post('/api/statistics/export/:botId', async (req, res) => {
       { header: 'Значение', key: 'value', width: 20 }
     ];
     
+    // Функция для форматирования времени из часов в читаемый формат
+    const formatTimeFromHours = (hours) => {
+      if (!hours || hours === 0) {
+        return '00:00';
+      }
+      const totalMinutes = Math.round(hours * 60);
+      const h = Math.floor(totalMinutes / 60);
+      const m = totalMinutes % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    };
+
     generalSheet.addRow({ metric: 'Общее количество пользователей', value: totalUsers });
     generalSheet.addRow({ metric: 'Активных за период', value: totalUsers });
-    generalSheet.addRow({ metric: 'Общее активное время (часы)', value: Math.round(totalActiveTime / 1000 / 60 / 60 * 100) / 100 });
+    const totalActiveTimeHours = Math.round(totalActiveTime / 1000 / 60 / 60 * 100) / 100;
+    generalSheet.addRow({ metric: 'Общее активное время', value: formatTimeFromHours(totalActiveTimeHours) });
     generalSheet.addRow({ metric: 'Среднее время на пользователя (минуты)', value: totalUsers > 0 ? Math.round(totalActiveTime / totalUsers / 1000 / 60) : 0 });
-    generalSheet.addRow({ metric: 'Конверсия в подписку (%)', value: totalUsers > 0 ? Math.round((totalSubscribed / totalUsers) * 100 * 100) / 100 : 0 });
     generalSheet.addRow({ metric: 'Выдано промокодов', value: totalPromoCodes });
     generalSheet.addRow({ metric: 'Завершено квизов', value: totalQuizzes });
     generalSheet.addRow({ metric: 'Период', value: `${start.toLocaleDateString('ru-RU')} - ${end.toLocaleDateString('ru-RU')}` });
@@ -4964,21 +4972,20 @@ app.post('/api/statistics/export/:botId', async (req, res) => {
     sourcesSheet.columns = [
       { header: 'Источник', key: 'source', width: 25 },
       { header: 'Пользователей', key: 'users', width: 15 },
-      { header: 'Активное время (часы)', key: 'activeTime', width: 20 },
+      { header: 'Активное время', key: 'activeTime', width: 30 },
       { header: 'Среднее время (минуты)', key: 'avgTime', width: 20 },
-      { header: 'Конверсия (%)', key: 'conversion', width: 15 },
       { header: 'Промокоды', key: 'promoCodes', width: 15 },
       { header: 'Квизы', key: 'quizzes', width: 15 }
     ];
     
     const sourceStatsArray = Object.values(sourceStats).sort((a, b) => b.users - a.users);
     for (const stat of sourceStatsArray) {
+      const activeTimeHours = Math.round(stat.activeTime / 1000 / 60 / 60 * 100) / 100;
       sourcesSheet.addRow({
         source: stat.source,
         users: stat.users,
-        activeTime: Math.round(stat.activeTime / 1000 / 60 / 60 * 100) / 100,
+        activeTime: formatTimeFromHours(activeTimeHours),
         avgTime: stat.users > 0 ? Math.round(stat.activeTime / stat.users / 1000 / 60) : 0,
-        conversion: stat.users > 0 ? Math.round((stat.subscribed / stat.users) * 100 * 100) / 100 : 0,
         promoCodes: stat.promoCodes,
         quizzes: stat.quizzes
       });
@@ -4990,7 +4997,7 @@ app.post('/api/statistics/export/:botId', async (req, res) => {
       { header: 'Дата', key: 'date', width: 15 },
       { header: 'Источник', key: 'source', width: 25 },
       { header: 'Новые пользователи', key: 'newUsers', width: 18 },
-      { header: 'Активное время (часы)', key: 'activeTime', width: 20 },
+      { header: 'Активное время', key: 'activeTime', width: 30 },
       { header: 'Промокоды', key: 'promoCodes', width: 15 },
       { header: 'Квизы', key: 'quizzes', width: 15 }
     ];
@@ -5048,11 +5055,12 @@ app.post('/api/statistics/export/:botId', async (req, res) => {
     
     const dailyStatsArray = Object.values(dailyStats).sort((a, b) => a.date.localeCompare(b.date));
     for (const stat of dailyStatsArray) {
+      const activeTimeHours = Math.round(stat.activeTime / 1000 / 60 / 60 * 100) / 100;
       dailySheet.addRow({
         date: new Date(stat.date).toLocaleDateString('ru-RU'),
         source: stat.source,
         newUsers: stat.newUsers,
-        activeTime: Math.round(stat.activeTime / 1000 / 60 / 60 * 100) / 100,
+        activeTime: formatTimeFromHours(activeTimeHours),
         promoCodes: stat.promoCodes,
         quizzes: stat.quizzes
       });

@@ -129,6 +129,16 @@ function SourceStatistics({ botId }) {
     return `${hours} ч. ${mins} мин.`;
   };
 
+  const formatTimeFromHours = (hours) => {
+    if (!hours || hours === 0) {
+      return '00:00';
+    }
+    const totalMinutes = Math.round(hours * 60);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('ru-RU', {
@@ -207,15 +217,11 @@ function SourceStatistics({ botId }) {
               </div>
               <div className="stat-card">
                 <div className="stat-label">Активное время</div>
-                <div className="stat-value">{statistics.general.totalActiveTime.toFixed(2)} ч.</div>
+                <div className="stat-value">{formatTimeFromHours(statistics.general.totalActiveTime)}</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">Среднее время на пользователя</div>
                 <div className="stat-value">{formatTime(statistics.general.avgActiveTime)}</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Конверсия в подписку</div>
-                <div className="stat-value">{statistics.general.subscriptionRate.toFixed(2)}%</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">Выдано промокодов</div>
@@ -239,7 +245,6 @@ function SourceStatistics({ botId }) {
                     <th>Пользователей</th>
                     <th>Активное время</th>
                     <th>Среднее время</th>
-                    <th>Конверсия</th>
                     <th>Промокоды</th>
                     <th>Квизы</th>
                   </tr>
@@ -249,9 +254,8 @@ function SourceStatistics({ botId }) {
                     <tr key={index}>
                       <td className="source-name">{source.source}</td>
                       <td>{source.users}</td>
-                      <td>{source.activeTimeHours.toFixed(2)} ч.</td>
+                      <td>{formatTimeFromHours(source.activeTimeHours)}</td>
                       <td>{formatTime(source.avgActiveTime)}</td>
-                      <td>{source.conversionRate.toFixed(2)}%</td>
                       <td>{source.promoCodes}</td>
                       <td>{source.quizzes}</td>
                     </tr>
@@ -338,7 +342,7 @@ function SourceStatistics({ botId }) {
                         <td>@{user.username || 'N/A'}</td>
                         <td>{user.firstName || ''} {user.lastName || ''}</td>
                         <td className="source-name">{user.source}</td>
-                        <td>{user.activeTimeHours.toFixed(2)} ч.</td>
+                        <td>{formatTimeFromHours(user.activeTimeHours)}</td>
                         <td>{user.sessions}</td>
                         <td>{user.promoCodes}</td>
                         <td>{user.quizzes}</td>
