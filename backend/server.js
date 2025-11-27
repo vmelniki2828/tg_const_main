@@ -39,6 +39,275 @@ function getEffectiveSubscriptionTime(user) {
   return Math.max(0, now - loyaltyStartTime - (user.pausedTime || 0));
 }
 
+// Функция для автоматической выдачи промокодов пользователям, которые достигли периода
+async function distributePromoCodesToEligibleUsers(botId, period) {
+  const distributionResults = {
+    totalUsersChecked: 0,
+    usersEligible: 0,
+    promoCodesDistributed: 0,
+    errors: 0,
+    details: []
+  };
+  
+  try {
+    // Получаем всех пользователей бота
+    const users = await User.find({ botId });
+    distributionResults.totalUsersChecked = users.length;
+    
+    console.log(`🎁 [AUTO_DISTRIBUTE] Проверяем ${users.length} пользователей`);
+    
+    // Определяем время для периода
+    const periodTimes = {
+      '1m': 1 * 60 * 1000,
+      '24h': 24 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+      '90d': 90 * 24 * 60 * 60 * 1000,
+      '180d': 180 * 24 * 60 * 60 * 1000,
+      '360d': 360 * 24 * 60 * 60 * 1000
+    };
+    
+    const periodTime = periodTimes[period];
+    if (!periodTime) {
+      console.log(`⚠️ [AUTO_DISTRIBUTE] Неизвестный период: ${period}`);
+      return distributionResults;
+    }
+    
+    // Проверяем каждого пользователя
+    for (const user of users) {
+      try {
+        // Пропускаем пользователей без времени начала лояльности
+        if (!user.loyaltyStartedAt) {
+          continue;
+        }
+        
+        // Вычисляем эффективное время подписки
+        const effectiveTime = getEffectiveSubscriptionTime(user);
+        
+        // Проверяем, прошел ли пользователь этот период
+        if (effectiveTime >= periodTime) {
+          // Проверяем, не получил ли уже промокод за этот период
+          const existingPromoCode = await LoyaltyPromoCode.findOne({
+            botId,
+            activatedBy: user.userId,
+            period: period,
+            activated: true
+          });
+          
+          // Проверяем, не отмечена ли уже награда
+          const isRewarded = user.loyaltyRewards && user.loyaltyRewards[period];
+          
+          // Выдаем промокод если:
+          // 1. Пользователь достиг периода
+          // 2. Промокод еще не выдан
+          // 3. Период был помечен как обработанный (isRewarded = true) - значит раньше промокодов не было
+          //    ИЛИ период не обработан вообще (!isRewarded)
+          if (!existingPromoCode) {
+            // Ищем доступный промокод
+            const availablePromoCode = await LoyaltyPromoCode.findOne({
+              botId,
+              period: period,
+              activated: false
+            });
+            
+            if (availablePromoCode) {
+              // Активируем промокод атомарно
+              const activatedPromoCode = await LoyaltyPromoCode.findOneAndUpdate(
+                { _id: availablePromoCode._id },
+                { 
+                  activated: true, 
+                  activatedBy: user.userId, 
+                  activatedAt: new Date() 
+                },
+                { new: true }
+              );
+              
+              // Проверяем на дубликаты после активации
+              const duplicateCheck = await LoyaltyPromoCode.findOne({
+                botId,
+                activatedBy: user.userId,
+                period: period,
+                activated: true,
+                _id: { $ne: activatedPromoCode._id }
+              });
+              
+              if (duplicateCheck) {
+                // Найден дубликат - деактивируем только что активированный
+                await LoyaltyPromoCode.updateOne(
+                  { _id: activatedPromoCode._id },
+                  { 
+                    activated: false, 
+                    activatedBy: null, 
+                    activatedAt: null 
+                  }
+                );
+                console.log(`⚠️ [AUTO_DISTRIBUTE] Обнаружен дубликат для пользователя ${user.userId}, деактивирован новый промокод`);
+                continue;
+              }
+              
+              // Отмечаем награду как выданную в User и Loyalty
+              await User.updateOne(
+                { botId, userId: user.userId },
+                { $set: { [`loyaltyRewards.${period}`]: true } }
+              );
+              
+              // Обновляем Loyalty запись
+              const loyaltyRecord = await Loyalty.findOne({ botId, userId: user.userId });
+              if (loyaltyRecord) {
+                await Loyalty.updateOne(
+                  { botId, userId: user.userId },
+                  { $set: { [`rewards.${period}`]: true } }
+                );
+              } else {
+                await Loyalty.create({
+                  botId,
+                  userId: user.userId,
+                  rewards: { [period]: true }
+                });
+              }
+              
+              // Отправляем сообщение пользователю
+              try {
+                const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
+                const config = loyaltyConfig?.messages?.[period];
+                let message = config?.message || `🎉 Поздравляем! Вы с нами уже ${period === '1m' ? '1 минуту' : period === '24h' ? '24 часа' : period === '7d' ? '7 дней' : period === '30d' ? '30 дней' : period === '90d' ? '90 дней' : period === '180d' ? '180 дней' : '360 дней'}! 🎉`;
+                
+                // Форматируем время
+                const formatTime = (effectiveTime) => {
+                  const days = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
+                  const hours = Math.floor((effectiveTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                  const minutes = Math.floor((effectiveTime % (1000 * 60 * 60)) / (1000 * 60));
+                  
+                  const parts = [];
+                  if (days > 0) parts.push(`${days} дн.`);
+                  if (hours > 0) parts.push(`${hours} час.`);
+                  if (minutes > 0) parts.push(`${minutes} мин.`);
+                  
+                  return parts.length > 0 ? parts.join(' ') : 'менее минуты';
+                };
+                
+                const currentTimeFormatted = formatTime(effectiveTime);
+                message = `📅 Вы с нами: ${currentTimeFormatted}\n\n${message}`;
+                message += `\n\n🎁 Ваш промокод:`;
+                message += `\n🎫 \`${activatedPromoCode.code}\``;
+                message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
+                
+                // Отправляем через Telegram API
+                const Bot = require('./models').Bot;
+                const botModel = await Bot.findOne({ id: botId }, { token: 1 }).lean();
+                
+                if (botModel && botModel.token) {
+                  const https = require('https');
+                  const url = require('url');
+                  
+                  const apiUrl = `https://api.telegram.org/bot${botModel.token}/sendMessage`;
+                  const postData = JSON.stringify({
+                    chat_id: user.userId,
+                    text: message,
+                    parse_mode: 'Markdown'
+                  });
+                  
+                  const parsedUrl = url.parse(apiUrl);
+                  const options = {
+                    hostname: parsedUrl.hostname,
+                    port: parsedUrl.port || 443,
+                    path: parsedUrl.path,
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Content-Length': Buffer.byteLength(postData)
+                    }
+                  };
+                  
+                  await new Promise((resolve, reject) => {
+                    const req = https.request(options, (res) => {
+                      let data = '';
+                      res.on('data', (chunk) => { data += chunk; });
+                      res.on('end', () => {
+                        if (res.statusCode === 200) {
+                          const result = JSON.parse(data);
+                          if (result.ok) {
+                            console.log(`✅ [AUTO_DISTRIBUTE] Сообщение отправлено пользователю ${user.userId}`);
+                            resolve();
+                          } else {
+                            console.error(`⚠️ [AUTO_DISTRIBUTE] Ошибка API: ${JSON.stringify(result)}`);
+                            reject(new Error(`API Error: ${JSON.stringify(result)}`));
+                          }
+                        } else {
+                          reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                        }
+                      });
+                    });
+                    req.on('error', (err) => {
+                      console.error(`⚠️ [AUTO_DISTRIBUTE] Ошибка отправки сообщения:`, err);
+                      // Не прерываем процесс, просто логируем
+                    });
+                    req.write(postData);
+                    req.end();
+                  });
+                }
+              } catch (messageError) {
+                console.error(`⚠️ [AUTO_DISTRIBUTE] Ошибка отправки сообщения пользователю ${user.userId}:`, messageError);
+                // Промокод уже активирован, продолжаем
+              }
+              
+              distributionResults.usersEligible++;
+              distributionResults.promoCodesDistributed++;
+              
+              distributionResults.details.push({
+                userId: user.userId,
+                username: user.username,
+                firstName: user.firstName,
+                promoCode: activatedPromoCode.code,
+                effectiveTimeMinutes: Math.floor(effectiveTime / (1000 * 60)),
+                status: 'distributed'
+              });
+              
+              console.log(`✅ [AUTO_DISTRIBUTE] Выдан промокод ${activatedPromoCode.code} пользователю ${user.userId} (${user.username || user.firstName})`);
+            } else {
+              console.log(`⚠️ [AUTO_DISTRIBUTE] Нет доступных промокодов для пользователя ${user.userId}`);
+              
+              distributionResults.details.push({
+                userId: user.userId,
+                username: user.username,
+                firstName: user.firstName,
+                effectiveTimeMinutes: Math.floor(effectiveTime / (1000 * 60)),
+                status: 'no_promocode_available'
+              });
+            }
+          } else if (existingPromoCode) {
+            console.log(`ℹ️ [AUTO_DISTRIBUTE] Пользователь ${user.userId} уже имеет промокод за период ${period}`);
+          }
+        }
+        
+      } catch (userError) {
+        console.error(`❌ [AUTO_DISTRIBUTE] Ошибка обработки пользователя ${user.userId}:`, userError);
+        distributionResults.errors++;
+        
+        distributionResults.details.push({
+          userId: user.userId,
+          username: user.username,
+          firstName: user.firstName,
+          status: 'error',
+          error: userError.message
+        });
+      }
+    }
+    
+    console.log(`🎁 [AUTO_DISTRIBUTE] Автоматическая выдача завершена:`);
+    console.log(`   - Проверено пользователей: ${distributionResults.totalUsersChecked}`);
+    console.log(`   - Подходящих пользователей: ${distributionResults.usersEligible}`);
+    console.log(`   - Выдано промокодов: ${distributionResults.promoCodesDistributed}`);
+    console.log(`   - Ошибок: ${distributionResults.errors}`);
+    
+  } catch (distributionError) {
+    console.error(`❌ [AUTO_DISTRIBUTE] Ошибка автоматической выдачи:`, distributionError);
+    distributionResults.errors++;
+  }
+  
+  return distributionResults;
+}
+
 // Загружаем переменные окружения
 try {
   require('dotenv').config();
@@ -1347,6 +1616,11 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
       });
     }
     
+    // АВТОМАТИЧЕСКАЯ ВЫДАЧА ПРОМОКОДОВ ПОЛЬЗОВАТЕЛЯМ (после загрузки)
+    console.log(`🎁 [AUTO_DISTRIBUTE] Начинаем автоматическую выдачу промокодов для периода ${period}`);
+    
+    const distributionResults = await distributePromoCodesToEligibleUsers(botId, period);
+    
     res.json({
       success: true,
       message: `Успешно добавлено ${savedCount} новых промокодов для периода ${period}${loyaltyDuplicates.length > 0 ? `, пропущено дубликатов: ${loyaltyDuplicates.length}` : ''}`,
@@ -1363,7 +1637,8 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
         skippedCodesCount: loyaltySkippedCodes.length,
         duplicatesCount: loyaltyDuplicates.length,
         successRate: Math.round((savedCount / promoCodes.length) * 100)
-      }
+      },
+      autoDistribution: distributionResults
     });
     
   } catch (error) {
@@ -4293,146 +4568,10 @@ app.post('/api/loyalty-promocodes/:botId/:period', loyaltyPromoCodeUpload.single
     
     console.log(`[LOYALTY_PROMO] Сохранено ${savedCount} промокодов в MongoDB, пропущено ${saveSkippedCount}`);
     
-    // АВТОМАТИЧЕСКАЯ ВЫДАЧА ПРОМОКОДОВ ПОЛЬЗОВАТЕЛЯМ
+    // АВТОМАТИЧЕСКАЯ ВЫДАЧА ПРОМОКОДОВ ПОЛЬЗОВАТЕЛЯМ (после загрузки)
     console.log(`🎁 [AUTO_DISTRIBUTE] Начинаем автоматическую выдачу промокодов для периода ${period}`);
     
-    const distributionResults = {
-      totalUsersChecked: 0,
-      usersEligible: 0,
-      promoCodesDistributed: 0,
-      errors: 0,
-      details: []
-    };
-    
-    try {
-      // Получаем всех пользователей бота
-      const users = await User.find({ botId });
-      distributionResults.totalUsersChecked = users.length;
-      
-      console.log(`🎁 [AUTO_DISTRIBUTE] Проверяем ${users.length} пользователей`);
-      
-      // Определяем время для периода
-      const periodTimes = {
-        '1m': 1 * 60 * 1000,
-        '24h': 24 * 60 * 60 * 1000,
-        '7d': 7 * 24 * 60 * 60 * 1000,
-        '30d': 30 * 24 * 60 * 60 * 1000,
-        '90d': 90 * 24 * 60 * 60 * 1000,
-        '180d': 180 * 24 * 60 * 60 * 1000,
-        '360d': 360 * 24 * 60 * 60 * 1000
-      };
-      
-      const periodTime = periodTimes[period];
-      if (!periodTime) {
-        console.log(`⚠️ [AUTO_DISTRIBUTE] Неизвестный период: ${period}`);
-      } else {
-        // Проверяем каждого пользователя
-        for (const user of users) {
-          try {
-            // Пропускаем пользователей без времени начала лояльности
-            if (!user.loyaltyStartedAt) {
-              continue;
-            }
-            
-            // Вычисляем эффективное время подписки
-            const effectiveTime = getEffectiveSubscriptionTime(user);
-            
-            // Проверяем, прошел ли пользователь этот период
-            if (effectiveTime >= periodTime) {
-              // Проверяем, не получил ли уже промокод за этот период
-              const existingPromoCode = await LoyaltyPromoCode.findOne({
-                botId,
-                activatedBy: user.userId,
-                period: period,
-                activated: true
-              });
-              
-              if (!existingPromoCode) {
-                // Проверяем, не отмечена ли уже награда
-                const isRewarded = user.loyaltyRewards[period];
-                
-                if (!isRewarded) {
-                  // Ищем доступный промокод
-                  const availablePromoCode = await LoyaltyPromoCode.findOne({
-                    botId,
-                    period: period,
-                    activated: false
-                  });
-                  
-                  if (availablePromoCode) {
-                    // Активируем промокод
-                    await LoyaltyPromoCode.updateOne(
-                      { _id: availablePromoCode._id },
-                      { 
-                        activated: true, 
-                        activatedBy: user.userId, 
-                        activatedAt: new Date() 
-                      }
-                    );
-                    
-                    // Отмечаем награду как выданную
-                    await User.updateOne(
-                      { botId, userId: user.userId },
-                      { $set: { [`loyaltyRewards.${period}`]: true } }
-                    );
-                    
-                    distributionResults.usersEligible++;
-                    distributionResults.promoCodesDistributed++;
-                    
-                    distributionResults.details.push({
-                      userId: user.userId,
-                      username: user.username,
-                      firstName: user.firstName,
-                      promoCode: availablePromoCode.code,
-                      effectiveTimeMinutes: Math.floor(effectiveTime / (1000 * 60)),
-                      status: 'distributed'
-                    });
-                    
-                    console.log(`✅ [AUTO_DISTRIBUTE] Выдан промокод ${availablePromoCode.code} пользователю ${user.userId} (${user.username || user.firstName})`);
-                  } else {
-                    console.log(`⚠️ [AUTO_DISTRIBUTE] Нет доступных промокодов для пользователя ${user.userId}`);
-                    
-                    distributionResults.details.push({
-                      userId: user.userId,
-                      username: user.username,
-                      firstName: user.firstName,
-                      effectiveTimeMinutes: Math.floor(effectiveTime / (1000 * 60)),
-                      status: 'no_promocode_available'
-                    });
-                  }
-                } else {
-                  console.log(`ℹ️ [AUTO_DISTRIBUTE] Пользователь ${user.userId} уже получил награду за период ${period}`);
-                }
-              } else {
-                console.log(`ℹ️ [AUTO_DISTRIBUTE] Пользователь ${user.userId} уже имеет промокод за период ${period}`);
-              }
-            }
-            
-          } catch (userError) {
-            console.error(`❌ [AUTO_DISTRIBUTE] Ошибка обработки пользователя ${user.userId}:`, userError);
-            distributionResults.errors++;
-            
-            distributionResults.details.push({
-              userId: user.userId,
-              username: user.username,
-              firstName: user.firstName,
-              status: 'error',
-              error: userError.message
-            });
-          }
-        }
-      }
-      
-      console.log(`🎁 [AUTO_DISTRIBUTE] Автоматическая выдача завершена:`);
-      console.log(`   - Проверено пользователей: ${distributionResults.totalUsersChecked}`);
-      console.log(`   - Подходящих пользователей: ${distributionResults.usersEligible}`);
-      console.log(`   - Выдано промокодов: ${distributionResults.promoCodesDistributed}`);
-      console.log(`   - Ошибок: ${distributionResults.errors}`);
-      
-    } catch (distributionError) {
-      console.error(`❌ [AUTO_DISTRIBUTE] Ошибка автоматической выдачи:`, distributionError);
-      distributionResults.errors++;
-    }
+    const distributionResults = await distributePromoCodesToEligibleUsers(botId, period);
     
     res.json({
       success: true,
