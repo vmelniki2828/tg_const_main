@@ -5,7 +5,8 @@ const {
   trackStartCommand,
   trackButtonClick,
   trackBlockEnter,
-  trackBlockTransition
+  trackBlockTransition,
+  trackBlockEnterWithPath
 } = require('./statisticsUtils');
 const mongoose = require('mongoose');
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://157.230.20.252:27017/tg_const_main';
@@ -1623,6 +1624,7 @@ function setupBotHandlers(bot, blocks, connections) {
           await trackStartCommand(botId, userId);
           await trackActiveUser(botId, userId);
           await trackBlockEnter(botId, userId, 'start', 'Стартовый блок');
+          await trackBlockEnterWithPath(botId, userId, 'start', 'Стартовый блок');
         } catch (error) {
           console.error('[STATS] Ошибка при отслеживании /start:', error);
         }
@@ -1792,7 +1794,7 @@ function setupBotHandlers(bot, blocks, connections) {
             setImmediate(async () => {
               try {
                 await trackButtonClick(botId, userId, currentBlockId, 'back', '⬅️ Назад');
-                await trackBlockTransition(botId, userId, currentBlockId, previousBlockId);
+                await trackBlockTransition(botId, userId, currentBlockId, previousBlockId, 'back', '⬅️ Назад', previousBlock.message?.substring(0, 50) || '');
                 await trackBlockEnter(botId, userId, previousBlockId, previousBlock.message?.substring(0, 50) || '');
                 await trackActiveUser(botId, userId);
               } catch (error) {
@@ -2097,7 +2099,7 @@ function setupBotHandlers(bot, blocks, connections) {
             setImmediate(async () => {
               try {
                 await trackButtonClick(botId, userId, currentBlockId, 'back', '⬅️ Назад');
-                await trackBlockTransition(botId, userId, currentBlockId, previousBlockId);
+                await trackBlockTransition(botId, userId, currentBlockId, previousBlockId, 'back', '⬅️ Назад', prevBlock.message?.substring(0, 50) || '');
                 await trackBlockEnter(botId, userId, previousBlockId, prevBlock.message?.substring(0, 50) || '');
                 await trackActiveUser(botId, userId);
               } catch (error) {
@@ -2182,7 +2184,7 @@ function setupBotHandlers(bot, blocks, connections) {
       setImmediate(async () => {
         try {
           await trackButtonClick(botId, userId, currentBlockId, button.id, button.text);
-          await trackBlockTransition(botId, userId, currentBlockId, nextBlockId);
+          await trackBlockTransition(botId, userId, currentBlockId, nextBlockId, button.id, button.text, nextBlock.message?.substring(0, 50) || '');
           await trackBlockEnter(botId, userId, nextBlockId, nextBlock.message?.substring(0, 50) || '');
           await trackActiveUser(botId, userId);
         } catch (error) {

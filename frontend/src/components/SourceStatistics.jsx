@@ -18,7 +18,9 @@ function SourceStatistics({ botId }) {
   const [activeUsersData, setActiveUsersData] = useState(null);
   const [popularBlocks, setPopularBlocks] = useState(null);
   const [popularButtons, setPopularButtons] = useState(null);
-  const [userPaths, setUserPaths] = useState(null);
+  const [userPath, setUserPath] = useState(null);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [userPathSearch, setUserPathSearch] = useState('');
   const [dailyStats, setDailyStats] = useState(null);
   const [activePeriod, setActivePeriod] = useState('day'); // day, week, month
 
@@ -34,9 +36,8 @@ function SourceStatistics({ botId }) {
       } else if (activeTab === 'popular') {
         loadPopularBlocks();
         loadPopularButtons();
-      } else if (activeTab === 'paths') {
-        loadUserPaths();
       }
+      // Для вкладки 'paths' загрузка происходит только при поиске пользователя
     }
   }, [botId, startDate, endDate, activeTab, usersPage, usersSource, usersSearch, activePeriod]);
 
@@ -212,15 +213,30 @@ function SourceStatistics({ botId }) {
     }
   };
 
-  const loadUserPaths = async () => {
+  const loadUserPath = async (userId) => {
+    if (!userId) {
+      setUserPath(null);
+      return;
+    }
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/statistics/user-paths/${botId}?limit=30`);
-      if (!response.ok) throw new Error('Не удалось загрузить пути пользователей');
+      setIsLoadingUsers(true);
+      const response = await fetch(`${config.API_BASE_URL}/api/statistics/user-path/${botId}/${userId}?limit=200`);
+      if (!response.ok) throw new Error('Не удалось загрузить маршрут пользователя');
       const data = await response.json();
-      setUserPaths(data);
+      setUserPath(data);
     } catch (err) {
-      console.error('Error loading user paths:', err);
+      console.error('Error loading user path:', err);
       setError(err.message);
+      setUserPath(null);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  const handleUserPathSearch = () => {
+    if (userPathSearch.trim()) {
+      setSelectedUserId(userPathSearch.trim());
+      loadUserPath(userPathSearch.trim());
     }
   };
 
@@ -597,37 +613,90 @@ function SourceStatistics({ botId }) {
       ) : activeTab === 'paths' ? (
         <>
           <div className="paths-stats">
-            <h3>🛤️ Пути пользователей</h3>
+            <h3>🛤️ Маршрут пользователя</h3>
             <p style={{ marginBottom: '20px', color: '#666' }}>
-              Наиболее популярные переходы между блоками
+              Выберите пользователя для просмотра его маршрута по боту
             </p>
             
-            {userPaths && (
-              <div className="table-container">
-                <table className="sources-table">
-                  <thead>
-                    <tr>
-                      <th>Откуда</th>
-                      <th>Куда</th>
-                      <th>Переходов</th>
-                      <th>Уникальных пользователей</th>
-                      <th>Последний переход</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {userPaths.paths.map((path, index) => (
-                      <tr key={index}>
-                        <td>{path.fromBlockId}</td>
-                        <td>{path.toBlockId}</td>
-                        <td>{path.transitionCount}</td>
-                        <td>{path.uniqueUsers}</td>
-                        <td>{path.lastTransitionAt ? formatDate(path.lastTransitionAt) : 'N/A'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className="user-path-search" style={{ marginBottom: '20px' }}>
+              <div className="filter-group" style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                  <label>User ID:</label>
+                  <input
+                    type="text"
+                    placeholder="Введите User ID"
+                    value={userPathSearch}
+                    onChange={(e) => setUserPathSearch(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleUserPathSearch()}
+                    className="search-input"
+                  />
+                </div>
+                <button
+                  onClick={handleUserPathSearch}
+                  className="export-button"
+                  style={{ padding: '8px 20px' }}
+                >
+                  Поиск
+                </button>
               </div>
-            )}
+            </div>
+
+            {isLoadingUsers ? (
+              <div className="loading">Загрузка маршрута...</div>
+            ) : userPath ? (
+              <>
+                <div className="user-path-info" style={{ marginBottom: '20px', padding: '15px', background: '#f5f5f5', borderRadius: '8px' }}>
+                  <h4>Информация о пользователе</h4>
+                  <p><strong>User ID:</strong> {userPath.userId}</p>
+                  <p><strong>Username:</strong> @{userPath.username}</p>
+                  <p><strong>Имя:</strong> {userPath.firstName} {userPath.lastName}</p>
+                  <p><strong>Всего событий:</strong> {userPath.totalEvents}</p>
+                  <p><strong>Сессий:</strong> {userPath.sessions.length}</p>
+                </div>
+
+                {userPath.sessions.map((session, sessionIndex) => (
+                  <div key={sessionIndex} className="session-path" style={{ marginBottom: '30px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px' }}>
+                    <h4>Сессия {sessionIndex + 1}</h4>
+                    <p style={{ color: '#666', fontSize: '14px' }}>
+                      Начало: {formatDate(session.startTime)} | 
+                      Конец: {formatDate(session.endTime)} | 
+                      Длительность: {Math.round(session.duration / 1000 / 60)} мин.
+                    </p>
+                    <div className="path-visualization" style={{ marginTop: '15px' }}>
+                      {session.events.map((event, eventIndex) => (
+                        <div 
+                          key={eventIndex} 
+                          style={{ 
+                            marginBottom: '10px', 
+                            padding: '10px', 
+                            background: event.action === 'enter' ? '#e8f5e9' : '#fff3e0',
+                            borderRadius: '4px',
+                            borderLeft: `4px solid ${event.action === 'enter' ? '#4caf50' : '#ff9800'}`
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <strong>{event.action === 'enter' ? '→ Вход' : '← Выход'}</strong> в блок: <strong>{event.blockName}</strong>
+                              {event.previousBlockId && (
+                                <span style={{ color: '#666' }}> (из {event.previousBlockId})</span>
+                              )}
+                            </div>
+                            <span style={{ color: '#666', fontSize: '12px' }}>{formatDate(event.timestamp)}</span>
+                          </div>
+                          {event.buttonText && (
+                            <div style={{ marginTop: '5px', fontSize: '14px', color: '#666' }}>
+                              Кнопка: {event.buttonText}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </>
+            ) : selectedUserId ? (
+              <div className="error-message">Маршрут не найден для пользователя {selectedUserId}</div>
+            ) : null}
           </div>
         </>
       ) : null}

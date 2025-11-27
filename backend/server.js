@@ -17,7 +17,7 @@ const {
   DailyActivityStats,
   BlockStats,
   ButtonStats,
-  UserPathStats
+  UserNavigationPath
 } = require('./models');
 
 // Функция для вычисления эффективного времени подписки (копия из botProcess.js)
@@ -4979,30 +4979,69 @@ app.get('/api/statistics/popular-buttons/:botId', async (req, res) => {
   }
 });
 
-// Получение путей пользователей
-app.get('/api/statistics/user-paths/:botId', async (req, res) => {
+// Получение маршрута конкретного пользователя
+app.get('/api/statistics/user-path/:botId/:userId', async (req, res) => {
   try {
-    const { botId } = req.params;
-    const { limit = 20 } = req.query;
+    const { botId, userId } = req.params;
+    const { limit = 100 } = req.query;
     
-    const paths = await UserPathStats.find({ botId })
-      .sort({ transitionCount: -1 })
+    const user = await User.findOne({ botId, userId: parseInt(userId) });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Получаем маршрут пользователя, отсортированный по времени
+    const navigationPath = await UserNavigationPath.find({ 
+      botId, 
+      userId: parseInt(userId) 
+    })
+      .sort({ timestamp: 1 })
       .limit(parseInt(limit))
       .lean();
     
+    // Группируем по сессиям
+    const sessions = {};
+    navigationPath.forEach(path => {
+      if (!sessions[path.sessionId]) {
+        sessions[path.sessionId] = {
+          sessionId: path.sessionId,
+          startTime: path.timestamp,
+          endTime: path.timestamp,
+          events: []
+        };
+      }
+      sessions[path.sessionId].events.push({
+        blockId: path.blockId,
+        blockName: path.blockName || path.blockId,
+        action: path.action,
+        buttonId: path.buttonId,
+        buttonText: path.buttonText,
+        previousBlockId: path.previousBlockId,
+        timestamp: path.timestamp
+      });
+      if (path.timestamp < sessions[path.sessionId].startTime) {
+        sessions[path.sessionId].startTime = path.timestamp;
+      }
+      if (path.timestamp > sessions[path.sessionId].endTime) {
+        sessions[path.sessionId].endTime = path.timestamp;
+      }
+    });
+    
     res.json({
       success: true,
-      paths: paths.map(p => ({
-        fromBlockId: p.fromBlockId,
-        toBlockId: p.toBlockId,
-        transitionCount: p.transitionCount,
-        uniqueUsers: p.uniqueUsers,
-        lastTransitionAt: p.lastTransitionAt
+      userId: parseInt(userId),
+      username: user.username || 'N/A',
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      totalEvents: navigationPath.length,
+      sessions: Object.values(sessions).map(session => ({
+        ...session,
+        duration: new Date(session.endTime) - new Date(session.startTime)
       }))
     });
   } catch (error) {
-    console.error('❌ Ошибка при получении путей пользователей:', error);
-    res.status(500).json({ error: 'Failed to get user paths', details: error.message });
+    console.error('❌ Ошибка при получении маршрута пользователя:', error);
+    res.status(500).json({ error: 'Failed to get user path', details: error.message });
   }
 });
 

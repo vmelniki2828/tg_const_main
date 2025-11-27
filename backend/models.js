@@ -225,21 +225,23 @@ const ButtonStatsSchema = new mongoose.Schema({
 ButtonStatsSchema.index({ botId: 1, blockId: 1, buttonId: 1 }, { unique: true });
 ButtonStatsSchema.index({ botId: 1, clickCount: -1 }); // Для сортировки по популярности
 
-// Схема для статистики по путям пользователей
-const UserPathStatsSchema = new mongoose.Schema({
+// Схема для хранения индивидуальных маршрутов пользователей
+const UserNavigationPathSchema = new mongoose.Schema({
   botId: { type: String, required: true },
-  fromBlockId: { type: String, required: true }, // Откуда пришел
-  toBlockId: { type: String, required: true }, // Куда попал
-  transitionCount: { type: Number, default: 0 }, // Количество переходов
-  uniqueUsers: { type: Number, default: 0 }, // Количество уникальных пользователей (обновляется периодически)
-  lastTransitionAt: Date, // Последний переход
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  userId: { type: Number, required: true },
+  blockId: { type: String, required: true }, // ID блока
+  blockName: String, // Название блока (для удобства)
+  action: { type: String, enum: ['enter', 'exit'], default: 'enter' }, // Вход или выход
+  buttonId: String, // ID кнопки, по которой был переход (если есть)
+  buttonText: String, // Текст кнопки (для удобства)
+  previousBlockId: String, // Предыдущий блок (откуда пришел)
+  timestamp: { type: Date, default: Date.now }, // Время события
+  sessionId: String // ID сессии для группировки событий в рамках одной сессии
 });
 
-// Уникальный индекс для botId + fromBlockId + toBlockId
-UserPathStatsSchema.index({ botId: 1, fromBlockId: 1, toBlockId: 1 }, { unique: true });
-UserPathStatsSchema.index({ botId: 1, transitionCount: -1 }); // Для сортировки
+// Индексы для быстрого поиска
+UserNavigationPathSchema.index({ botId: 1, userId: 1, timestamp: -1 }); // Для получения маршрута пользователя
+UserNavigationPathSchema.index({ botId: 1, userId: 1, sessionId: 1 }); // Для группировки по сессиям
 
 module.exports = {
   Bot: mongoose.model('Bot', BotSchema),
@@ -253,5 +255,5 @@ module.exports = {
   DailyUserActivity: mongoose.model('DailyUserActivity', DailyUserActivitySchema),
   BlockStats: mongoose.model('BlockStats', BlockStatsSchema),
   ButtonStats: mongoose.model('ButtonStats', ButtonStatsSchema),
-  UserPathStats: mongoose.model('UserPathStats', UserPathStatsSchema)
+  UserNavigationPath: mongoose.model('UserNavigationPath', UserNavigationPathSchema)
 };

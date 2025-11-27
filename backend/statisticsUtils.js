@@ -3,7 +3,7 @@ const {
   DailyUserActivity,
   BlockStats,
   ButtonStats,
-  UserPathStats
+  UserNavigationPath
 } = require('./models');
 
 /**
@@ -188,28 +188,72 @@ async function trackBlockEnter(botId, userId, blockId, blockName = '') {
 }
 
 /**
- * Регистрация перехода между блоками
+ * Регистрация перехода между блоками (сохраняет индивидуальный маршрут пользователя)
  */
-async function trackBlockTransition(botId, userId, fromBlockId, toBlockId) {
+async function trackBlockTransition(botId, userId, fromBlockId, toBlockId, buttonId = null, buttonText = null, blockName = null) {
   try {
     if (!fromBlockId || fromBlockId === toBlockId) {
       return; // Не отслеживаем переходы из/в тот же блок
     }
     
-    await UserPathStats.findOneAndUpdate(
-      { botId, fromBlockId, toBlockId },
-      {
-        $inc: { transitionCount: 1 },
-        $set: { 
-          lastTransitionAt: new Date(),
-          updatedAt: new Date()
-        },
-        $setOnInsert: { createdAt: new Date() }
-      },
-      { upsert: true }
-    );
+    // Генерируем ID сессии на основе текущего времени (сессия = 30 минут)
+    const sessionWindow = 30 * 60 * 1000; // 30 минут
+    const now = Date.now();
+    const sessionId = `${botId}_${userId}_${Math.floor(now / sessionWindow)}`;
+    
+    // Сохраняем выход из предыдущего блока
+    await UserNavigationPath.create({
+      botId,
+      userId,
+      blockId: fromBlockId,
+      blockName: blockName || fromBlockId,
+      action: 'exit',
+      buttonId: buttonId || null,
+      buttonText: buttonText || null,
+      previousBlockId: null,
+      timestamp: new Date(),
+      sessionId
+    });
+    
+    // Сохраняем вход в новый блок
+    await UserNavigationPath.create({
+      botId,
+      userId,
+      blockId: toBlockId,
+      blockName: blockName || toBlockId,
+      action: 'enter',
+      buttonId: buttonId || null,
+      buttonText: buttonText || null,
+      previousBlockId: fromBlockId,
+      timestamp: new Date(),
+      sessionId
+    });
   } catch (error) {
     console.error(`[STATS] Ошибка при отслеживании перехода между блоками:`, error);
+  }
+}
+
+/**
+ * Регистрация входа в блок (для начальных входов, например /start)
+ */
+async function trackBlockEnterWithPath(botId, userId, blockId, blockName = '') {
+  try {
+    const sessionWindow = 30 * 60 * 1000; // 30 минут
+    const now = Date.now();
+    const sessionId = `${botId}_${userId}_${Math.floor(now / sessionWindow)}`;
+    
+    await UserNavigationPath.create({
+      botId,
+      userId,
+      blockId,
+      blockName: blockName || blockId,
+      action: 'enter',
+      previousBlockId: null,
+      timestamp: new Date(),
+      sessionId
+    });
+  } catch (error) {
+    console.error(`[STATS] Ошибка при отслеживании входа в блок:`, error);
   }
 }
 
@@ -219,6 +263,7 @@ module.exports = {
   trackButtonClick,
   trackBlockEnter,
   trackBlockTransition,
+  trackBlockEnterWithPath,
   getStartOfDay
 };
 
