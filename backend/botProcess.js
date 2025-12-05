@@ -1643,11 +1643,22 @@ function setupBotHandlers(bot, blocks, connections) {
     
     if (startParam) {
       // Проверяем, существует ли блок с таким ID
-      const requestedBlock = dialogMap.get(startParam);
+      // Пробуем найти как строку (параметр всегда приходит строкой)
+      let requestedBlock = dialogMap.get(startParam);
+      
+      // Если не нашли, пробуем найти как число (ID блоков могут быть числовыми)
+      if (!requestedBlock && !isNaN(startParam)) {
+        requestedBlock = dialogMap.get(Number(startParam));
+        if (requestedBlock) {
+          targetBlockId = Number(startParam); // Используем числовой ID
+        }
+      } else if (requestedBlock) {
+        targetBlockId = startParam; // Используем строковый ID
+      }
+      
       if (requestedBlock) {
-        targetBlockId = startParam;
-        targetBlockName = requestedBlock.name || startParam;
-        console.log(`[DEEP_LINK] Открываем блок по параметру start: ${startParam}`);
+        targetBlockName = requestedBlock.name || String(targetBlockId);
+        console.log(`[DEEP_LINK] Открываем блок по параметру start: ${startParam} (найден блок с ID: ${targetBlockId})`);
       } else {
         console.log(`[DEEP_LINK] Блок с ID "${startParam}" не найден, используем стартовый блок`);
       }
