@@ -784,6 +784,10 @@ body {
   padding: 2rem;
   max-width: 1200px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .bots-page h1 {
@@ -826,6 +830,10 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem; /* Отступ для скроллбара */
+  margin-top: 1rem;
 }
 
 .bot-card {

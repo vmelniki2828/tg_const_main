@@ -967,6 +967,7 @@ function setupBotHandlers(bot, blocks, connections) {
       buttons: block.buttons || [],
       mediaFiles: block.mediaFiles || [],
       type: block.type,
+      name: block.name || block.id, // Добавляем имя блока для статистики
       questions: block.questions || [],
       currentQuestionIndex: block.currentQuestionIndex || 0,
       finalSuccessMessage: block.finalSuccessMessage,
@@ -1618,13 +1619,11 @@ function setupBotHandlers(bot, blocks, connections) {
     if (userId) {
       await handleUserSubscription(userId);
       
-      // Отслеживаем статистику
+      // Отслеживаем статистику команды /start (независимо от того, какой блок открывается)
       setImmediate(async () => {
         try {
           await trackStartCommand(botId, userId);
           await trackActiveUser(botId, userId);
-          await trackBlockEnter(botId, userId, 'start', 'Стартовый блок');
-          await trackBlockEnterWithPath(botId, userId, 'start', 'Стартовый блок');
         } catch (error) {
           console.error('[STATS] Ошибка при отслеживании /start:', error);
         }
@@ -1637,13 +1636,41 @@ function setupBotHandlers(bot, blocks, connections) {
     // Очищаем состояние квиза пользователя
     userQuizStates.delete(userId);
     
-    // Устанавливаем текущий блок как стартовый
-    userCurrentBlock.set(userId, 'start');
+    // Определяем, какой блок открыть
+    // Если в параметре start указан ID блока, открываем его, иначе открываем стартовый блок
+    let targetBlockId = 'start';
+    let targetBlockName = 'Стартовый блок';
     
-    const startBlock = dialogMap.get('start');
-    if (startBlock) {
-      const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons, userId, 'start');
-      await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+    if (startParam) {
+      // Проверяем, существует ли блок с таким ID
+      const requestedBlock = dialogMap.get(startParam);
+      if (requestedBlock) {
+        targetBlockId = startParam;
+        targetBlockName = requestedBlock.name || startParam;
+        console.log(`[DEEP_LINK] Открываем блок по параметру start: ${startParam}`);
+      } else {
+        console.log(`[DEEP_LINK] Блок с ID "${startParam}" не найден, используем стартовый блок`);
+      }
+    }
+    
+    // Устанавливаем текущий блок
+    userCurrentBlock.set(userId, targetBlockId);
+    
+    // Получаем блок для отображения
+    const targetBlock = dialogMap.get(targetBlockId);
+    if (targetBlock) {
+      // Обновляем статистику для правильного блока
+      setImmediate(async () => {
+        try {
+          await trackBlockEnter(botId, userId, targetBlockId, targetBlockName);
+          await trackBlockEnterWithPath(botId, userId, targetBlockId, targetBlockName);
+        } catch (error) {
+          console.error('[STATS] Ошибка при отслеживании входа в блок:', error);
+        }
+      });
+      
+      const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(targetBlock.buttons, userId, targetBlockId);
+      await sendMediaMessage(ctx, targetBlock.message, targetBlock.mediaFiles, keyboard, inlineKeyboard);
     } else {
       await ctx.reply('Бот не настроен');
     }
