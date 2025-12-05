@@ -78,18 +78,57 @@ const QuizBlock = ({
 
   return (
     <div className="quiz-block">
+      {/* Блок с ID и кнопкой копирования */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        background: '#f0f0f0',
+        border: '1px solid #ddd',
+        borderRadius: '6px',
+        padding: '0.5rem 0.75rem',
+        marginBottom: '0.75rem',
+        fontSize: '0.85em'
+      }}>
+        <span style={{ 
+          fontFamily: 'monospace',
+          color: '#555',
+          fontWeight: '500'
+        }}>
+          ID: {block.id}
+        </span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(block.id);
+            const btn = e.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✓ Скопировано';
+            btn.style.background = '#4caf50';
+            setTimeout(() => {
+              btn.textContent = originalText;
+              btn.style.background = '';
+            }, 2000);
+          }}
+          style={{
+            padding: '0.25rem 0.5rem',
+            background: '#2196f3',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '0.85em',
+            transition: 'background 0.2s'
+          }}
+          title="Копировать ID"
+        >
+          📋 Копировать
+        </button>
+      </div>
+
       <div className="block-header">
         <span className="block-title">
           🎯 Квиз (Вопрос {block.currentQuestionIndex + 1} из {block.questions.length})
-          <span style={{ 
-            fontSize: '0.75em', 
-            color: '#666', 
-            marginLeft: '0.5rem',
-            fontWeight: 'normal',
-            fontFamily: 'monospace'
-          }}>
-            ID: {block.id}
-          </span>
         </span>
         <div className="block-controls">
           <button
