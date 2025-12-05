@@ -979,17 +979,43 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                     ID: {block.id}
                   </span>
                   <button
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
-                      navigator.clipboard.writeText(block.id);
-                      const btn = e.target;
-                      const originalText = btn.textContent;
-                      btn.textContent = '✓ Скопировано';
-                      btn.style.background = '#4caf50';
-                      setTimeout(() => {
-                        btn.textContent = originalText;
-                        btn.style.background = '';
-                      }, 2000);
+                      const idToCopy = String(block.id);
+                      try {
+                        await navigator.clipboard.writeText(idToCopy);
+                        const btn = e.target;
+                        const originalText = btn.textContent;
+                        btn.textContent = '✓ Скопировано';
+                        btn.style.background = '#4caf50';
+                        setTimeout(() => {
+                          btn.textContent = originalText;
+                          btn.style.background = '';
+                        }, 2000);
+                      } catch (err) {
+                        // Fallback для старых браузеров
+                        const textArea = document.createElement('textarea');
+                        textArea.value = idToCopy;
+                        textArea.style.position = 'fixed';
+                        textArea.style.left = '-999999px';
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        try {
+                          document.execCommand('copy');
+                          const btn = e.target;
+                          const originalText = btn.textContent;
+                          btn.textContent = '✓ Скопировано';
+                          btn.style.background = '#4caf50';
+                          setTimeout(() => {
+                            btn.textContent = originalText;
+                            btn.style.background = '';
+                          }, 2000);
+                        } catch (fallbackErr) {
+                          console.error('Ошибка копирования:', fallbackErr);
+                          alert('Не удалось скопировать ID. ID: ' + idToCopy);
+                        }
+                        document.body.removeChild(textArea);
+                      }
                     }}
                     style={{
                       padding: '0.25rem 0.5rem',
