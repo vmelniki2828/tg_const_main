@@ -1163,10 +1163,10 @@ function setupBotHandlers(bot, blocks, connections) {
     // Добавляем кнопку "Назад" если это не стартовый блок и не квиз
     const currentBlock = blocks.find(b => b.id === currentBlockId);
     if (currentBlockId !== 'start' && currentBlock && currentBlock.type !== 'quiz') {
-      const userHistory = userNavigationHistory.get(userId);
-      if (userHistory && userHistory.length > 0) {
-        keyboard.push([{ text: '⬅️ Назад' }]);
-      }
+      // Всегда добавляем кнопку "Назад" для не-стартовых блоков
+      // Если есть история - вернется на предыдущий блок
+      // Если истории нет (например, открыт через deep link) - вернется на стартовый блок
+      keyboard.push([{ text: '⬅️ Назад' }]);
     }
     
       // Проверяем, включена ли программа лояльности для главного блока
@@ -1630,9 +1630,6 @@ function setupBotHandlers(bot, blocks, connections) {
       });
     }
     
-    // Очищаем историю навигации пользователя
-    userNavigationHistory.delete(userId);
-    
     // Очищаем состояние квиза пользователя
     userQuizStates.delete(userId);
     
@@ -1659,9 +1656,20 @@ function setupBotHandlers(bot, blocks, connections) {
       if (requestedBlock) {
         targetBlockName = requestedBlock.name || String(targetBlockId);
         console.log(`[DEEP_LINK] Открываем блок по параметру start: ${startParam} (найден блок с ID: ${targetBlockId})`);
+        
+        // Если открываем не стартовый блок через deep link, очищаем историю
+        // чтобы кнопка "Назад" вела на стартовый блок
+        if (targetBlockId !== 'start') {
+          userNavigationHistory.delete(userId);
+        }
       } else {
         console.log(`[DEEP_LINK] Блок с ID "${startParam}" не найден, используем стартовый блок`);
+        // Если блок не найден, очищаем историю
+        userNavigationHistory.delete(userId);
       }
+    } else {
+      // Если параметра нет, очищаем историю (обычный /start)
+      userNavigationHistory.delete(userId);
     }
     
     // Устанавливаем текущий блок

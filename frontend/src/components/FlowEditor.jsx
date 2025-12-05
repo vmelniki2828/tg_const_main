@@ -962,6 +962,15 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                 <div className="block-header">
                   <span className="block-title">
                     {block.id === 'start' ? '🚀 Начало' : '💬 Сообщение'}
+                    <span style={{ 
+                      fontSize: '0.75em', 
+                      color: '#666', 
+                      marginLeft: '0.5rem',
+                      fontWeight: 'normal',
+                      fontFamily: 'monospace'
+                    }}>
+                      ID: {block.id}
+                    </span>
                   </span>
                   <div className="block-controls">
                     <button

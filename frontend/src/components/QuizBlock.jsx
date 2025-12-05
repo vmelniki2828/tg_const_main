@@ -79,7 +79,18 @@ const QuizBlock = ({
   return (
     <div className="quiz-block">
       <div className="block-header">
-        <span className="block-title">🎯 Квиз (Вопрос {block.currentQuestionIndex + 1} из {block.questions.length})</span>
+        <span className="block-title">
+          🎯 Квиз (Вопрос {block.currentQuestionIndex + 1} из {block.questions.length})
+          <span style={{ 
+            fontSize: '0.75em', 
+            color: '#666', 
+            marginLeft: '0.5rem',
+            fontWeight: 'normal',
+            fontFamily: 'monospace'
+          }}>
+            ID: {block.id}
+          </span>
+        </span>
         <div className="block-controls">
           <button
             className="block-button"
