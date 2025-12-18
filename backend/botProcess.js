@@ -313,24 +313,60 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
 
 // Универсальная функция для сохранения пользователя в MongoDB
 // Функция для обработки источника из параметра start
+// Поддерживает форматы:
+// 1. Только источник: "google_ads" → source: google_ads, blockId: null
+// 2. Только блок: "1757499906988" → source: 'direct', blockId: 1757499906988
+// 3. Источник + блок: "google_ads:1757499906988" → source: google_ads, blockId: 1757499906988
 function parseSourceFromStart(startParam) {
   if (!startParam) {
     return {
       source: 'direct',
+      blockId: null,
       type: 'direct',
       details: {}
     };
   }
   
-  // Обрабатываем deep link параметр (например: google_ads, facebook_campaign1)
-  const source = startParam.trim();
+  const trimmed = startParam.trim();
   
+  // Проверяем формат "источник:ID_блока"
+  if (trimmed.includes(':')) {
+    const parts = trimmed.split(':');
+    const source = parts[0].trim();
+    const blockIdStr = parts[1].trim();
+    
+    // Проверяем, является ли blockId числом
+    const blockId = !isNaN(blockIdStr) ? Number(blockIdStr) : blockIdStr;
+    
+    return {
+      source: source || 'direct',
+      blockId: blockId,
+      type: 'deep_link',
+      details: {
+        campaign: source.includes('_') ? source.split('_').slice(1).join('_') : null,
+        medium: source.split('_')[0] || null
+      }
+    };
+  }
+  
+  // Проверяем, является ли параметр числом (ID блока)
+  if (!isNaN(trimmed)) {
+    return {
+      source: 'direct',
+      blockId: Number(trimmed),
+      type: 'deep_link',
+      details: {}
+    };
+  }
+  
+  // Иначе это источник (например: google_ads, facebook_campaign1)
   return {
-    source: source,
+    source: trimmed,
+    blockId: null,
     type: 'deep_link',
     details: {
-      campaign: source.includes('_') ? source.split('_').slice(1).join('_') : null,
-      medium: source.split('_')[0] || null
+      campaign: trimmed.includes('_') ? trimmed.split('_').slice(1).join('_') : null,
+      medium: trimmed.split('_')[0] || null
     }
   };
 }
@@ -423,7 +459,11 @@ async function saveUserToMongo(ctx) {
     
     // Обрабатываем источник из параметра start (если есть)
     let sourceData = null;
-    if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/start')) {
+    if (ctx.parsedSource) {
+      // Используем уже распарсенный источник из команды /start
+      const startParam = ctx.startParam || '';
+      sourceData = parseSourceFromStart(startParam);
+    } else if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/start')) {
       const startParam = ctx.message.text.split(' ')[1]; // Получаем параметр после /start
       sourceData = parseSourceFromStart(startParam);
     } else if (ctx.startParam) {
@@ -1604,10 +1644,18 @@ function setupBotHandlers(bot, blocks, connections) {
       }
     }
     
+    // Парсим параметр start для извлечения источника и ID блока
+    const parsedStart = parseSourceFromStart(startParam);
+    const sourceFromParam = parsedStart.source;
+    const blockIdFromParam = parsedStart.blockId;
+    
     if (startParam) {
       console.log(`[SOURCE] Параметр start: ${startParam}`);
+      console.log(`[SOURCE] Распарсено - источник: ${sourceFromParam}, блок: ${blockIdFromParam || 'стартовый'}`);
       // Сохраняем параметр в ctx для использования в saveUserToMongo
       ctx.startParam = startParam;
+      // Сохраняем распарсенный источник для использования в saveUserToMongo
+      ctx.parsedSource = sourceFromParam;
     } else {
       console.log(`[SOURCE] Параметр start не найден, источник будет 'direct'`);
     }
@@ -1634,41 +1682,62 @@ function setupBotHandlers(bot, blocks, connections) {
     userQuizStates.delete(userId);
     
     // Определяем, какой блок открыть
-    // Если в параметре start указан ID блока, открываем его, иначе открываем стартовый блок
     let targetBlockId = 'start';
     let targetBlockName = 'Стартовый блок';
     
-    if (startParam) {
-      // Проверяем, существует ли блок с таким ID
-      // Пробуем найти как строку (параметр всегда приходит строкой)
-      let requestedBlock = dialogMap.get(startParam);
-      
-      // Если не нашли, пробуем найти как число (ID блоков могут быть числовыми)
-      if (!requestedBlock && !isNaN(startParam)) {
-        requestedBlock = dialogMap.get(Number(startParam));
-        if (requestedBlock) {
-          targetBlockId = Number(startParam); // Используем числовой ID
-        }
-      } else if (requestedBlock) {
-        targetBlockId = startParam; // Используем строковый ID
+    // Специальная обработка для программы лояльности
+    // Формат: loyalty или source:loyalty (например: google_ads:loyalty)
+    if (startParam === 'loyalty' || blockIdFromParam === 'loyalty' || 
+        (startParam && startParam.endsWith(':loyalty'))) {
+      console.log(`[DEEP_LINK] Открываем программу лояльности по параметру start: ${startParam}`);
+      const loyaltyInfo = await getLoyaltyInfo(userId);
+      const startBlock = dialogMap.get('start');
+      if (startBlock) {
+        const { keyboard, inlineKeyboard } = await createKeyboardWithLoyalty(startBlock.buttons || [], userId, 'start');
+        await sendMediaMessage(ctx, loyaltyInfo, [], keyboard, inlineKeyboard);
+      } else {
+        // Если стартовый блок не найден, отправляем только информацию о лояльности
+        await ctx.reply(loyaltyInfo);
       }
+      userCurrentBlock.set(userId, 'start');
+      userNavigationHistory.delete(userId);
+      return;
+    }
+    
+    // Если указан ID блока в параметре, используем его
+    if (blockIdFromParam !== null && blockIdFromParam !== undefined) {
+      // Пробуем найти блок по ID
+      let requestedBlock = dialogMap.get(blockIdFromParam);
       
       if (requestedBlock) {
+        targetBlockId = blockIdFromParam;
         targetBlockName = requestedBlock.name || String(targetBlockId);
         console.log(`[DEEP_LINK] Открываем блок по параметру start: ${startParam} (найден блок с ID: ${targetBlockId})`);
         
         // Если открываем не стартовый блок через deep link, очищаем историю
-        // чтобы кнопка "Назад" вела на стартовый блок
+        if (targetBlockId !== 'start') {
+          userNavigationHistory.delete(userId);
+        }
+      } else {
+        console.log(`[DEEP_LINK] Блок с ID "${blockIdFromParam}" не найден, используем стартовый блок`);
+        userNavigationHistory.delete(userId);
+      }
+    } else if (startParam && !isNaN(startParam)) {
+      // Обратная совместимость: если параметр - число, но не был распарсен как блок
+      let requestedBlock = dialogMap.get(Number(startParam));
+      if (requestedBlock) {
+        targetBlockId = Number(startParam);
+        targetBlockName = requestedBlock.name || String(targetBlockId);
+        console.log(`[DEEP_LINK] Открываем блок по параметру start: ${startParam} (найден блок с ID: ${targetBlockId})`);
         if (targetBlockId !== 'start') {
           userNavigationHistory.delete(userId);
         }
       } else {
         console.log(`[DEEP_LINK] Блок с ID "${startParam}" не найден, используем стартовый блок`);
-        // Если блок не найден, очищаем историю
         userNavigationHistory.delete(userId);
       }
     } else {
-      // Если параметра нет, очищаем историю (обычный /start)
+      // Если параметра нет или это только источник, используем стартовый блок
       userNavigationHistory.delete(userId);
     }
     
