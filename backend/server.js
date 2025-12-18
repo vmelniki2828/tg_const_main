@@ -166,90 +166,8 @@ async function distributePromoCodesToEligibleUsers(botId, period) {
                 });
               }
               
-              // Отправляем сообщение пользователю
-              try {
-                const loyaltyConfig = await LoyaltyConfig.findOne({ botId });
-                const config = loyaltyConfig?.messages?.[period];
-                let message = config?.message || `🎉 Поздравляем! Вы с нами уже ${period === '1m' ? '1 минуту' : period === '24h' ? '24 часа' : period === '7d' ? '7 дней' : period === '30d' ? '30 дней' : period === '90d' ? '90 дней' : period === '180d' ? '180 дней' : '360 дней'}! 🎉`;
-                
-                // Форматируем время
-                const formatTime = (effectiveTime) => {
-                  const days = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
-                  const hours = Math.floor((effectiveTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                  const minutes = Math.floor((effectiveTime % (1000 * 60 * 60)) / (1000 * 60));
-                  
-                  const parts = [];
-                  if (days > 0) parts.push(`${days} дн.`);
-                  if (hours > 0) parts.push(`${hours} час.`);
-                  if (minutes > 0) parts.push(`${minutes} мин.`);
-                  
-                  return parts.length > 0 ? parts.join(' ') : 'менее минуты';
-                };
-                
-                const currentTimeFormatted = formatTime(effectiveTime);
-                message = `📅 Вы с нами: ${currentTimeFormatted}\n\n${message}`;
-                message += `\n\n🎁 Ваш промокод:`;
-                message += `\n🎫 \`${activatedPromoCode.code}\``;
-                message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
-                
-                // Отправляем через Telegram API
-                const Bot = require('./models').Bot;
-                const botModel = await Bot.findOne({ id: botId }, { token: 1 }).lean();
-                
-                if (botModel && botModel.token) {
-                  const https = require('https');
-                  const url = require('url');
-                  
-                  const apiUrl = `https://api.telegram.org/bot${botModel.token}/sendMessage`;
-                  const postData = JSON.stringify({
-                    chat_id: user.userId,
-                    text: message,
-                    parse_mode: 'Markdown'
-                  });
-                  
-                  const parsedUrl = url.parse(apiUrl);
-                  const options = {
-                    hostname: parsedUrl.hostname,
-                    port: parsedUrl.port || 443,
-                    path: parsedUrl.path,
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Content-Length': Buffer.byteLength(postData)
-                    }
-                  };
-                  
-                  await new Promise((resolve, reject) => {
-                    const req = https.request(options, (res) => {
-                      let data = '';
-                      res.on('data', (chunk) => { data += chunk; });
-                      res.on('end', () => {
-                        if (res.statusCode === 200) {
-                          const result = JSON.parse(data);
-                          if (result.ok) {
-                            console.log(`✅ [AUTO_DISTRIBUTE] Сообщение отправлено пользователю ${user.userId}`);
-                            resolve();
-                          } else {
-                            console.error(`⚠️ [AUTO_DISTRIBUTE] Ошибка API: ${JSON.stringify(result)}`);
-                            reject(new Error(`API Error: ${JSON.stringify(result)}`));
-                          }
-                        } else {
-                          reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-                        }
-                      });
-                    });
-                    req.on('error', (err) => {
-                      console.error(`⚠️ [AUTO_DISTRIBUTE] Ошибка отправки сообщения:`, err);
-                      // Не прерываем процесс, просто логируем
-                    });
-                    req.write(postData);
-                    req.end();
-                  });
-                }
-              } catch (messageError) {
-                console.error(`⚠️ [AUTO_DISTRIBUTE] Ошибка отправки сообщения пользователю ${user.userId}:`, messageError);
-                // Промокод уже активирован, продолжаем
-              }
+              // УВЕДОМЛЕНИЯ ОТКЛЮЧЕНЫ: Промокоды активируются автоматически, но сообщения не отправляются
+              console.log(`✅ [AUTO_DISTRIBUTE] Промокод ${activatedPromoCode.code} активирован для пользователя ${user.userId} (уведомление не отправлено)`)
               
               distributionResults.usersEligible++;
               distributionResults.promoCodesDistributed++;
@@ -3803,54 +3721,8 @@ app.post('/api/force-give-loyalty-rewards-all/:botId', async (req, res) => {
                   });
                   console.log(`✅ [FORCE_REWARDS_ALL] Проверка активации промокода:`, verifyPromoCode ? `ПРОМОКОД ${verifyPromoCode.code} АКТИВИРОВАН` : 'ПРОМОКОД НЕ НАЙДЕН');
                   
-                  // Отправляем сообщение пользователю (если бот запущен)
-                  try {
-                    // Получаем настройки сообщения для этого периода
-                    const messageConfig = loyaltyConfig.messages[period.key];
-                    let message = messageConfig?.message || `Поздравляем! Вы с нами уже ${period.name}! 🎉`;
-                    
-                    // Форматируем время для отображения
-                    const formatTime = (effectiveTime) => {
-                      const days = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
-                      const hours = Math.floor((effectiveTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                      const minutes = Math.floor((effectiveTime % (1000 * 60 * 60)) / (1000 * 60));
-                      
-                      const parts = [];
-                      if (days > 0) parts.push(`${days} дн.`);
-                      if (hours > 0) parts.push(`${hours} час.`);
-                      if (minutes > 0) parts.push(`${minutes} мин.`);
-                      
-                      return parts.length > 0 ? parts.join(' ') : 'менее минуты';
-                    };
-                    
-                    const currentTimeFormatted = formatTime(effectiveTime);
-                    message = `📅 Вы с нами: ${currentTimeFormatted}\n\n${message}`;
-                    message += `\n\n🎁 Ваш промокод:`;
-                    message += `\n🎫 \`${availablePromoCode.code}\``;
-                    message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
-                    
-                    // Получаем токен бота
-                    const botModel = await Bot.findOne({ id: botId });
-                    if (botModel && botModel.token) {
-                      const response = await fetch(`https://api.telegram.org/bot${botModel.token}/sendMessage`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          chat_id: user.userId,
-                          text: message,
-                          parse_mode: 'Markdown'
-                        })
-                      });
-                      
-                      if (response.ok) {
-                        console.log(`✅ [FORCE_REWARDS_ALL] Сообщение отправлено пользователю ${user.userId}`);
-                      } else {
-                        console.error(`⚠️ [FORCE_REWARDS_ALL] Не удалось отправить сообщение пользователю ${user.userId}`);
-                      }
-                    }
-                  } catch (msgError) {
-                    console.error(`⚠️ [FORCE_REWARDS_ALL] Ошибка отправки сообщения:`, msgError);
-                  }
+                  // УВЕДОМЛЕНИЯ ОТКЛЮЧЕНЫ: Промокоды активируются автоматически, но сообщения не отправляются
+                  console.log(`✅ [FORCE_REWARDS_ALL] Промокод ${availablePromoCode.code} активирован для пользователя ${user.userId} за период ${period.key} (уведомление не отправлено)`)
                   
                   userRewardsGiven.push({
                     period: period.key,
@@ -4300,66 +4172,15 @@ app.post('/api/force-give-loyalty-rewards/:botId/:userId', async (req, res) => {
             
             console.log(`✅ [FORCE_REWARDS] Активирован промокод ${availablePromoCode.code} для периода ${period.key}`);
             
-            // Отправляем сообщение пользователю (если бот запущен)
-            let messageSent = false;
-            try {
-              // Получаем настройки сообщения для этого периода
-              const messageConfig = loyaltyConfig.messages[period.key];
-              let message = messageConfig?.message || `Поздравляем! Вы с нами уже ${period.name}! 🎉`;
-              
-              // Форматируем время для отображения
-              const formatTime = (effectiveTime) => {
-                const days = Math.floor(effectiveTime / (1000 * 60 * 60 * 24));
-                const hours = Math.floor((effectiveTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const minutes = Math.floor((effectiveTime % (1000 * 60 * 60)) / (1000 * 60));
-                
-                const parts = [];
-                if (days > 0) parts.push(`${days} дн.`);
-                if (hours > 0) parts.push(`${hours} час.`);
-                if (minutes > 0) parts.push(`${minutes} мин.`);
-                
-                return parts.length > 0 ? parts.join(' ') : 'менее минуты';
-              };
-              
-              const currentTimeFormatted = formatTime(effectiveTime);
-              message = `📅 Вы с нами: ${currentTimeFormatted}\n\n${message}`;
-              message += `\n\n🎁 Ваш промокод:`;
-              message += `\n🎫 \`${availablePromoCode.code}\``;
-              message += `\n\n💡 Используйте этот промокод для получения бонуса!`;
-              
-              // Получаем токен бота
-              const botModel = await Bot.findOne({ id: botId });
-              if (botModel && botModel.token) {
-                const response = await fetch(`https://api.telegram.org/bot${botModel.token}/sendMessage`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    chat_id: parseInt(userId),
-                    text: message,
-                    parse_mode: 'Markdown'
-                  })
-                });
-                
-                if (response.ok) {
-                  messageSent = true;
-                  console.log(`✅ [FORCE_REWARDS] Сообщение отправлено пользователю ${userId}`);
-                } else {
-                  const errorData = await response.json();
-                  console.error(`⚠️ [FORCE_REWARDS] Не удалось отправить сообщение пользователю ${userId}:`, errorData);
-                }
-              } else {
-                console.log(`⚠️ [FORCE_REWARDS] Бот не найден или токен отсутствует`);
-              }
-            } catch (msgError) {
-              console.error(`⚠️ [FORCE_REWARDS] Ошибка отправки сообщения:`, msgError);
-            }
+            // УВЕДОМЛЕНИЯ ОТКЛЮЧЕНЫ: Промокоды активируются автоматически, но сообщения не отправляются
+            console.log(`✅ [FORCE_REWARDS] Промокод ${availablePromoCode.code} активирован для пользователя ${userId} за период ${period.key} (уведомление не отправлено)`)
             
             rewardsGiven.push({
               period: period.key,
               periodName: period.name,
               promoCode: availablePromoCode.code,
               action: 'promocode_activated',
-              messageSent: messageSent
+              messageSent: false
             });
           } else {
             console.log(`⚠️ [FORCE_REWARDS] Нет доступных промокодов для периода ${period.key}`);
