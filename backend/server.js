@@ -4764,7 +4764,7 @@ process.on('SIGTERM', () => shutdownServer('SIGTERM'));
 app.get('/api/statistics/sources/:botId', async (req, res) => {
   try {
     const { botId } = req.params;
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, loyaltyOnly } = req.query;
     
     // Парсим даты, если указаны
     const start = startDate ? new Date(startDate) : new Date(0); // Начало эпохи, если не указано
@@ -4773,6 +4773,10 @@ app.get('/api/statistics/sources/:botId', async (req, res) => {
     // Получаем всех пользователей бота
     const users = await User.find({ botId }).lean();
     
+    // Получаем всех пользователей, участвующих в программе лояльности
+    const loyaltyUsers = await Loyalty.find({ botId }).lean();
+    const loyaltyUserIds = new Set(loyaltyUsers.map(l => l.userId));
+    
     // Группируем по источникам
     const sourceStats = {};
     let totalUsers = 0;
@@ -4780,10 +4784,17 @@ app.get('/api/statistics/sources/:botId', async (req, res) => {
     let totalSubscribed = 0;
     let totalPromoCodes = 0;
     let totalQuizzes = 0;
+    let totalLoyaltyUsers = 0;
     
     for (const user of users) {
       // Фильтруем по дате регистрации, если указан период
       if (user.firstSourceDate && (user.firstSourceDate < start || user.firstSourceDate > end)) {
+        continue;
+      }
+      
+      // Фильтруем по участию в программе лояльности, если указан фильтр
+      const isLoyaltyUser = user.loyaltyStartedAt && loyaltyUserIds.has(user.userId);
+      if (loyaltyOnly === 'true' && !isLoyaltyUser) {
         continue;
       }
       
@@ -4798,6 +4809,7 @@ app.get('/api/statistics/sources/:botId', async (req, res) => {
           subscribed: 0,
           promoCodes: 0,
           quizzes: 0,
+          loyaltyUsers: 0,
           avgActiveTime: 0
         };
       }
@@ -4809,6 +4821,11 @@ app.get('/api/statistics/sources/:botId', async (req, res) => {
       if (user.isSubscribed) {
         sourceStats[source].subscribed++;
         totalSubscribed++;
+      }
+      
+      if (isLoyaltyUser) {
+        sourceStats[source].loyaltyUsers++;
+        totalLoyaltyUsers++;
       }
     }
     
@@ -4859,7 +4876,8 @@ app.get('/api/statistics/sources/:botId', async (req, res) => {
       totalActiveTime: Math.round(totalActiveTime / 1000 / 60 / 60 * 100) / 100, // в часах
       avgActiveTime: totalUsers > 0 ? Math.round(totalActiveTime / totalUsers / 1000 / 60) : 0, // в минутах
       totalPromoCodes,
-      totalQuizzes
+      totalQuizzes,
+      totalLoyaltyUsers
     };
     
     res.json({
@@ -4881,7 +4899,7 @@ app.get('/api/statistics/sources/:botId', async (req, res) => {
 app.get('/api/statistics/users/:botId', async (req, res) => {
   try {
     const { botId } = req.params;
-    const { startDate, endDate, source, page = 1, limit = 50, search } = req.query;
+    const { startDate, endDate, source, page = 1, limit = 50, search, loyaltyOnly } = req.query;
     
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
@@ -4890,6 +4908,10 @@ app.get('/api/statistics/users/:botId', async (req, res) => {
     // Парсим даты
     const start = startDate ? new Date(startDate) : new Date(0);
     const end = endDate ? new Date(endDate) : new Date();
+    
+    // Получаем всех пользователей, участвующих в программе лояльности
+    const loyaltyUsers = await Loyalty.find({ botId }).lean();
+    const loyaltyUserIds = new Set(loyaltyUsers.map(l => l.userId));
     
     // Строим фильтр
     const filter = { botId };
@@ -4922,14 +4944,23 @@ app.get('/api/statistics/users/:botId', async (req, res) => {
     }
     
     // Получаем пользователей с пагинацией
-    const users = await User.find(filter)
+    let users = await User.find(filter)
       .sort({ firstSourceDate: -1 })
       .skip(skip)
       .limit(limitNum)
       .lean();
     
+    // Фильтруем по лояльности, если указан фильтр
+    if (loyaltyOnly === 'true') {
+      users = users.filter(user => user.loyaltyStartedAt && loyaltyUserIds.has(user.userId));
+    }
+    
     // Получаем общее количество для пагинации
-    const totalUsers = await User.countDocuments(filter);
+    let totalUsers = await User.countDocuments(filter);
+    if (loyaltyOnly === 'true') {
+      const allUsers = await User.find(filter).lean();
+      totalUsers = allUsers.filter(user => user.loyaltyStartedAt && loyaltyUserIds.has(user.userId)).length;
+    }
     
     // Получаем статистику по промокодам и квизам для каждого пользователя
     const userIds = users.map(u => u.userId);
@@ -4966,6 +4997,7 @@ app.get('/api/statistics/users/:botId', async (req, res) => {
     const usersWithStats = users.map(user => {
       const activeTimeHours = Math.round((user.sourceActiveTime || 0) / 1000 / 60 / 60 * 100) / 100;
       const activeTimeMinutes = Math.round((user.sourceActiveTime || 0) / 1000 / 60);
+      const isLoyaltyUser = user.loyaltyStartedAt && loyaltyUserIds.has(user.userId);
       
       return {
         userId: user.userId,
@@ -4982,7 +5014,8 @@ app.get('/api/statistics/users/:botId', async (req, res) => {
         promoCodes: promoCodesByUser[user.userId] || 0,
         quizzes: quizzesByUser[user.userId] || 0,
         registeredAt: user.firstSubscribedAt ? user.firstSubscribedAt.toISOString() : null,
-        lastActivity: user.lastActivityTime ? user.lastActivityTime.toISOString() : null
+        lastActivity: user.lastActivityTime ? user.lastActivityTime.toISOString() : null,
+        isLoyaltyUser: isLoyaltyUser
       };
     });
     

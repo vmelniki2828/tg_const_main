@@ -23,6 +23,7 @@ function SourceStatistics({ botId }) {
   const [userPathSearch, setUserPathSearch] = useState('');
   const [dailyStats, setDailyStats] = useState(null);
   const [activePeriod, setActivePeriod] = useState('day'); // day, week, month
+  const [loyaltyOnly, setLoyaltyOnly] = useState(false);
 
   useEffect(() => {
     if (botId) {
@@ -39,7 +40,7 @@ function SourceStatistics({ botId }) {
       }
       // Для вкладки 'paths' загрузка происходит только при поиске пользователя
     }
-  }, [botId, startDate, endDate, activeTab, usersPage, usersSource, usersSearch, activePeriod]);
+  }, [botId, startDate, endDate, activeTab, usersPage, usersSource, usersSearch, activePeriod, loyaltyOnly]);
 
   const loadStatistics = async () => {
     try {
@@ -50,6 +51,7 @@ function SourceStatistics({ botId }) {
       const params = new URLSearchParams();
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
+      if (loyaltyOnly) params.append('loyaltyOnly', 'true');
       if (params.toString()) {
         url += '?' + params.toString();
       }
@@ -114,6 +116,7 @@ function SourceStatistics({ botId }) {
       if (endDate) params.append('endDate', endDate);
       if (usersSource && usersSource !== 'all') params.append('source', usersSource);
       if (usersSearch) params.append('search', usersSearch);
+      if (loyaltyOnly) params.append('loyaltyOnly', 'true');
       params.append('page', usersPage);
       params.append('limit', '50');
       
@@ -297,6 +300,17 @@ function SourceStatistics({ botId }) {
               onChange={(e) => setEndDate(e.target.value)}
             />
           </div>
+          <div className="filter-group">
+            <label>
+              <input
+                type="checkbox"
+                checked={loyaltyOnly}
+                onChange={(e) => setLoyaltyOnly(e.target.checked)}
+                style={{ marginRight: '5px' }}
+              />
+              Только участники программы лояльности
+            </label>
+          </div>
           <button
             onClick={handleExport}
             disabled={isExporting}
@@ -322,6 +336,10 @@ function SourceStatistics({ botId }) {
                   <div className="stat-card">
                     <div className="stat-label">Всего пользователей</div>
                     <div className="stat-value">{statistics.general.totalUsers}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Участников программы лояльности</div>
+                    <div className="stat-value">{statistics.general.totalLoyaltyUsers || 0}</div>
                   </div>
                   <div className="stat-card">
                     <div className="stat-label">Активное время</div>
@@ -351,6 +369,7 @@ function SourceStatistics({ botId }) {
                       <tr>
                         <th>Источник</th>
                         <th>Пользователей</th>
+                        <th>Участников лояльности</th>
                         <th>Активное время</th>
                         <th>Среднее время</th>
                         <th>Промокоды</th>
@@ -362,6 +381,7 @@ function SourceStatistics({ botId }) {
                         <tr key={index}>
                           <td className="source-name">{source.source}</td>
                           <td>{source.users}</td>
+                          <td>{source.loyaltyUsers || 0}</td>
                           <td>{formatTimeFromHours(source.activeTimeHours)}</td>
                           <td>{formatTime(source.avgActiveTime)}</td>
                           <td>{source.promoCodes}</td>
@@ -420,6 +440,20 @@ function SourceStatistics({ botId }) {
                 ))}
               </select>
             </div>
+            <div className="filter-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={loyaltyOnly}
+                  onChange={(e) => {
+                    setLoyaltyOnly(e.target.checked);
+                    setUsersPage(1);
+                  }}
+                  style={{ marginRight: '5px' }}
+                />
+                Только участники программы лояльности
+              </label>
+            </div>
           </div>
 
           {isLoadingUsers ? (
@@ -434,6 +468,7 @@ function SourceStatistics({ botId }) {
                       <th>Username</th>
                       <th>Имя</th>
                       <th>Источник</th>
+                      <th>Лояльность</th>
                       <th>Активное время</th>
                       <th>Сессии</th>
                       <th>Промокоды</th>
@@ -450,6 +485,7 @@ function SourceStatistics({ botId }) {
                         <td>@{user.username || 'N/A'}</td>
                         <td>{user.firstName || ''} {user.lastName || ''}</td>
                         <td className="source-name">{user.source}</td>
+                        <td>{user.isLoyaltyUser ? '🎁 Да' : '❌ Нет'}</td>
                         <td>{formatTimeFromHours(user.activeTimeHours)}</td>
                         <td>{user.sessions}</td>
                         <td>{user.promoCodes}</td>
