@@ -5663,14 +5663,32 @@ async function generateGiveawayVideo(giveaway, outputPath) {
   // Получаем всех участников
   const participants = giveaway.participants || [];
   
-  // Получаем победителей
-  const winners = giveaway.prizes
-    .filter(p => p.winner)
+  // Получаем все призы с победителями
+  const allPrizes = giveaway.prizes || [];
+  console.log(`🎬 Всего призов в розыгрыше: ${allPrizes.length}`);
+  console.log(`🎬 Призы с победителями:`, allPrizes.map(p => ({ 
+    place: p.place, 
+    name: p.name, 
+    hasWinner: !!p.winner,
+    winnerId: p.winner?.userId || 'нет'
+  })));
+  
+  // Получаем победителей и фильтруем только валидных (с userId)
+  const winners = allPrizes
+    .filter(p => p.winner && p.winner.userId)
     .sort((a, b) => a.place - b.place);
   
   if (winners.length === 0) {
-    throw new Error('No winners to show in video');
+    throw new Error('No valid winners to show in video');
   }
+  
+  console.log(`🎬 Генерация видео для ${winners.length} валидных победителей:`, winners.map(w => ({ 
+    place: w.place, 
+    name: w.name,
+    userId: w.winner.userId,
+    username: w.winner.username || 'нет',
+    name: `${w.winner.firstName || ''} ${w.winner.lastName || ''}`.trim() || 'нет'
+  })));
   
   // Запускаем браузер (используем системный Chromium в Docker)
   const browser = await puppeteer.launch({
@@ -5743,7 +5761,14 @@ async function generateGiveawayVideo(giveaway, outputPath) {
   // Создаем расширенный список ID для каждой рулетки (для плавной прокрутки)
   const rouletteData = winners.map((prize, index) => {
     const winner = prize.winner;
+    if (!winner || !winner.userId) {
+      throw new Error(`Invalid winner for prize ${prize.place}`);
+    }
     const winnerIndex = participants.findIndex(p => p.userId === winner.userId);
+    
+    if (winnerIndex === -1) {
+      console.warn(`Winner ${winner.userId} not found in participants list`);
+    }
     
     // Создаем список ID для прокрутки (повторяем участников несколько раз для эффекта бесконечной прокрутки)
     const extendedIds = [];
@@ -5946,6 +5971,9 @@ async function generateGiveawayVideo(giveaway, outputPath) {
       <h1 style="color: white; font-size: 60px; font-weight: bold; margin-bottom: 50px;">🏆 ПОБЕДИТЕЛИ 🏆</h1>
       ${winners.map((prize, index) => {
         const winner = prize.winner;
+        if (!winner || !winner.userId) {
+          return ''; // Пропускаем если нет победителя
+        }
         const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim();
         return `
           <div style="
@@ -5958,13 +5986,13 @@ async function generateGiveawayVideo(giveaway, outputPath) {
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
           ">
             <h2 style="color: #ffd700; font-size: 50px; font-weight: bold; margin-bottom: 15px;">${prize.place} место - ${prize.name}</h2>
-            <p style="color: #333; font-size: 40px; font-weight: bold; margin-bottom: 10px;">ID: ${winner.userId}</p>
+            <p style="color: #333; font-size: 40px; font-weight: bold; margin-bottom: 10px;">ID: ${winner.userId || 'N/A'}</p>
             ${winnerName ? `<p style="color: #667eea; font-size: 35px; margin-bottom: 10px;">${winnerName}</p>` : ''}
             ${winner.username ? `<p style="color: #666; font-size: 30px; margin-bottom: 10px;">@${winner.username}</p>` : ''}
             ${winner.project ? `<p style="color: #999; font-size: 25px;">Проект: ${winner.project}</p>` : ''}
           </div>
         `;
-      }).join('')}
+      }).filter(html => html !== '').join('')}
     </div>
   `);
   
