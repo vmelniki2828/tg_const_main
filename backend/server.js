@@ -17,7 +17,8 @@ const {
   DailyActivityStats,
   BlockStats,
   ButtonStats,
-  UserNavigationPath
+  UserNavigationPath,
+  Giveaway
 } = require('./models');
 
 // Функция для вычисления эффективного времени подписки (копия из botProcess.js)
@@ -5385,5 +5386,357 @@ app.get('/api/bots/:id/full', async (req, res) => {
     res.json({ bot, users, quizStats, promoCodes, loyalties });
   } catch (error) {
     res.status(500).json({ error: 'Failed to load full bot info', details: error.message });
+  }
+});
+
+// ==================== API ENDPOINTS ДЛЯ РОЗЫГРЫШЕЙ ====================
+
+// Получение списка розыгрышей
+app.get('/api/giveaways/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const giveaways = await Giveaway.find({ botId }).sort({ createdAt: -1 }).lean();
+    res.json({ success: true, giveaways });
+  } catch (error) {
+    console.error('❌ Ошибка при получении розыгрышей:', error);
+    res.status(500).json({ error: 'Failed to get giveaways', details: error.message });
+  }
+});
+
+// Создание нового розыгрыша
+app.post('/api/giveaways/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { name, prizePlaces, prizes, description, selectedChannels } = req.body;
+    
+    // Создаем массив призов если его нет
+    const prizesArray = prizes || [];
+    for (let i = 1; i <= (prizePlaces || 1); i++) {
+      if (!prizesArray.find(p => p.place === i)) {
+        prizesArray.push({
+          place: i,
+          name: `Приз ${i}`,
+          winner: null
+        });
+      }
+    }
+    
+    const giveaway = new Giveaway({
+      botId,
+      name: name || 'Розыгрыш',
+      prizePlaces: prizePlaces || 1,
+      prizes: prizesArray,
+      description: description || '',
+      selectedChannels: selectedChannels || [],
+      status: 'draft'
+    });
+    
+    await giveaway.save();
+    res.json({ success: true, giveaway });
+  } catch (error) {
+    console.error('❌ Ошибка при создании розыгрыша:', error);
+    res.status(500).json({ error: 'Failed to create giveaway', details: error.message });
+  }
+});
+
+// Обновление розыгрыша
+app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
+  try {
+    const { botId, giveawayId } = req.params;
+    const { name, prizePlaces, prizes, description, selectedChannels } = req.body;
+    
+    const giveaway = await Giveaway.findOne({ _id: giveawayId, botId });
+    if (!giveaway) {
+      return res.status(404).json({ error: 'Giveaway not found' });
+    }
+    
+    const updateData = {
+      updatedAt: new Date()
+    };
+    
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (selectedChannels !== undefined) updateData.selectedChannels = selectedChannels;
+    
+    // Обновляем призы и количество призовых мест
+    if (prizePlaces !== undefined) {
+      updateData.prizePlaces = Math.min(Math.max(1, prizePlaces), 5); // Ограничиваем 1-5
+      
+      // Обновляем массив призов
+      const newPrizes = prizes || [];
+      const currentPlaces = updateData.prizePlaces;
+      
+      // Удаляем лишние призы, если количество уменьшилось
+      const filteredPrizes = newPrizes.filter(p => p.place <= currentPlaces);
+      
+      // Добавляем недостающие призы
+      for (let i = 1; i <= currentPlaces; i++) {
+        if (!filteredPrizes.find(p => p.place === i)) {
+          const existingPrize = giveaway.prizes.find(p => p.place === i);
+          filteredPrizes.push({
+            place: i,
+            name: existingPrize?.name || `Приз ${i}`,
+            winner: existingPrize?.winner || null
+          });
+        }
+      }
+      
+      updateData.prizes = filteredPrizes;
+    } else if (prizes !== undefined) {
+      updateData.prizes = prizes;
+    }
+    
+    const updatedGiveaway = await Giveaway.findOneAndUpdate(
+      { _id: giveawayId, botId },
+      { $set: updateData },
+      { new: true }
+    );
+    
+    res.json({ success: true, giveaway: updatedGiveaway });
+  } catch (error) {
+    console.error('❌ Ошибка при обновлении розыгрыша:', error);
+    res.status(500).json({ error: 'Failed to update giveaway', details: error.message });
+  }
+});
+
+// Загрузка CSV файла с участниками для розыгрышей
+const giveawayUpload = multer({ storage: multer.memoryStorage() });
+
+app.post('/api/giveaways/:botId/:giveawayId/upload', giveawayUpload.single('file'), async (req, res) => {
+  try {
+    const { botId, giveawayId } = req.params;
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    
+    const giveaway = await Giveaway.findOne({ _id: giveawayId, botId });
+    if (!giveaway) {
+      return res.status(404).json({ error: 'Giveaway not found' });
+    }
+    
+    // Парсим CSV файл
+    const csvContent = req.file.buffer.toString('utf8');
+    const lines = csvContent.split('\n').filter(line => line.trim());
+    
+    const participants = [];
+    for (const line of lines) {
+      const parts = line.split(',').map(p => p.trim());
+      if (parts.length >= 3) {
+        const userId = parseInt(parts[0]);
+        const project = parts[1] || '';
+        const weight = parseFloat(parts[2]) || 1;
+        
+        if (!isNaN(userId)) {
+          // Получаем информацию о пользователе из базы
+          const user = await User.findOne({ botId, userId }).lean();
+          
+          participants.push({
+            userId,
+            username: user?.username || '',
+            firstName: user?.firstName || '',
+            lastName: user?.lastName || '',
+            project,
+            weight: Math.max(0, weight) // Вес должен быть >= 0
+          });
+        }
+      }
+    }
+    
+    // Обновляем розыгрыш
+    giveaway.participants = participants;
+    await giveaway.save();
+    
+    res.json({ success: true, giveaway, participantsCount: participants.length });
+  } catch (error) {
+    console.error('❌ Ошибка при загрузке CSV:', error);
+    res.status(500).json({ error: 'Failed to upload CSV', details: error.message });
+  }
+});
+
+// Функция для случайного выбора с учетом весов
+function weightedRandomSelect(items, count) {
+  if (items.length === 0 || count === 0) return [];
+  if (count >= items.length) return [...items];
+  
+  // Вычисляем общий вес
+  const totalWeight = items.reduce((sum, item) => sum + (item.weight || 1), 0);
+  
+  const selected = [];
+  const available = [...items];
+  
+  for (let i = 0; i < count && available.length > 0; i++) {
+    // Генерируем случайное число от 0 до totalWeight
+    let random = Math.random() * totalWeight;
+    
+    // Находим элемент, соответствующий этому числу
+    let currentWeight = 0;
+    for (let j = 0; j < available.length; j++) {
+      currentWeight += available[j].weight || 1;
+      if (random <= currentWeight) {
+        selected.push(available[j]);
+        // Убираем выбранный элемент и обновляем totalWeight
+        totalWeight -= (available[j].weight || 1);
+        available.splice(j, 1);
+        break;
+      }
+    }
+  }
+  
+  return selected;
+}
+
+// Выбор случайных победителей
+app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) => {
+  try {
+    const { botId, giveawayId } = req.params;
+    const { prizePlaces } = req.body;
+    
+    const giveaway = await Giveaway.findOne({ _id: giveawayId, botId });
+    if (!giveaway) {
+      return res.status(404).json({ error: 'Giveaway not found' });
+    }
+    
+    if (!giveaway.participants || giveaway.participants.length === 0) {
+      return res.status(400).json({ error: 'No participants loaded' });
+    }
+    
+    // Выбираем случайных победителей с учетом весов
+    const winners = weightedRandomSelect(giveaway.participants, prizePlaces || giveaway.prizePlaces);
+    
+    // Обновляем призы
+    const updatedPrizes = giveaway.prizes.map((prize, index) => {
+      if (index < winners.length) {
+        return {
+          ...prize,
+          winner: winners[index]
+        };
+      }
+      return prize;
+    });
+    
+    giveaway.prizes = updatedPrizes;
+    await giveaway.save();
+    
+    res.json({ success: true, prizes: updatedPrizes });
+  } catch (error) {
+    console.error('❌ Ошибка при выборе победителей:', error);
+    res.status(500).json({ error: 'Failed to select winners', details: error.message });
+  }
+});
+
+
+// Отправка результатов розыгрыша в каналы
+app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
+  try {
+    const { botId, giveawayId } = req.params;
+    const { description, selectedChannels } = req.body;
+    
+    const giveaway = await Giveaway.findOne({ _id: giveawayId, botId });
+    if (!giveaway) {
+      return res.status(404).json({ error: 'Giveaway not found' });
+    }
+    
+    if (!selectedChannels || selectedChannels.length === 0) {
+      return res.status(400).json({ error: 'No channels selected' });
+    }
+    
+    const bot = await Bot.findOne({ id: botId });
+    if (!bot || !bot.token) {
+      return res.status(404).json({ error: 'Bot not found or token missing' });
+    }
+    
+    // Формируем сообщение с результатами
+    let message = description || '';
+    if (message) message += '\n\n';
+    
+    message += '🎉 **РЕЗУЛЬТАТЫ РОЗЫГРЫША** 🎉\n\n';
+    
+    giveaway.prizes.forEach((prize) => {
+      if (prize.winner) {
+        message += `🏆 **${prize.name}** (${prize.place} место):\n`;
+        message += `👤 ${prize.winner.firstName || ''} ${prize.winner.lastName || ''}`;
+        if (prize.winner.username) {
+          message += ` (@${prize.winner.username})`;
+        }
+        if (prize.winner.project) {
+          message += `\n📁 Проект: ${prize.winner.project}`;
+        }
+        message += '\n\n';
+      }
+    });
+    
+    // Отправляем в каждый выбранный канал
+    const https = require('https');
+    const url = require('url');
+    const results = [];
+    
+    for (const channelId of selectedChannels) {
+      try {
+        const apiUrl = `https://api.telegram.org/bot${bot.token}/sendMessage`;
+        const postData = JSON.stringify({
+          chat_id: channelId,
+          text: message,
+          parse_mode: 'Markdown'
+        });
+        
+        const parsedUrl = url.parse(apiUrl);
+        const options = {
+          hostname: parsedUrl.hostname,
+          port: parsedUrl.port || 443,
+          path: parsedUrl.path,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+          }
+        };
+        
+        await new Promise((resolve, reject) => {
+          const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+              if (res.statusCode === 200) {
+                const result = JSON.parse(data);
+                if (result.ok) {
+                  results.push({ channelId, success: true });
+                  resolve();
+                } else {
+                  results.push({ channelId, success: false, error: result.description });
+                  reject(new Error(result.description));
+                }
+              } else {
+                results.push({ channelId, success: false, error: `HTTP ${res.statusCode}` });
+                reject(new Error(`HTTP ${res.statusCode}`));
+              }
+            });
+          });
+          req.on('error', (err) => {
+            results.push({ channelId, success: false, error: err.message });
+            reject(err);
+          });
+          req.write(postData);
+          req.end();
+        });
+      } catch (error) {
+        console.error(`❌ Ошибка отправки в канал ${channelId}:`, error);
+        results.push({ channelId, success: false, error: error.message });
+      }
+    }
+    
+    // Обновляем статус розыгрыша
+    giveaway.status = 'completed';
+    await giveaway.save();
+    
+    res.json({ 
+      success: true, 
+      results,
+      sent: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length
+    });
+  } catch (error) {
+    console.error('❌ Ошибка при отправке результатов:', error);
+    res.status(500).json({ error: 'Failed to publish results', details: error.message });
   }
 }); 

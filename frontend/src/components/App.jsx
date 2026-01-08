@@ -4,6 +4,7 @@ import BotsList from './BotsList';
 import QuizStats from './QuizStats';
 import LoyaltyProgram from './LoyaltyProgram';
 import SourceStatistics from './SourceStatistics';
+import Giveaways from './Giveaways';
 import config from '../config';
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
   const [showStats, setShowStats] = useState(false);
   const [showLoyalty, setShowLoyalty] = useState(false);
   const [showSourceStats, setShowSourceStats] = useState(false);
+  const [showGiveaways, setShowGiveaways] = useState(false);
   const flowEditorRef = useRef();
 
   // Функция для получения статуса бота
@@ -175,6 +177,12 @@ function App() {
           >
             📈 Статистика по источникам
           </button>
+          <button 
+            onClick={() => setShowGiveaways(true)}
+            className="editor-button giveaways-button"
+          >
+            🎲 Розыгрыши
+          </button>
           <div className="bot-status">
             Статус бота: {botStatus ? '🟢 Запущен' : '🔴 Остановлен'}
           </div>
@@ -230,6 +238,13 @@ function App() {
               <SourceStatistics botId={selectedBotId} />
             </div>
           </div>
+        )}
+        
+        {showGiveaways && (
+          <Giveaways 
+            botId={selectedBotId}
+            onClose={() => setShowGiveaways(false)}
+          />
         )}
       </div>
     );

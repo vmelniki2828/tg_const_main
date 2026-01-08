@@ -243,6 +243,41 @@ const UserNavigationPathSchema = new mongoose.Schema({
 UserNavigationPathSchema.index({ botId: 1, userId: 1, timestamp: -1 }); // Для получения маршрута пользователя
 UserNavigationPathSchema.index({ botId: 1, userId: 1, sessionId: 1 }); // Для группировки по сессиям
 
+// Схема для розыгрышей
+const GiveawaySchema = new mongoose.Schema({
+  botId: { type: String, required: true },
+  name: { type: String, required: true, default: 'Розыгрыш' },
+  participants: [{
+    userId: { type: Number, required: true },
+    username: String,
+    firstName: String,
+    lastName: String,
+    project: String, // Проект из CSV
+    weight: { type: Number, default: 1 } // Вес для вероятности (чем выше, тем больше шанс)
+  }],
+  prizePlaces: { type: Number, default: 1, min: 1, max: 5 }, // Количество призовых мест
+  prizes: [{
+    place: { type: Number, required: true }, // 1, 2, 3, 4, 5
+    name: { type: String, required: true }, // "Приз 1", "Приз 2" и т.д.
+    winner: {
+      userId: Number,
+      username: String,
+      firstName: String,
+      lastName: String,
+      project: String
+    } // Победитель (может быть null если не выбран)
+  }],
+  description: { type: String, default: '' }, // Текст про розыгрыш
+  status: { type: String, enum: ['draft', 'completed'], default: 'draft' },
+  selectedChannels: [{ type: String }], // ID каналов для отправки результатов
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+// Индексы для розыгрышей
+GiveawaySchema.index({ botId: 1, createdAt: -1 });
+GiveawaySchema.index({ botId: 1, status: 1 });
+
 module.exports = {
   Bot: mongoose.model('Bot', BotSchema),
   User: mongoose.model('User', UserSchema),
@@ -255,5 +290,6 @@ module.exports = {
   DailyUserActivity: mongoose.model('DailyUserActivity', DailyUserActivitySchema),
   BlockStats: mongoose.model('BlockStats', BlockStatsSchema),
   ButtonStats: mongoose.model('ButtonStats', ButtonStatsSchema),
-  UserNavigationPath: mongoose.model('UserNavigationPath', UserNavigationPathSchema)
+  UserNavigationPath: mongoose.model('UserNavigationPath', UserNavigationPathSchema),
+  Giveaway: mongoose.model('Giveaway', GiveawaySchema)
 };
