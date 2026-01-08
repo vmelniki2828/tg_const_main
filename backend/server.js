@@ -5628,13 +5628,12 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
 
 // Функция для генерации видео с анимацией выпадения победителей
 async function generateGiveawayVideo(giveaway, outputPath) {
-  let createCanvas, ffmpeg;
+  let puppeteer, ffmpeg;
   
   try {
-    const canvasModule = require('canvas');
-    createCanvas = canvasModule.createCanvas;
+    puppeteer = require('puppeteer');
   } catch (error) {
-    throw new Error('Canvas module not available. Please install: npm install canvas');
+    throw new Error('Puppeteer module not available. Please install: npm install puppeteer');
   }
   
   try {
@@ -5673,124 +5672,117 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     throw new Error('No winners to show in video');
   }
   
+  // Запускаем браузер (используем системный Chromium в Docker)
+  const browser = await puppeteer.launch({
+    headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-software-rasterizer'
+    ]
+  });
+  
+  const page = await browser.newPage();
+  await page.setViewport({ width, height });
+  
   let frameIndex = 0;
   
-  // 1. Титульный кадр (2 секунды = 60 кадров)
-  for (let i = 0; i < 60; i++) {
-    const canvas = createCanvas(width, height);
-    const ctx = canvas.getContext('2d');
-    
-    // Градиентный фон
-    const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, '#667eea');
-    gradient.addColorStop(1, '#764ba2');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
-    
-    // Заголовок
-    ctx.fillStyle = 'white';
-    ctx.font = 'bold 80px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🎲 РОЗЫГРЫШ 🎲', width / 2, height / 2 - 100);
-    
-    if (giveaway.name) {
-      ctx.font = 'bold 60px Arial';
-      ctx.fillText(giveaway.name, width / 2, height / 2);
+  // Функция для генерации HTML кадра
+  const generateFrameHTML = (content) => {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
     }
-    
-    ctx.font = '40px Arial';
-    ctx.fillText(`Участников: ${participants.length}`, width / 2, height / 2 + 100);
-    
-    // Сохраняем кадр
+    body {
+      width: ${width}px;
+      height: ${height}px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      font-family: 'Arial', sans-serif;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    ${content}
+  </style>
+</head>
+<body>
+  ${content.includes('<div') ? content : ''}
+</body>
+</html>`;
+  };
+  
+  // 1. Титульный кадр (2 секунды = 60 кадров)
+  const titleHTML = generateFrameHTML(`
+    <div style="text-align: center; color: white;">
+      <h1 style="font-size: 80px; font-weight: bold; margin-bottom: 20px;">🎲 РОЗЫГРЫШ 🎲</h1>
+      ${giveaway.name ? `<h2 style="font-size: 60px; font-weight: bold; margin-bottom: 20px;">${giveaway.name}</h2>` : ''}
+      <p style="font-size: 40px;">Участников: ${participants.length}</p>
+    </div>
+  `);
+  
+  await page.setContent(titleHTML);
+  for (let i = 0; i < 60; i++) {
     const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
-    const buffer = canvas.toBuffer('image/png');
-    fs.writeFileSync(framePath, buffer);
+    await page.screenshot({ path: framePath, type: 'png' });
     frameIndex++;
   }
   
   // 2. Прокрутка всех участников (5 секунд = 150 кадров)
   if (participants.length > 0) {
-    const itemHeight = 80; // Высота одного элемента в списке
-    const visibleItems = Math.floor(height / itemHeight); // Количество видимых элементов
+    const scrollDuration = 150;
+    const itemHeight = 80;
     const totalHeight = participants.length * itemHeight;
-    const scrollDuration = 150; // Количество кадров для прокрутки
-    const maxScroll = Math.max(0, totalHeight - height + 200); // Максимальная прокрутка
+    const maxScroll = Math.max(0, totalHeight - height + 200);
     
     for (let frame = 0; frame < scrollDuration; frame++) {
-      const canvas = createCanvas(width, height);
-      const ctx = canvas.getContext('2d');
-      
-      // Градиентный фон
-      const gradient = ctx.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, '#667eea');
-      gradient.addColorStop(1, '#764ba2');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
-      
-      // Заголовок списка участников
-      ctx.fillStyle = 'white';
-      ctx.font = 'bold 60px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('📋 УЧАСТНИКИ', width / 2, 80);
-      
-      // Вычисляем позицию прокрутки (плавная анимация)
       const progress = frame / scrollDuration;
-      const easeProgress = progress * progress; // Ease in
+      const easeProgress = progress * progress;
       const scrollY = -maxScroll * easeProgress;
       
-      // Рисуем список участников
-      ctx.save();
-      ctx.translate(0, scrollY);
+      const participantsList = participants.map((p, index) => {
+        const name = `${p.firstName || ''} ${p.lastName || ''}`.trim();
+        return `
+          <div style="
+            position: absolute;
+            top: ${150 + index * itemHeight + scrollY}px;
+            left: 50px;
+            right: 50px;
+            height: ${itemHeight - 10}px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+          ">
+            <span style="color: #ffd700; font-size: 30px; font-weight: bold; margin-right: 20px;">ID: ${p.userId}</span>
+            ${name ? `<span style="color: white; font-size: 30px; margin-right: 20px;">${name}</span>` : ''}
+            ${p.username ? `<span style="color: #ccc; font-size: 25px; margin-right: 20px;">@${p.username}</span>` : ''}
+            ${p.project ? `<span style="color: #999; font-size: 25px; margin-left: auto;">${p.project}</span>` : ''}
+          </div>
+        `;
+      }).join('');
       
-      participants.forEach((participant, index) => {
-        const y = 150 + index * itemHeight;
-        
-        // Пропускаем элементы вне видимой области
-        if (y + scrollY < 100 || y + scrollY > height) {
-          return;
-        }
-        
-        // Фон для элемента
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.fillRect(50, y - 35, width - 100, itemHeight - 10);
-        
-        // ID пользователя
-        ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 30px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText(`ID: ${participant.userId}`, 70, y);
-        
-        // Имя пользователя
-        const name = `${participant.firstName || ''} ${participant.lastName || ''}`.trim();
-        if (name) {
-          ctx.fillStyle = 'white';
-          ctx.font = '30px Arial';
-          ctx.fillText(name, 300, y);
-        }
-        
-        // Username
-        if (participant.username) {
-          ctx.fillStyle = '#ccc';
-          ctx.font = '25px Arial';
-          ctx.fillText(`@${participant.username}`, 600, y);
-        }
-        
-        // Проект
-        if (participant.project) {
-          ctx.fillStyle = '#999';
-          ctx.font = '25px Arial';
-          ctx.textAlign = 'right';
-          ctx.fillText(participant.project, width - 70, y);
-        }
-      });
+      const scrollHTML = generateFrameHTML(`
+        <div style="position: relative; width: 100%; height: 100%;">
+          <h1 style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; font-size: 60px; font-weight: bold;">📋 УЧАСТНИКИ</h1>
+          ${participantsList}
+        </div>
+      `);
       
-      ctx.restore();
-      
-      // Сохраняем кадр
+      await page.setContent(scrollHTML);
       const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
-      const buffer = canvas.toBuffer('image/png');
-      fs.writeFileSync(framePath, buffer);
+      await page.screenshot({ path: framePath, type: 'png' });
       frameIndex++;
     }
   }
@@ -5799,110 +5791,64 @@ async function generateGiveawayVideo(giveaway, outputPath) {
   for (let winnerIndex = 0; winnerIndex < winners.length; winnerIndex++) {
     const prize = winners[winnerIndex];
     const winner = prize.winner;
+    const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim();
     
     for (let i = 0; i < 90; i++) {
-      const canvas = createCanvas(width, height);
-      const ctx = canvas.getContext('2d');
-      
-      // Градиентный фон
-      const gradient = ctx.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, '#667eea');
-      gradient.addColorStop(1, '#764ba2');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
-      
-      // Анимация выпадения (от -200 до 0 по Y)
       const progress = i / 90;
-      const easeProgress = 1 - Math.pow(1 - progress, 3); // Ease out cubic
+      const easeProgress = 1 - Math.pow(1 - progress, 3);
       const yOffset = -200 + (200 * easeProgress);
       
-      // Место и приз
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.fillRect(width / 2 - 400, height / 2 - 300 + yOffset, 800, 600);
+      const winnerHTML = generateFrameHTML(`
+        <div style="
+          position: absolute;
+          top: ${height / 2 - 300 + yOffset}px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 800px;
+          height: 600px;
+          background: rgba(255, 255, 255, 0.9);
+          border-radius: 20px;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: 40px;
+        ">
+          <h1 style="color: #ffd700; font-size: 100px; font-weight: bold; margin-bottom: 20px;">🏆 ${prize.place} МЕСТО</h1>
+          <h2 style="color: #333; font-size: 50px; font-weight: bold; margin-bottom: 30px;">${prize.name}</h2>
+          <p style="color: #ffd700; font-size: 50px; font-weight: bold; margin-bottom: 20px;">ID: ${winner.userId}</p>
+          ${winnerName ? `<p style="color: #667eea; font-size: 60px; font-weight: bold; margin-bottom: 20px;">${winnerName}</p>` : ''}
+          ${winner.username ? `<p style="color: #666; font-size: 40px; margin-bottom: 20px;">@${winner.username}</p>` : ''}
+          ${winner.project ? `<p style="color: #999; font-size: 30px;">Проект: ${winner.project}</p>` : ''}
+        </div>
+      `);
       
-      // Тень
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
-      ctx.shadowBlur = 20;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 10;
-      
-      // Место
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 100px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`🏆 ${prize.place} МЕСТО`, width / 2, height / 2 - 200 + yOffset);
-      
-      // Название приза
-      ctx.fillStyle = '#333';
-      ctx.font = 'bold 50px Arial';
-      ctx.fillText(prize.name, width / 2, height / 2 - 100 + yOffset);
-      
-      // ID пользователя (всегда показываем)
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 50px Arial';
-      ctx.fillText(`ID: ${winner.userId}`, width / 2, height / 2 + 20 + yOffset);
-      
-      // Имя победителя
-      const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim();
-      if (winnerName) {
-        ctx.fillStyle = '#667eea';
-        ctx.font = 'bold 60px Arial';
-        ctx.fillText(winnerName, width / 2, height / 2 + 90 + yOffset);
-      }
-      
-      // Username
-      if (winner.username) {
-        ctx.fillStyle = '#666';
-        ctx.font = '40px Arial';
-        ctx.fillText(`@${winner.username}`, width / 2, height / 2 + 160 + yOffset);
-      }
-      
-      // Проект
-      if (winner.project) {
-        ctx.fillStyle = '#999';
-        ctx.font = '30px Arial';
-        ctx.fillText(`Проект: ${winner.project}`, width / 2, height / 2 + 220 + yOffset);
-      }
-      
-      ctx.shadowBlur = 0;
-      
-      // Сохраняем кадр
+      await page.setContent(winnerHTML);
       const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
-      const buffer = canvas.toBuffer('image/png');
-      fs.writeFileSync(framePath, buffer);
+      await page.screenshot({ path: framePath, type: 'png' });
       frameIndex++;
     }
   }
   
   // 4. Финальный кадр (2 секунды = 60 кадров)
+  const finalHTML = generateFrameHTML(`
+    <div style="text-align: center; color: white;">
+      <h1 style="font-size: 80px; font-weight: bold; margin-bottom: 20px;">🎉 ПОЗДРАВЛЯЕМ! 🎉</h1>
+      <p style="font-size: 40px;">Спасибо за участие!</p>
+    </div>
+  `);
+  
+  await page.setContent(finalHTML);
   for (let i = 0; i < 60; i++) {
-    const canvas = createCanvas(width, height);
-    const ctx = canvas.getContext('2d');
-    
-    // Градиентный фон
-    const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, '#667eea');
-    gradient.addColorStop(1, '#764ba2');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
-    
-    // Поздравление
-    ctx.fillStyle = 'white';
-    ctx.font = 'bold 80px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🎉 ПОЗДРАВЛЯЕМ! 🎉', width / 2, height / 2);
-    
-    ctx.font = '40px Arial';
-    ctx.fillText('Спасибо за участие!', width / 2, height / 2 + 100);
-    
-    // Сохраняем кадр
     const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
-    const buffer = canvas.toBuffer('image/png');
-    fs.writeFileSync(framePath, buffer);
+    await page.screenshot({ path: framePath, type: 'png' });
     frameIndex++;
   }
+  
+  // Закрываем браузер
+  await browser.close();
   
   // Собираем видео из кадров с помощью ffmpeg
   return new Promise((resolve, reject) => {

@@ -2,20 +2,18 @@
 FROM node:18-alpine
 
 # Устанавливаем wget и jq для health check и мониторинга
-# А также системные зависимости для canvas и ffmpeg
+# А также системные зависимости для Puppeteer и ffmpeg
 RUN apk add --no-cache \
     wget \
     jq \
-    python3 \
-    make \
-    g++ \
-    cairo-dev \
-    jpeg-dev \
-    pango-dev \
-    giflib-dev \
-    pixman-dev \
     ffmpeg \
-    && ln -sf python3 /usr/bin/python
+    chromium \
+    nss \
+    freetype \
+    freetype-dev \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
