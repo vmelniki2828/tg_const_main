@@ -5484,17 +5484,39 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
       updateData.prizes = filteredPrizes;
     } else if (prizes !== undefined) {
       // Убеждаемся, что данные победителя сохраняются полностью
-      const normalizedPrizes = prizes.map(prize => ({
-        place: prize.place,
-        name: prize.name,
-        winner: prize.winner ? {
-          userId: prize.winner.userId,
-          username: prize.winner.username || '',
-          firstName: prize.winner.firstName || '',
-          lastName: prize.winner.lastName || '',
-          project: prize.winner.project || ''
-        } : null
-      }));
+      const normalizedPrizes = prizes.map(prize => {
+        const normalizedPrize = {
+          place: prize.place,
+          name: prize.name
+        };
+        
+        // Обрабатываем победителя
+        if (prize.winner && (prize.winner.userId || prize.winner.username)) {
+          // Если есть userId, пытаемся получить полные данные из базы
+          if (prize.winner.userId) {
+            User.findOne({ botId, userId: prize.winner.userId }).lean().then(user => {
+              if (user) {
+                console.log(`✅ [GIVEAWAY] Найден пользователь ${prize.winner.userId} в БД при сохранении`);
+              }
+            }).catch(err => {
+              console.error(`❌ [GIVEAWAY] Ошибка поиска пользователя при сохранении:`, err);
+            });
+          }
+          
+          normalizedPrize.winner = {
+            userId: prize.winner.userId || null,
+            username: (prize.winner.username || '').trim() || '',
+            firstName: (prize.winner.firstName || '').trim() || '',
+            lastName: (prize.winner.lastName || '').trim() || '',
+            project: (prize.winner.project || '').trim() || ''
+          };
+        } else {
+          normalizedPrize.winner = null;
+        }
+        
+        return normalizedPrize;
+      });
+      
       updateData.prizes = normalizedPrizes;
       console.log('💾 [GIVEAWAY] Сохранение призов:', JSON.stringify(normalizedPrizes, null, 2));
     }
@@ -5654,14 +5676,23 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       return res.status(400).json({ error: 'No channels selected' });
     }
     
+    // Логируем данные розыгрыша для отладки
+    console.log('🔍 [GIVEAWAY] Данные розыгрыша из БД:', JSON.stringify({
+      prizes: giveaway.prizes,
+      prizesCount: giveaway.prizes?.length
+    }, null, 2));
+    
     // Проверяем, что есть победители
     const winnersWithPrizes = giveaway.prizes
-      .filter(p => p.winner)
+      .filter(p => p.winner && (p.winner.userId || p.winner.username))
       .map(p => ({
         ...p.winner,
         prizeName: p.name,
         place: p.place
       }));
+    
+    console.log('🔍 [GIVEAWAY] Найдено победителей:', winnersWithPrizes.length);
+    console.log('🔍 [GIVEAWAY] Победители:', JSON.stringify(winnersWithPrizes, null, 2));
     
     if (winnersWithPrizes.length === 0) {
       return res.status(400).json({ error: 'No winners selected. Please select winners first.' });
@@ -5699,31 +5730,69 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
     // Сортируем призы по месту
     const sortedPrizes = [...giveaway.prizes].sort((a, b) => a.place - b.place);
     
-    sortedPrizes.forEach((prize) => {
-      if (prize.winner) {
+    // Сначала получаем данные пользователей из базы для всех победителей
+    const winnerUserIds = sortedPrizes
+      .filter(p => p.winner && p.winner.userId)
+      .map(p => p.winner.userId);
+    
+    const usersFromDb = {};
+    if (winnerUserIds.length > 0) {
+      const users = await User.find({ botId, userId: { $in: winnerUserIds } }).lean();
+      users.forEach(user => {
+        usersFromDb[user.userId] = user;
+      });
+      console.log('🔍 [GIVEAWAY] Загружено пользователей из БД:', users.length);
+    }
+    
+    for (const prize of sortedPrizes) {
+      // Проверяем наличие победителя (может быть объект, но пустой)
+      const hasWinner = prize.winner && (
+        prize.winner.userId || 
+        prize.winner.username || 
+        (prize.winner.firstName && prize.winner.firstName.trim()) ||
+        (prize.winner.lastName && prize.winner.lastName.trim())
+      );
+      
+      if (hasWinner) {
         // Логируем данные победителя для отладки
         console.log(`🔍 [GIVEAWAY] Приз ${prize.place}:`, JSON.stringify(prize.winner, null, 2));
         
         message += `🏆 **${prize.name}** (${prize.place} место):\n`;
         
         // Формируем имя победителя
-        const firstName = (prize.winner.firstName || '').trim();
-        const lastName = (prize.winner.lastName || '').trim();
-        const fullName = `${firstName} ${lastName}`.trim();
+        let firstName = (prize.winner.firstName || '').trim();
+        let lastName = (prize.winner.lastName || '').trim();
+        let username = (prize.winner.username || '').trim();
+        const userId = prize.winner.userId;
         
-        if (fullName) {
-          message += `👤 ${fullName}`;
-        } else if (prize.winner.username) {
-          message += `👤 @${prize.winner.username}`;
-        } else if (prize.winner.userId) {
-          message += `👤 ID: ${prize.winner.userId}`;
-        } else {
-          message += `👤 Победитель не указан`;
+        // Если данных нет в объекте победителя, пытаемся получить из базы
+        if (userId && usersFromDb[userId]) {
+          const dbUser = usersFromDb[userId];
+          if (!firstName && dbUser.firstName) firstName = dbUser.firstName.trim();
+          if (!lastName && dbUser.lastName) lastName = dbUser.lastName.trim();
+          if (!username && dbUser.username) username = dbUser.username.trim();
+          console.log(`✅ [GIVEAWAY] Данные пользователя ${userId} дополнены из БД`);
         }
         
+        const fullName = `${firstName} ${lastName}`.trim();
+        
+        // Формируем отображаемое имя
+        let displayName = '';
+        if (fullName) {
+          displayName = fullName;
+        } else if (username) {
+          displayName = `@${username}`;
+        } else if (userId) {
+          displayName = `ID: ${userId}`;
+        } else {
+          displayName = 'Победитель не указан';
+        }
+        
+        message += `👤 ${displayName}`;
+        
         // Добавляем username, если есть и не совпадает с именем
-        if (prize.winner.username && fullName) {
-          message += ` (@${prize.winner.username})`;
+        if (username && fullName) {
+          message += ` (@${username})`;
         }
         
         // Добавляем проект
@@ -5734,10 +5803,11 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
         message += '\n\n';
       } else {
         // Если победитель не выбран, показываем приз без победителя
+        console.log(`⚠️ [GIVEAWAY] Приз ${prize.place} не имеет победителя. Данные:`, JSON.stringify(prize.winner, null, 2));
         message += `🏆 **${prize.name}** (${prize.place} место):\n`;
         message += `❌ Победитель не выбран\n\n`;
       }
-    });
+    }
     
     // Логируем финальное сообщение для отладки
     console.log('📝 [GIVEAWAY] Сформированное сообщение:', message);
