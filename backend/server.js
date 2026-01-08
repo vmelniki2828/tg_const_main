@@ -5751,18 +5751,22 @@ async function generateGiveawayVideo(giveaway, outputPath) {
       extendedIds.push(...participants.map(p => p.userId));
     }
     
-    // Вычисляем стартовую позицию так, чтобы в конце остановиться на победителе
+    // Вычисляем стартовую позицию так, чтобы в конце остановиться точно на победителе
     const totalItems = extendedIds.length;
-    const targetPosition = (9 * participants.length) + winnerIndex; // Позиция победителя в расширенном списке
+    // Позиция победителя в расширенном списке (в середине последнего цикла)
+    const targetPosition = (9 * participants.length) + winnerIndex;
     const visibleItems = Math.floor(rouletteHeight / itemHeight) + 2; // Количество видимых элементов
-    const startOffset = targetPosition - Math.floor(visibleItems / 2);
+    // Центрируем победителя точно в центре экрана
+    const centerOffset = Math.floor(visibleItems / 2);
+    const startOffset = targetPosition - centerOffset;
     
     return {
       prize,
       winner,
       extendedIds,
       startOffset: Math.max(0, startOffset),
-      targetPosition
+      targetPosition,
+      centerOffset // Сохраняем смещение для центрирования
     };
   });
   
@@ -5792,42 +5796,58 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     // Генерируем HTML для всех рулеток
     const roulettesHTML = winners.map((prize, index) => {
       const data = rouletteData[index];
-      const currentOffset = data.startOffset + (data.targetPosition - data.startOffset) * easeProgress;
+      // Вычисляем текущую позицию с учетом плавного замедления
+      const offsetRange = data.targetPosition - data.startOffset;
+      let currentOffset = data.startOffset + offsetRange * easeProgress;
+      
+      // В последних 10% кадров точно центрируем победителя
+      if (frame >= rouletteDuration * 0.9) {
+        // Точная позиция для центрирования победителя
+        const exactPosition = data.targetPosition - data.centerOffset;
+        const finalProgress = (frame - rouletteDuration * 0.9) / (rouletteDuration * 0.1);
+        // Плавно переходим к точной позиции
+        currentOffset = currentOffset + (exactPosition - currentOffset) * finalProgress;
+      }
+      
       const roundedOffset = Math.floor(currentOffset);
       
       // Создаем видимые элементы рулетки (вертикальная прокрутка)
       const visibleItems = [];
       const itemsToShow = Math.ceil(rouletteHeight / itemHeight) + 4;
       
+      // Вычисляем точную позицию центра для остановки на победителе
+      const centerPosition = rouletteHeight / 2;
+      
       for (let i = 0; i < itemsToShow; i++) {
         const itemIndex = (roundedOffset + i) % data.extendedIds.length;
         const userId = data.extendedIds[itemIndex];
-        // Подсвечиваем победителя в последних 20% кадров
-        const isWinner = userId === data.winner.userId && frame > rouletteDuration * 0.8;
-        // Центральная позиция для выделения (вертикально)
-        const centerPosition = rouletteHeight / 2;
         const itemTop = i * itemHeight - (currentOffset % 1) * itemHeight;
         const itemCenter = itemTop + itemHeight / 2;
-        const isCentered = Math.abs(itemCenter - centerPosition) < itemHeight / 2 && isWinner;
+        
+        // Проверяем, находится ли элемент в центре (победитель)
+        const distanceFromCenter = Math.abs(itemCenter - centerPosition);
+        const isCentered = distanceFromCenter < itemHeight / 2 && userId === data.winner.userId && frame > rouletteDuration * 0.85;
+        const isWinner = userId === data.winner.userId && frame > rouletteDuration * 0.8;
         
         visibleItems.push(`
           <div style="
             position: absolute;
             top: ${itemTop}px;
-            left: 10px;
-            right: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: ${rouletteWidth * 0.6}px;
             height: ${itemHeight}px;
             display: flex;
             align-items: center;
             justify-content: center;
             background: ${isCentered ? colors.winnerBackground : isWinner ? colors.winnerBackground + '80' : colors.itemBackground};
             border: ${isCentered ? `4px solid ${colors.winnerBorder}` : isWinner ? `3px solid ${colors.winnerBorder}` : '2px solid rgba(255, 255, 255, 0.3)'};
-            border-radius: 10px;
+            border-radius: 8px;
             font-size: ${isCentered ? '20px' : isWinner ? '18px' : '16px'};
             font-weight: ${isCentered || isWinner ? 'bold' : 'normal'};
             color: ${isCentered || isWinner ? colors.winnerText : colors.itemText};
             box-shadow: ${isCentered ? `0 0 20px ${colors.winnerBackground}, 0 0 40px ${colors.winnerBorder}80` : isWinner ? `0 0 15px ${colors.winnerBackground}CC` : 'none'};
-            transform: ${isCentered ? 'scale(1.05)' : 'scale(1)'};
+            transform: translateX(-50%) ${isCentered ? 'scale(1.05)' : 'scale(1)'};
             z-index: ${isCentered ? '10' : isWinner ? '5' : '1'};
           ">
             ${userId}
