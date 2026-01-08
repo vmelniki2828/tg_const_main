@@ -5661,6 +5661,9 @@ async function generateGiveawayVideo(giveaway, outputPath) {
   }
   fs.mkdirSync(framesDir, { recursive: true });
   
+  // Получаем всех участников
+  const participants = giveaway.participants || [];
+  
   // Получаем победителей
   const winners = giveaway.prizes
     .filter(p => p.winner)
@@ -5697,7 +5700,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     }
     
     ctx.font = '40px Arial';
-    ctx.fillText('Результаты', width / 2, height / 2 + 100);
+    ctx.fillText(`Участников: ${participants.length}`, width / 2, height / 2 + 100);
     
     // Сохраняем кадр
     const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
@@ -5706,7 +5709,93 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     frameIndex++;
   }
   
-  // 2. Кадры для каждого победителя (3 секунды = 90 кадров на победителя)
+  // 2. Прокрутка всех участников (5 секунд = 150 кадров)
+  if (participants.length > 0) {
+    const itemHeight = 80; // Высота одного элемента в списке
+    const visibleItems = Math.floor(height / itemHeight); // Количество видимых элементов
+    const totalHeight = participants.length * itemHeight;
+    const scrollDuration = 150; // Количество кадров для прокрутки
+    const maxScroll = Math.max(0, totalHeight - height + 200); // Максимальная прокрутка
+    
+    for (let frame = 0; frame < scrollDuration; frame++) {
+      const canvas = createCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      
+      // Градиентный фон
+      const gradient = ctx.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, '#667eea');
+      gradient.addColorStop(1, '#764ba2');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Заголовок списка участников
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 60px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('📋 УЧАСТНИКИ', width / 2, 80);
+      
+      // Вычисляем позицию прокрутки (плавная анимация)
+      const progress = frame / scrollDuration;
+      const easeProgress = progress * progress; // Ease in
+      const scrollY = -maxScroll * easeProgress;
+      
+      // Рисуем список участников
+      ctx.save();
+      ctx.translate(0, scrollY);
+      
+      participants.forEach((participant, index) => {
+        const y = 150 + index * itemHeight;
+        
+        // Пропускаем элементы вне видимой области
+        if (y + scrollY < 100 || y + scrollY > height) {
+          return;
+        }
+        
+        // Фон для элемента
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.fillRect(50, y - 35, width - 100, itemHeight - 10);
+        
+        // ID пользователя
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 30px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`ID: ${participant.userId}`, 70, y);
+        
+        // Имя пользователя
+        const name = `${participant.firstName || ''} ${participant.lastName || ''}`.trim();
+        if (name) {
+          ctx.fillStyle = 'white';
+          ctx.font = '30px Arial';
+          ctx.fillText(name, 300, y);
+        }
+        
+        // Username
+        if (participant.username) {
+          ctx.fillStyle = '#ccc';
+          ctx.font = '25px Arial';
+          ctx.fillText(`@${participant.username}`, 600, y);
+        }
+        
+        // Проект
+        if (participant.project) {
+          ctx.fillStyle = '#999';
+          ctx.font = '25px Arial';
+          ctx.textAlign = 'right';
+          ctx.fillText(participant.project, width - 70, y);
+        }
+      });
+      
+      ctx.restore();
+      
+      // Сохраняем кадр
+      const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
+      const buffer = canvas.toBuffer('image/png');
+      fs.writeFileSync(framePath, buffer);
+      frameIndex++;
+    }
+  }
+  
+  // 3. Кадры для каждого победителя (3 секунды = 90 кадров на победителя)
   for (let winnerIndex = 0; winnerIndex < winners.length; winnerIndex++) {
     const prize = winners[winnerIndex];
     const winner = prize.winner;
@@ -5749,22 +5838,31 @@ async function generateGiveawayVideo(giveaway, outputPath) {
       ctx.font = 'bold 50px Arial';
       ctx.fillText(prize.name, width / 2, height / 2 - 100 + yOffset);
       
-      // Победитель
-      ctx.fillStyle = '#667eea';
-      ctx.font = 'bold 60px Arial';
-      const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim() || `ID: ${winner.userId}`;
-      ctx.fillText(winnerName, width / 2, height / 2 + 20 + yOffset);
+      // ID пользователя (всегда показываем)
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 50px Arial';
+      ctx.fillText(`ID: ${winner.userId}`, width / 2, height / 2 + 20 + yOffset);
       
+      // Имя победителя
+      const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim();
+      if (winnerName) {
+        ctx.fillStyle = '#667eea';
+        ctx.font = 'bold 60px Arial';
+        ctx.fillText(winnerName, width / 2, height / 2 + 90 + yOffset);
+      }
+      
+      // Username
       if (winner.username) {
         ctx.fillStyle = '#666';
         ctx.font = '40px Arial';
-        ctx.fillText(`@${winner.username}`, width / 2, height / 2 + 100 + yOffset);
+        ctx.fillText(`@${winner.username}`, width / 2, height / 2 + 160 + yOffset);
       }
       
+      // Проект
       if (winner.project) {
         ctx.fillStyle = '#999';
         ctx.font = '30px Arial';
-        ctx.fillText(`Проект: ${winner.project}`, width / 2, height / 2 + 160 + yOffset);
+        ctx.fillText(`Проект: ${winner.project}`, width / 2, height / 2 + 220 + yOffset);
       }
       
       ctx.shadowBlur = 0;
@@ -5777,7 +5875,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     }
   }
   
-  // 3. Финальный кадр (2 секунды = 60 кадров)
+  // 4. Финальный кадр (2 секунды = 60 кадров)
   for (let i = 0; i < 60; i++) {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
