@@ -5787,52 +5787,187 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     }
   }
   
-  // 3. Кадры для каждого победителя (3 секунды = 90 кадров на победителя)
-  for (let winnerIndex = 0; winnerIndex < winners.length; winnerIndex++) {
-    const prize = winners[winnerIndex];
+  // 3. Рулетки с горизонтальной прокруткой ID (5 секунд = 150 кадров)
+  // Создаем несколько рулеток - по одной на каждое призовое место
+  const rouletteDuration = 150; // Количество кадров для прокрутки
+  const rouletteWidth = Math.floor(width / winners.length); // Ширина каждой рулетки
+  const rouletteHeight = 200; // Высота рулетки
+  const itemWidth = 150; // Ширина одного ID в рулетке
+  
+  // Создаем расширенный список ID для каждой рулетки (для плавной прокрутки)
+  const rouletteData = winners.map((prize, index) => {
     const winner = prize.winner;
-    const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim();
+    const winnerIndex = participants.findIndex(p => p.userId === winner.userId);
     
-    for (let i = 0; i < 90; i++) {
-      const progress = i / 90;
-      const easeProgress = 1 - Math.pow(1 - progress, 3);
-      const yOffset = -200 + (200 * easeProgress);
+    // Создаем список ID для прокрутки (повторяем участников несколько раз для эффекта бесконечной прокрутки)
+    const extendedIds = [];
+    for (let i = 0; i < 10; i++) {
+      extendedIds.push(...participants.map(p => p.userId));
+    }
+    
+    // Вычисляем стартовую позицию так, чтобы в конце остановиться на победителе
+    const totalItems = extendedIds.length;
+    const targetPosition = (9 * participants.length) + winnerIndex; // Позиция победителя в расширенном списке
+    const visibleItems = Math.floor(rouletteWidth / itemWidth) + 2; // Количество видимых элементов
+    const startOffset = targetPosition - Math.floor(visibleItems / 2);
+    
+    return {
+      prize,
+      winner,
+      extendedIds,
+      startOffset: Math.max(0, startOffset),
+      targetPosition
+    };
+  });
+  
+  for (let frame = 0; frame < rouletteDuration; frame++) {
+    const progress = frame / rouletteDuration;
+    
+    // Ease out функция для плавной остановки (как настоящая рулетка)
+    let easeProgress;
+    if (progress < 0.6) {
+      // Быстрая прокрутка в начале (60% времени)
+      easeProgress = progress * 2.0;
+    } else if (progress < 0.85) {
+      // Замедление (25% времени)
+      const slowProgress = (progress - 0.6) / 0.25;
+      easeProgress = 0.6 * 2.0 + slowProgress * 0.3 * (1 - Math.pow(1 - slowProgress, 2));
+    } else {
+      // Финальная остановка (15% времени)
+      const finalProgress = (progress - 0.85) / 0.15;
+      easeProgress = 0.6 * 2.0 + 0.3 * (1 - Math.pow(1 - 1, 2)) + finalProgress * 0.1 * (1 - Math.pow(1 - finalProgress, 4));
+    }
+    
+    // Генерируем HTML для всех рулеток
+    const roulettesHTML = winners.map((prize, index) => {
+      const data = rouletteData[index];
+      const currentOffset = data.startOffset + (data.targetPosition - data.startOffset) * easeProgress;
+      const roundedOffset = Math.floor(currentOffset);
       
-      const winnerHTML = generateFrameHTML(`
+      // Создаем видимые элементы рулетки
+      const visibleItems = [];
+      const itemsToShow = Math.ceil(rouletteWidth / itemWidth) + 4;
+      
+      for (let i = 0; i < itemsToShow; i++) {
+        const itemIndex = (roundedOffset + i) % data.extendedIds.length;
+        const userId = data.extendedIds[itemIndex];
+        // Подсвечиваем победителя в последних 20% кадров
+        const isWinner = userId === data.winner.userId && frame > rouletteDuration * 0.8;
+        // Центральная позиция для выделения
+        const centerPosition = rouletteWidth / 2;
+        const itemCenter = i * itemWidth - (currentOffset % 1) * itemWidth + itemWidth / 2;
+        const isCentered = Math.abs(itemCenter - centerPosition) < itemWidth / 2 && isWinner;
+        
+        visibleItems.push(`
+          <div style="
+            position: absolute;
+            left: ${i * itemWidth - (currentOffset % 1) * itemWidth}px;
+            width: ${itemWidth}px;
+            height: ${rouletteHeight}px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: ${isCentered ? 'linear-gradient(135deg, #ffd700 0%, #ffed4e 100%)' : isWinner ? 'rgba(255, 215, 0, 0.5)' : 'rgba(255, 255, 255, 0.2)'};
+            border: ${isCentered ? '4px solid #ff6b6b' : isWinner ? '3px solid #ff6b6b' : '2px solid rgba(255, 255, 255, 0.3)'};
+            border-radius: 15px;
+            font-size: ${isCentered ? '55px' : isWinner ? '45px' : '40px'};
+            font-weight: ${isCentered || isWinner ? 'bold' : 'normal'};
+            color: ${isCentered ? '#333' : isWinner ? '#333' : 'white'};
+            box-shadow: ${isCentered ? '0 0 30px rgba(255, 215, 0, 1), 0 0 60px rgba(255, 107, 107, 0.6)' : isWinner ? '0 0 20px rgba(255, 215, 0, 0.8)' : 'none'};
+            transform: ${isCentered ? 'scale(1.1)' : 'scale(1)'};
+            z-index: ${isCentered ? '10' : isWinner ? '5' : '1'};
+            transition: all 0.1s;
+          ">
+            ${userId}
+          </div>
+        `);
+      }
+      
+      return `
         <div style="
           position: absolute;
-          top: ${height / 2 - 300 + yOffset}px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 800px;
-          height: 600px;
-          background: rgba(255, 255, 255, 0.9);
-          border-radius: 20px;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-          padding: 40px;
+          left: ${index * rouletteWidth}px;
+          top: ${height / 2 - rouletteHeight / 2}px;
+          width: ${rouletteWidth}px;
+          height: ${rouletteHeight + 100}px;
+          overflow: hidden;
         ">
-          <h1 style="color: #ffd700; font-size: 100px; font-weight: bold; margin-bottom: 20px;">🏆 ${prize.place} МЕСТО</h1>
-          <h2 style="color: #333; font-size: 50px; font-weight: bold; margin-bottom: 30px;">${prize.name}</h2>
-          <p style="color: #ffd700; font-size: 50px; font-weight: bold; margin-bottom: 20px;">ID: ${winner.userId}</p>
-          ${winnerName ? `<p style="color: #667eea; font-size: 60px; font-weight: bold; margin-bottom: 20px;">${winnerName}</p>` : ''}
-          ${winner.username ? `<p style="color: #666; font-size: 40px; margin-bottom: 20px;">@${winner.username}</p>` : ''}
-          ${winner.project ? `<p style="color: #999; font-size: 30px;">Проект: ${winner.project}</p>` : ''}
+          <div style="
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 30px;
+            text-align: center;
+            color: white;
+            font-size: 30px;
+            font-weight: bold;
+          ">${prize.place} место - ${prize.name}</div>
+          <div style="
+            position: relative;
+            top: 40px;
+            left: 0;
+            width: 100%;
+            height: ${rouletteHeight}px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+          ">
+            ${visibleItems.join('')}
+          </div>
         </div>
-      `);
-      
-      await page.setContent(winnerHTML);
-      const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
-      await page.screenshot({ path: framePath, type: 'png' });
-      frameIndex++;
-    }
+      `;
+    }).join('');
+    
+    const rouletteFrameHTML = generateFrameHTML(`
+      <div style="position: relative; width: 100%; height: 100%;">
+        <h1 style="position: absolute; top: 50px; left: 50%; transform: translateX(-50%); color: white; font-size: 60px; font-weight: bold;">🎰 РУЛЕТКА 🎰</h1>
+        ${roulettesHTML}
+      </div>
+    `);
+    
+    await page.setContent(rouletteFrameHTML);
+    const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
+    await page.screenshot({ path: framePath, type: 'png' });
+    frameIndex++;
   }
   
-  // 4. Финальный кадр (2 секунды = 60 кадров)
+  // 4. Финальные кадры с результатами (2 секунды = 60 кадров)
+  const resultsHTML = generateFrameHTML(`
+    <div style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+      <h1 style="color: white; font-size: 60px; font-weight: bold; margin-bottom: 50px;">🏆 ПОБЕДИТЕЛИ 🏆</h1>
+      ${winners.map((prize, index) => {
+        const winner = prize.winner;
+        const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim();
+        return `
+          <div style="
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            padding: 30px;
+            margin: 20px;
+            width: 800px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+          ">
+            <h2 style="color: #ffd700; font-size: 50px; font-weight: bold; margin-bottom: 15px;">${prize.place} место - ${prize.name}</h2>
+            <p style="color: #333; font-size: 40px; font-weight: bold; margin-bottom: 10px;">ID: ${winner.userId}</p>
+            ${winnerName ? `<p style="color: #667eea; font-size: 35px; margin-bottom: 10px;">${winnerName}</p>` : ''}
+            ${winner.username ? `<p style="color: #666; font-size: 30px; margin-bottom: 10px;">@${winner.username}</p>` : ''}
+            ${winner.project ? `<p style="color: #999; font-size: 25px;">Проект: ${winner.project}</p>` : ''}
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `);
+  
+  await page.setContent(resultsHTML);
+  for (let i = 0; i < 60; i++) {
+    const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
+    await page.screenshot({ path: framePath, type: 'png' });
+    frameIndex++;
+  }
+  
+  // 5. Финальный кадр (2 секунды = 60 кадров)
   const finalHTML = generateFrameHTML(`
     <div style="text-align: center; color: white;">
       <h1 style="font-size: 80px; font-weight: bold; margin-bottom: 20px;">🎉 ПОЗДРАВЛЯЕМ! 🎉</h1>
