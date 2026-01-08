@@ -5483,7 +5483,20 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
       
       updateData.prizes = filteredPrizes;
     } else if (prizes !== undefined) {
-      updateData.prizes = prizes;
+      // Убеждаемся, что данные победителя сохраняются полностью
+      const normalizedPrizes = prizes.map(prize => ({
+        place: prize.place,
+        name: prize.name,
+        winner: prize.winner ? {
+          userId: prize.winner.userId,
+          username: prize.winner.username || '',
+          firstName: prize.winner.firstName || '',
+          lastName: prize.winner.lastName || '',
+          project: prize.winner.project || ''
+        } : null
+      }));
+      updateData.prizes = normalizedPrizes;
+      console.log('💾 [GIVEAWAY] Сохранение призов:', JSON.stringify(normalizedPrizes, null, 2));
     }
     
     const updatedGiveaway = await Giveaway.findOneAndUpdate(
@@ -5683,19 +5696,51 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
     
     message += '🎉 **РЕЗУЛЬТАТЫ РОЗЫГРЫША** 🎉\n\n';
     
-    giveaway.prizes.forEach((prize) => {
+    // Сортируем призы по месту
+    const sortedPrizes = [...giveaway.prizes].sort((a, b) => a.place - b.place);
+    
+    sortedPrizes.forEach((prize) => {
       if (prize.winner) {
+        // Логируем данные победителя для отладки
+        console.log(`🔍 [GIVEAWAY] Приз ${prize.place}:`, JSON.stringify(prize.winner, null, 2));
+        
         message += `🏆 **${prize.name}** (${prize.place} место):\n`;
-        message += `👤 ${prize.winner.firstName || ''} ${prize.winner.lastName || ''}`;
-        if (prize.winner.username) {
+        
+        // Формируем имя победителя
+        const firstName = (prize.winner.firstName || '').trim();
+        const lastName = (prize.winner.lastName || '').trim();
+        const fullName = `${firstName} ${lastName}`.trim();
+        
+        if (fullName) {
+          message += `👤 ${fullName}`;
+        } else if (prize.winner.username) {
+          message += `👤 @${prize.winner.username}`;
+        } else if (prize.winner.userId) {
+          message += `👤 ID: ${prize.winner.userId}`;
+        } else {
+          message += `👤 Победитель не указан`;
+        }
+        
+        // Добавляем username, если есть и не совпадает с именем
+        if (prize.winner.username && fullName) {
           message += ` (@${prize.winner.username})`;
         }
+        
+        // Добавляем проект
         if (prize.winner.project) {
           message += `\n📁 Проект: ${prize.winner.project}`;
         }
+        
         message += '\n\n';
+      } else {
+        // Если победитель не выбран, показываем приз без победителя
+        message += `🏆 **${prize.name}** (${prize.place} место):\n`;
+        message += `❌ Победитель не выбран\n\n`;
       }
     });
+    
+    // Логируем финальное сообщение для отладки
+    console.log('📝 [GIVEAWAY] Сформированное сообщение:', message);
     
     // Отправляем в каждый выбранный канал
     const https = require('https');
