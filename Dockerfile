@@ -2,7 +2,8 @@
 FROM node:18-slim
 
 # Устанавливаем системные зависимости для canvas, ffmpeg и утилиты
-RUN apt-get update && apt-get install -y \
+# Используем --no-install-recommends для уменьшения размера
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3 \
     libcairo2-dev \
@@ -13,7 +14,10 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     wget \
     jq \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/* \
+    && rm -rf /var/tmp/*
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
