@@ -5760,8 +5760,9 @@ async function generateRouletteVideo(giveaway, outputPath) {
       // Фаза 1.5: Остановка на победителе (1 секунда = 30 кадров)
       const stopFrames = 30;
       const firstWinner = winners[0];
+      const participantSegmentAngle = (Math.PI * 2) / Math.max(giveaway.participants.length, 10);
       const firstWinnerIndex = giveaway.participants.findIndex(p => p.userId === firstWinner.userId);
-      const finalRotation = (firstWinnerIndex * segmentAngle) + (Math.PI * 2 * 8); // Финальная позиция
+      const finalRotation = (firstWinnerIndex * participantSegmentAngle) + (Math.PI * 2 * 8); // Финальная позиция
       
       for (let i = 0; i < stopFrames; i++) {
         const canvas = createCanvas(width, height);
@@ -5783,13 +5784,12 @@ async function generateRouletteVideo(giveaway, outputPath) {
         const centerX = width / 2;
         const centerY = height / 2;
         const radius = 300;
-        const segmentAngle = (Math.PI * 2) / Math.max(giveaway.participants.length, 10);
         
         // Рисуем рулетку в финальной позиции
         giveaway.participants.forEach((participant, index) => {
-          const angle = (index * segmentAngle) + finalRotation;
+          const angle = (index * participantSegmentAngle) + finalRotation;
           const startAngle = angle;
-          const endAngle = angle + segmentAngle;
+          const endAngle = angle + participantSegmentAngle;
           
           // Подсвечиваем победителя
           const isWinner = participant.userId === firstWinner.userId;
@@ -5932,6 +5932,9 @@ async function generateRouletteVideo(giveaway, outputPath) {
       
       // Собираем видео из кадров с помощью ffmpeg
       const framePattern = path.join(framesDir, 'frame_%06d.png');
+      
+      // Проверяем наличие ffmpeg (обычно в PATH, но можно указать явно)
+      // Для Docker: ffmpeg должен быть установлен через apk
       
       ffmpeg(framePattern)
         .inputFPS(fps)
