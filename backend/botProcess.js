@@ -337,14 +337,14 @@ function parseSourceFromStart(startParam) {
     
     // Проверяем, является ли blockId числом
     const blockId = !isNaN(blockIdStr) ? Number(blockIdStr) : blockIdStr;
-    
-    return {
+  
+  return {
       source: source || 'direct',
       blockId: blockId,
-      type: 'deep_link',
-      details: {
-        campaign: source.includes('_') ? source.split('_').slice(1).join('_') : null,
-        medium: source.split('_')[0] || null
+    type: 'deep_link',
+    details: {
+      campaign: source.includes('_') ? source.split('_').slice(1).join('_') : null,
+      medium: source.split('_')[0] || null
       }
     };
   }
@@ -724,16 +724,16 @@ async function giveMissedLoyaltyPromoCodes(userId, loyaltyRecord) {
           
           // УВЕДОМЛЕНИЯ ОТКЛЮЧЕНЫ: Промокоды активируются автоматически, но сообщения не отправляются
           // Отмечаем награду как выданную
-          await Loyalty.updateOne(
-            { botId, userId },
-            { $set: { [`rewards.${period.key}`]: true } }
-          );
-          
-          await User.updateOne(
-            { botId, userId },
-            { $set: { [`loyaltyRewards.${period.key}`]: true } }
-          );
-          
+            await Loyalty.updateOne(
+              { botId, userId },
+              { $set: { [`rewards.${period.key}`]: true } }
+            );
+              
+              await User.updateOne(
+                { botId, userId },
+                { $set: { [`loyaltyRewards.${period.key}`]: true } }
+            );
+            
           console.log(`✅ [MISSED_PROMOCODES] Промокод ${availablePromoCode.code} активирован для пользователя ${userId} за период ${period.key} (уведомление не отправлено)`)
         } else {
           console.log(`⚠️ [MISSED_PROMOCODES] Нет доступных промокодов для периода ${period.key}`);
@@ -2721,20 +2721,20 @@ async function runLoyaltyCheck() {
               
               // УВЕДОМЛЕНИЯ ОТКЛЮЧЕНЫ: Промокоды активируются автоматически, но сообщения не отправляются
               // Отмечаем награду как выданную (батчинг)
-              // Промокод уже активирован атомарно выше через findOneAndUpdate
-              bulkUpdates.push({
-                updateOne: {
-                  filter: { botId, userId: user.userId },
-                  update: { $set: { [`rewards.${period.key}`]: true } }
-                }
-              });
-              
-              bulkUpdates.push({
-                updateOne: {
-                  filter: { botId, userId: user.userId },
-                  update: { $set: { [`loyaltyRewards.${period.key}`]: true } }
-                }
-              });
+                // Промокод уже активирован атомарно выше через findOneAndUpdate
+                  bulkUpdates.push({
+                    updateOne: {
+                      filter: { botId, userId: user.userId },
+                      update: { $set: { [`rewards.${period.key}`]: true } }
+                    }
+                  });
+                  
+                  bulkUpdates.push({
+                    updateOne: {
+                      filter: { botId, userId: user.userId },
+                      update: { $set: { [`loyaltyRewards.${period.key}`]: true } }
+                    }
+                  });
               
               console.log(`✅ [LOYALTY] Промокод ${selectedPromoCode.code} активирован для пользователя ${user.userId} за период ${period.key} (уведомление не отправлено)`)
             }

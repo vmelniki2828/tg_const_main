@@ -5626,6 +5626,216 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
 });
 
 
+// Функция для генерации видео с анимацией выпадения победителей
+async function generateGiveawayVideo(giveaway, outputPath) {
+  let createCanvas, ffmpeg;
+  
+  try {
+    const canvasModule = require('canvas');
+    createCanvas = canvasModule.createCanvas;
+  } catch (error) {
+    throw new Error('Canvas module not available. Please install: npm install canvas');
+  }
+  
+  try {
+    ffmpeg = require('fluent-ffmpeg');
+  } catch (error) {
+    throw new Error('FFmpeg module not available. Please install: npm install fluent-ffmpeg');
+  }
+  
+  const width = 1920;
+  const height = 1080;
+  const fps = 30;
+  
+  // Создаем директорию для временных кадров
+  const tempFramesDir = path.join(__dirname, 'temp_frames');
+  if (!fs.existsSync(tempFramesDir)) {
+    fs.mkdirSync(tempFramesDir, { recursive: true });
+  }
+  
+  const framesDir = path.join(tempFramesDir, `giveaway_${giveaway._id}`);
+  
+  // Создаем директорию для кадров этого розыгрыша
+  if (fs.existsSync(framesDir)) {
+    fs.rmSync(framesDir, { recursive: true, force: true });
+  }
+  fs.mkdirSync(framesDir, { recursive: true });
+  
+  // Получаем победителей
+  const winners = giveaway.prizes
+    .filter(p => p.winner)
+    .sort((a, b) => a.place - b.place);
+  
+  if (winners.length === 0) {
+    throw new Error('No winners to show in video');
+  }
+  
+  let frameIndex = 0;
+  
+  // 1. Титульный кадр (2 секунды = 60 кадров)
+  for (let i = 0; i < 60; i++) {
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+    
+    // Градиентный фон
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, '#667eea');
+    gradient.addColorStop(1, '#764ba2');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    
+    // Заголовок
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 80px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🎲 РОЗЫГРЫШ 🎲', width / 2, height / 2 - 100);
+    
+    if (giveaway.name) {
+      ctx.font = 'bold 60px Arial';
+      ctx.fillText(giveaway.name, width / 2, height / 2);
+    }
+    
+    ctx.font = '40px Arial';
+    ctx.fillText('Результаты', width / 2, height / 2 + 100);
+    
+    // Сохраняем кадр
+    const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
+    const buffer = canvas.toBuffer('image/png');
+    fs.writeFileSync(framePath, buffer);
+    frameIndex++;
+  }
+  
+  // 2. Кадры для каждого победителя (3 секунды = 90 кадров на победителя)
+  for (let winnerIndex = 0; winnerIndex < winners.length; winnerIndex++) {
+    const prize = winners[winnerIndex];
+    const winner = prize.winner;
+    
+    for (let i = 0; i < 90; i++) {
+      const canvas = createCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      
+      // Градиентный фон
+      const gradient = ctx.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, '#667eea');
+      gradient.addColorStop(1, '#764ba2');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Анимация выпадения (от -200 до 0 по Y)
+      const progress = i / 90;
+      const easeProgress = 1 - Math.pow(1 - progress, 3); // Ease out cubic
+      const yOffset = -200 + (200 * easeProgress);
+      
+      // Место и приз
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fillRect(width / 2 - 400, height / 2 - 300 + yOffset, 800, 600);
+      
+      // Тень
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+      ctx.shadowBlur = 20;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 10;
+      
+      // Место
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 100px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`🏆 ${prize.place} МЕСТО`, width / 2, height / 2 - 200 + yOffset);
+      
+      // Название приза
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 50px Arial';
+      ctx.fillText(prize.name, width / 2, height / 2 - 100 + yOffset);
+      
+      // Победитель
+      ctx.fillStyle = '#667eea';
+      ctx.font = 'bold 60px Arial';
+      const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim() || `ID: ${winner.userId}`;
+      ctx.fillText(winnerName, width / 2, height / 2 + 20 + yOffset);
+      
+      if (winner.username) {
+        ctx.fillStyle = '#666';
+        ctx.font = '40px Arial';
+        ctx.fillText(`@${winner.username}`, width / 2, height / 2 + 100 + yOffset);
+      }
+      
+      if (winner.project) {
+        ctx.fillStyle = '#999';
+        ctx.font = '30px Arial';
+        ctx.fillText(`Проект: ${winner.project}`, width / 2, height / 2 + 160 + yOffset);
+      }
+      
+      ctx.shadowBlur = 0;
+      
+      // Сохраняем кадр
+      const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
+      const buffer = canvas.toBuffer('image/png');
+      fs.writeFileSync(framePath, buffer);
+      frameIndex++;
+    }
+  }
+  
+  // 3. Финальный кадр (2 секунды = 60 кадров)
+  for (let i = 0; i < 60; i++) {
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+    
+    // Градиентный фон
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, '#667eea');
+    gradient.addColorStop(1, '#764ba2');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    
+    // Поздравление
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 80px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🎉 ПОЗДРАВЛЯЕМ! 🎉', width / 2, height / 2);
+    
+    ctx.font = '40px Arial';
+    ctx.fillText('Спасибо за участие!', width / 2, height / 2 + 100);
+    
+    // Сохраняем кадр
+    const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
+    const buffer = canvas.toBuffer('image/png');
+    fs.writeFileSync(framePath, buffer);
+    frameIndex++;
+  }
+  
+  // Собираем видео из кадров с помощью ffmpeg
+  return new Promise((resolve, reject) => {
+    ffmpeg()
+      .input(path.join(framesDir, 'frame_%06d.png'))
+      .inputFPS(fps)
+      .outputOptions([
+        '-c:v libx264',
+        '-pix_fmt yuv420p',
+        '-crf 23',
+        '-preset medium'
+      ])
+      .output(outputPath)
+      .on('end', () => {
+        // Удаляем временные кадры
+        fs.rmSync(framesDir, { recursive: true, force: true });
+        console.log(`✅ Видео сгенерировано: ${outputPath}`);
+        resolve(outputPath);
+      })
+      .on('error', (err) => {
+        console.error('❌ Ошибка генерации видео:', err);
+        // Удаляем временные кадры даже при ошибке
+        try {
+          fs.rmSync(framesDir, { recursive: true, force: true });
+        } catch (e) {}
+        reject(err);
+      })
+      .run();
+  });
+}
+
 // Отправка результатов розыгрыша в каналы
 app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
   try {
@@ -5646,7 +5856,20 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       return res.status(404).json({ error: 'Bot not found or token missing' });
     }
     
-    // Формируем сообщение с результатами
+    // Генерируем видео с анимацией выпадения победителей
+    const videoPath = path.join(__dirname, 'uploads', `giveaway_${giveawayId}_${Date.now()}.mp4`);
+    let videoGenerated = false;
+    
+    try {
+      await generateGiveawayVideo(giveaway, videoPath);
+      videoGenerated = true;
+      console.log(`✅ Видео сгенерировано: ${videoPath}`);
+    } catch (videoError) {
+      console.error('❌ Ошибка генерации видео:', videoError);
+      // Продолжаем с текстовым сообщением, если видео не удалось сгенерировать
+    }
+    
+    // Формируем текстовое сообщение с результатами (как подпись к видео или отдельно)
     let message = description || '';
     if (message) message += '\n\n';
     
@@ -5669,59 +5892,124 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
     // Отправляем в каждый выбранный канал
     const https = require('https');
     const url = require('url');
+    const FormData = require('form-data');
     const results = [];
+    
+    // Убеждаемся, что директория uploads существует
+    const uploadsDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
     
     for (const channelId of selectedChannels) {
       try {
-        const apiUrl = `https://api.telegram.org/bot${bot.token}/sendMessage`;
-        const postData = JSON.stringify({
-          chat_id: channelId,
-          text: message,
-          parse_mode: 'Markdown'
-        });
-        
-        const parsedUrl = url.parse(apiUrl);
-        const options = {
-          hostname: parsedUrl.hostname,
-          port: parsedUrl.port || 443,
-          path: parsedUrl.path,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(postData)
-          }
-        };
-        
-        await new Promise((resolve, reject) => {
-          const req = https.request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => {
-              if (res.statusCode === 200) {
-                const result = JSON.parse(data);
-                if (result.ok) {
-                  results.push({ channelId, success: true });
-                  resolve();
+        if (videoGenerated && fs.existsSync(videoPath)) {
+          // Отправляем видео
+          const form = new FormData();
+          form.append('chat_id', channelId);
+          form.append('video', fs.createReadStream(videoPath));
+          form.append('caption', message);
+          form.append('parse_mode', 'Markdown');
+          
+          const apiUrl = `https://api.telegram.org/bot${bot.token}/sendVideo`;
+          const parsedUrl = url.parse(apiUrl);
+          
+          const options = {
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || 443,
+            path: parsedUrl.path,
+            method: 'POST',
+            headers: form.getHeaders()
+          };
+          
+          await new Promise((resolve, reject) => {
+            const req = https.request(options, (res) => {
+              let data = '';
+              res.on('data', (chunk) => { data += chunk; });
+              res.on('end', () => {
+                if (res.statusCode === 200) {
+                  const result = JSON.parse(data);
+                  if (result.ok) {
+                    results.push({ channelId, success: true, type: 'video' });
+                    resolve();
+                  } else {
+                    results.push({ channelId, success: false, error: result.description });
+                    reject(new Error(result.description));
+                  }
                 } else {
-                  results.push({ channelId, success: false, error: result.description });
-                  reject(new Error(result.description));
+                  results.push({ channelId, success: false, error: `HTTP ${res.statusCode}` });
+                  reject(new Error(`HTTP ${res.statusCode}`));
                 }
-              } else {
-                results.push({ channelId, success: false, error: `HTTP ${res.statusCode}` });
-                reject(new Error(`HTTP ${res.statusCode}`));
-              }
+              });
             });
+            req.on('error', (err) => {
+              results.push({ channelId, success: false, error: err.message });
+              reject(err);
+            });
+            form.pipe(req);
           });
-          req.on('error', (err) => {
-            results.push({ channelId, success: false, error: err.message });
-            reject(err);
+        } else {
+          // Отправляем текстовое сообщение, если видео не сгенерировано
+          const apiUrl = `https://api.telegram.org/bot${bot.token}/sendMessage`;
+          const postData = JSON.stringify({
+            chat_id: channelId,
+            text: message,
+            parse_mode: 'Markdown'
           });
-          req.write(postData);
-          req.end();
-        });
+          
+          const parsedUrl = url.parse(apiUrl);
+          const options = {
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || 443,
+            path: parsedUrl.path,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(postData)
+            }
+          };
+          
+          await new Promise((resolve, reject) => {
+            const req = https.request(options, (res) => {
+              let data = '';
+              res.on('data', (chunk) => { data += chunk; });
+              res.on('end', () => {
+                if (res.statusCode === 200) {
+                  const result = JSON.parse(data);
+                  if (result.ok) {
+                    results.push({ channelId, success: true, type: 'text' });
+                    resolve();
+                  } else {
+                    results.push({ channelId, success: false, error: result.description });
+                    reject(new Error(result.description));
+                  }
+                } else {
+                  results.push({ channelId, success: false, error: `HTTP ${res.statusCode}` });
+                  reject(new Error(`HTTP ${res.statusCode}`));
+                }
+              });
+            });
+            req.on('error', (err) => {
+              results.push({ channelId, success: false, error: err.message });
+              reject(err);
+            });
+            req.write(postData);
+            req.end();
+          });
+        }
       } catch (error) {
         console.error(`❌ Ошибка отправки в канал ${channelId}:`, error);
         results.push({ channelId, success: false, error: error.message });
+      }
+    }
+    
+    // Удаляем временный видео файл после отправки
+    if (videoGenerated && fs.existsSync(videoPath)) {
+      try {
+        fs.unlinkSync(videoPath);
+        console.log(`🗑️ Временный видео файл удален: ${videoPath}`);
+      } catch (deleteError) {
+        console.error('⚠️ Ошибка удаления временного видео файла:', deleteError);
       }
     }
     
