@@ -18,16 +18,7 @@ const Giveaways = ({ botId, onClose }) => {
     prizePlaces: 1,
     prizes: [],
     description: '',
-    selectedChannels: [],
-    colors: {
-      backgroundStart: '#667eea',
-      backgroundEnd: '#764ba2',
-      itemBackground: 'rgba(255, 255, 255, 0.2)',
-      itemText: 'white',
-      winnerBackground: '#ffd700',
-      winnerText: '#333',
-      winnerBorder: '#ff6b6b'
-    }
+    selectedChannels: []
   });
 
   useEffect(() => {
@@ -75,16 +66,7 @@ const Giveaways = ({ botId, onClose }) => {
       prizePlaces: 1,
       prizes: [],
       description: '',
-      selectedChannels: [],
-      colors: {
-        backgroundStart: '#667eea',
-        backgroundEnd: '#764ba2',
-        itemBackground: 'rgba(255, 255, 255, 0.2)',
-        itemText: 'white',
-        winnerBackground: '#ffd700',
-        winnerText: '#333',
-        winnerBorder: '#ff6b6b'
-      }
+      selectedChannels: []
     });
     setFile(null);
   };
@@ -96,16 +78,7 @@ const Giveaways = ({ botId, onClose }) => {
       prizePlaces: giveaway.prizePlaces,
       prizes: giveaway.prizes || [],
       description: giveaway.description || '',
-      selectedChannels: giveaway.selectedChannels || [],
-      colors: giveaway.colors || {
-        backgroundStart: '#667eea',
-        backgroundEnd: '#764ba2',
-        itemBackground: 'rgba(255, 255, 255, 0.2)',
-        itemText: 'white',
-        winnerBackground: '#ffd700',
-        winnerText: '#333',
-        winnerBorder: '#ff6b6b'
-      }
+      selectedChannels: giveaway.selectedChannels || []
     });
   };
 
@@ -418,174 +391,6 @@ const Giveaways = ({ botId, onClose }) => {
                       placeholder="Опишите розыгрыш..."
                       rows={4}
                       className="form-textarea"
-                    />
-                  </div>
-                </div>
-
-                {/* Настройки цветов */}
-                <div className="editor-section">
-                  <h3>🎨 Цвета для видео</h3>
-                  <div className="form-group">
-                    <label>Начальный цвет фона (градиент):</label>
-                    <input
-                      type="color"
-                      value={giveawayData.colors.backgroundStart}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, backgroundStart: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '100px', height: '40px' }}
-                    />
-                    <input
-                      type="text"
-                      value={giveawayData.colors.backgroundStart}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, backgroundStart: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '150px', marginLeft: '10px' }}
-                      placeholder="#667eea"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Конечный цвет фона (градиент):</label>
-                    <input
-                      type="color"
-                      value={giveawayData.colors.backgroundEnd}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, backgroundEnd: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '100px', height: '40px' }}
-                    />
-                    <input
-                      type="text"
-                      value={giveawayData.colors.backgroundEnd}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, backgroundEnd: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '150px', marginLeft: '10px' }}
-                      placeholder="#764ba2"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Фон элементов ID:</label>
-                    <input
-                      type="color"
-                      value={giveawayData.colors.itemBackground === 'rgba(255, 255, 255, 0.2)' ? '#ffffff' : giveawayData.colors.itemBackground}
-                      onChange={(e) => {
-                        const rgba = e.target.value;
-                        const r = parseInt(rgba.slice(1, 3), 16);
-                        const g = parseInt(rgba.slice(3, 5), 16);
-                        const b = parseInt(rgba.slice(5, 7), 16);
-                        setGiveawayData({
-                          ...giveawayData,
-                          colors: { ...giveawayData.colors, itemBackground: `rgba(${r}, ${g}, ${b}, 0.2)` }
-                        });
-                      }}
-                      className="form-input"
-                      style={{ width: '100px', height: '40px' }}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Цвет текста ID:</label>
-                    <input
-                      type="color"
-                      value={giveawayData.colors.itemText}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, itemText: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '100px', height: '40px' }}
-                    />
-                    <input
-                      type="text"
-                      value={giveawayData.colors.itemText}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, itemText: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '150px', marginLeft: '10px' }}
-                      placeholder="white"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Фон победителя:</label>
-                    <input
-                      type="color"
-                      value={giveawayData.colors.winnerBackground}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, winnerBackground: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '100px', height: '40px' }}
-                    />
-                    <input
-                      type="text"
-                      value={giveawayData.colors.winnerBackground}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, winnerBackground: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '150px', marginLeft: '10px' }}
-                      placeholder="#ffd700"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Цвет текста победителя:</label>
-                    <input
-                      type="color"
-                      value={giveawayData.colors.winnerText}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, winnerText: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '100px', height: '40px' }}
-                    />
-                    <input
-                      type="text"
-                      value={giveawayData.colors.winnerText}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, winnerText: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '150px', marginLeft: '10px' }}
-                      placeholder="#333"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Цвет рамки победителя:</label>
-                    <input
-                      type="color"
-                      value={giveawayData.colors.winnerBorder}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, winnerBorder: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '100px', height: '40px' }}
-                    />
-                    <input
-                      type="text"
-                      value={giveawayData.colors.winnerBorder}
-                      onChange={(e) => setGiveawayData({
-                        ...giveawayData,
-                        colors: { ...giveawayData.colors, winnerBorder: e.target.value }
-                      })}
-                      className="form-input"
-                      style={{ width: '150px', marginLeft: '10px' }}
-                      placeholder="#ff6b6b"
                     />
                   </div>
                 </div>

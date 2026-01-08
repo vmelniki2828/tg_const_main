@@ -2,17 +2,6 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Устанавливаем системные зависимости для Puppeteer и ffmpeg
-RUN apk add --no-cache \
-    ffmpeg \
-    chromium \
-    nss \
-    freetype \
-    freetype-dev \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont
-
 # Копируем package.json и package-lock.json для backend
 COPY backend/package*.json ./backend/
 
@@ -26,7 +15,7 @@ RUN npm install
 COPY backend/ ./
 
 # Создаем необходимые директории
-RUN mkdir -p uploads promocodes logs temp_frames
+RUN mkdir -p uploads promocodes logs
 
 # Устанавливаем права
 RUN chmod 755 uploads promocodes

@@ -2,18 +2,7 @@
 FROM node:18-alpine
 
 # Устанавливаем wget и jq для health check и мониторинга
-# А также системные зависимости для Puppeteer и ffmpeg
-RUN apk add --no-cache \
-    wget \
-    jq \
-    ffmpeg \
-    chromium \
-    nss \
-    freetype \
-    freetype-dev \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont
+RUN apk add --no-cache wget jq
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
@@ -30,7 +19,7 @@ WORKDIR /app
 COPY . .
 
 # Создаем необходимые директории
-RUN mkdir -p backend/uploads backend/promocodes backend/backups backend/temp_frames
+RUN mkdir -p backend/uploads backend/promocodes backend/backups
 
 # Устанавливаем права на директории
 RUN chmod 755 backend/uploads backend/promocodes backend/backups

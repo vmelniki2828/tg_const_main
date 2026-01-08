@@ -270,15 +270,6 @@ const GiveawaySchema = new mongoose.Schema({
   description: { type: String, default: '' }, // Текст про розыгрыш
   status: { type: String, enum: ['draft', 'completed'], default: 'draft' },
   selectedChannels: [{ type: String }], // ID каналов для отправки результатов
-  colors: {
-    backgroundStart: { type: String, default: '#667eea' }, // Начальный цвет градиента фона
-    backgroundEnd: { type: String, default: '#764ba2' }, // Конечный цвет градиента фона
-    itemBackground: { type: String, default: 'rgba(255, 255, 255, 0.2)' }, // Фон элементов ID
-    itemText: { type: String, default: 'white' }, // Цвет текста ID
-    winnerBackground: { type: String, default: '#ffd700' }, // Фон победителя
-    winnerText: { type: String, default: '#333' }, // Цвет текста победителя
-    winnerBorder: { type: String, default: '#ff6b6b' } // Цвет рамки победителя
-  },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
