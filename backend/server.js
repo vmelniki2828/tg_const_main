@@ -5706,7 +5706,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     body {
       width: ${width}px;
       height: ${height}px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, ${colors.backgroundStart} 0%, ${colors.backgroundEnd} 100%);
       font-family: 'Arial', sans-serif;
       overflow: hidden;
       display: flex;
@@ -5722,77 +5722,23 @@ async function generateGiveawayVideo(giveaway, outputPath) {
 </html>`;
   };
   
-  // 1. Титульный кадр (2 секунды = 60 кадров)
-  const titleHTML = generateFrameHTML(`
-    <div style="text-align: center; color: white;">
-      <h1 style="font-size: 80px; font-weight: bold; margin-bottom: 20px;">🎲 РОЗЫГРЫШ 🎲</h1>
-      ${giveaway.name ? `<h2 style="font-size: 60px; font-weight: bold; margin-bottom: 20px;">${giveaway.name}</h2>` : ''}
-      <p style="font-size: 40px;">Участников: ${participants.length}</p>
-    </div>
-  `);
+  // Получаем цвета из настроек розыгрыша или используем значения по умолчанию
+  const colors = giveaway.colors || {
+    backgroundStart: '#667eea',
+    backgroundEnd: '#764ba2',
+    itemBackground: 'rgba(255, 255, 255, 0.2)',
+    itemText: 'white',
+    winnerBackground: '#ffd700',
+    winnerText: '#333',
+    winnerBorder: '#ff6b6b'
+  };
   
-  await page.setContent(titleHTML);
-  for (let i = 0; i < 60; i++) {
-    const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
-    await page.screenshot({ path: framePath, type: 'png' });
-    frameIndex++;
-  }
-  
-  // 2. Прокрутка всех участников (5 секунд = 150 кадров)
-  if (participants.length > 0) {
-    const scrollDuration = 150;
-    const itemHeight = 80;
-    const totalHeight = participants.length * itemHeight;
-    const maxScroll = Math.max(0, totalHeight - height + 200);
-    
-    for (let frame = 0; frame < scrollDuration; frame++) {
-      const progress = frame / scrollDuration;
-      const easeProgress = progress * progress;
-      const scrollY = -maxScroll * easeProgress;
-      
-      const participantsList = participants.map((p, index) => {
-        const name = `${p.firstName || ''} ${p.lastName || ''}`.trim();
-        return `
-          <div style="
-            position: absolute;
-            top: ${150 + index * itemHeight + scrollY}px;
-            left: 50px;
-            right: 50px;
-            height: ${itemHeight - 10}px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            padding: 0 20px;
-          ">
-            <span style="color: #ffd700; font-size: 30px; font-weight: bold; margin-right: 20px;">ID: ${p.userId}</span>
-            ${name ? `<span style="color: white; font-size: 30px; margin-right: 20px;">${name}</span>` : ''}
-            ${p.username ? `<span style="color: #ccc; font-size: 25px; margin-right: 20px;">@${p.username}</span>` : ''}
-            ${p.project ? `<span style="color: #999; font-size: 25px; margin-left: auto;">${p.project}</span>` : ''}
-          </div>
-        `;
-      }).join('');
-      
-      const scrollHTML = generateFrameHTML(`
-        <div style="position: relative; width: 100%; height: 100%;">
-          <h1 style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; font-size: 60px; font-weight: bold;">📋 УЧАСТНИКИ</h1>
-          ${participantsList}
-        </div>
-      `);
-      
-      await page.setContent(scrollHTML);
-      const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
-      await page.screenshot({ path: framePath, type: 'png' });
-      frameIndex++;
-    }
-  }
-  
-  // 3. Рулетки с горизонтальной прокруткой ID (5 секунд = 150 кадров)
+  // 1. Рулетки с вертикальной прокруткой ID (5 секунд = 150 кадров)
   // Создаем несколько рулеток - по одной на каждое призовое место
   const rouletteDuration = 150; // Количество кадров для прокрутки
   const rouletteWidth = Math.floor(width / winners.length); // Ширина каждой рулетки
-  const rouletteHeight = 200; // Высота рулетки
-  const itemWidth = 150; // Ширина одного ID в рулетке
+  const rouletteHeight = Math.floor(height * 0.6); // Высота рулетки (60% высоты экрана)
+  const itemHeight = 60; // Высота одного ID в рулетке
   
   // Создаем расширенный список ID для каждой рулетки (для плавной прокрутки)
   const rouletteData = winners.map((prize, index) => {
@@ -5808,7 +5754,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     // Вычисляем стартовую позицию так, чтобы в конце остановиться на победителе
     const totalItems = extendedIds.length;
     const targetPosition = (9 * participants.length) + winnerIndex; // Позиция победителя в расширенном списке
-    const visibleItems = Math.floor(rouletteWidth / itemWidth) + 2; // Количество видимых элементов
+    const visibleItems = Math.floor(rouletteHeight / itemHeight) + 2; // Количество видимых элементов
     const startOffset = targetPosition - Math.floor(visibleItems / 2);
     
     return {
@@ -5844,39 +5790,40 @@ async function generateGiveawayVideo(giveaway, outputPath) {
       const currentOffset = data.startOffset + (data.targetPosition - data.startOffset) * easeProgress;
       const roundedOffset = Math.floor(currentOffset);
       
-      // Создаем видимые элементы рулетки
+      // Создаем видимые элементы рулетки (вертикальная прокрутка)
       const visibleItems = [];
-      const itemsToShow = Math.ceil(rouletteWidth / itemWidth) + 4;
+      const itemsToShow = Math.ceil(rouletteHeight / itemHeight) + 4;
       
       for (let i = 0; i < itemsToShow; i++) {
         const itemIndex = (roundedOffset + i) % data.extendedIds.length;
         const userId = data.extendedIds[itemIndex];
         // Подсвечиваем победителя в последних 20% кадров
         const isWinner = userId === data.winner.userId && frame > rouletteDuration * 0.8;
-        // Центральная позиция для выделения
-        const centerPosition = rouletteWidth / 2;
-        const itemCenter = i * itemWidth - (currentOffset % 1) * itemWidth + itemWidth / 2;
-        const isCentered = Math.abs(itemCenter - centerPosition) < itemWidth / 2 && isWinner;
+        // Центральная позиция для выделения (вертикально)
+        const centerPosition = rouletteHeight / 2;
+        const itemTop = i * itemHeight - (currentOffset % 1) * itemHeight;
+        const itemCenter = itemTop + itemHeight / 2;
+        const isCentered = Math.abs(itemCenter - centerPosition) < itemHeight / 2 && isWinner;
         
         visibleItems.push(`
           <div style="
             position: absolute;
-            left: ${i * itemWidth - (currentOffset % 1) * itemWidth}px;
-            width: ${itemWidth}px;
-            height: ${rouletteHeight}px;
+            top: ${itemTop}px;
+            left: 10px;
+            right: 10px;
+            height: ${itemHeight}px;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: ${isCentered ? 'linear-gradient(135deg, #ffd700 0%, #ffed4e 100%)' : isWinner ? 'rgba(255, 215, 0, 0.5)' : 'rgba(255, 255, 255, 0.2)'};
-            border: ${isCentered ? '4px solid #ff6b6b' : isWinner ? '3px solid #ff6b6b' : '2px solid rgba(255, 255, 255, 0.3)'};
-            border-radius: 15px;
-            font-size: ${isCentered ? '55px' : isWinner ? '45px' : '40px'};
+            background: ${isCentered ? colors.winnerBackground : isWinner ? colors.winnerBackground + '80' : colors.itemBackground};
+            border: ${isCentered ? `4px solid ${colors.winnerBorder}` : isWinner ? `3px solid ${colors.winnerBorder}` : '2px solid rgba(255, 255, 255, 0.3)'};
+            border-radius: 10px;
+            font-size: ${isCentered ? '32px' : isWinner ? '28px' : '24px'};
             font-weight: ${isCentered || isWinner ? 'bold' : 'normal'};
-            color: ${isCentered ? '#333' : isWinner ? '#333' : 'white'};
-            box-shadow: ${isCentered ? '0 0 30px rgba(255, 215, 0, 1), 0 0 60px rgba(255, 107, 107, 0.6)' : isWinner ? '0 0 20px rgba(255, 215, 0, 0.8)' : 'none'};
-            transform: ${isCentered ? 'scale(1.1)' : 'scale(1)'};
+            color: ${isCentered || isWinner ? colors.winnerText : colors.itemText};
+            box-shadow: ${isCentered ? `0 0 20px ${colors.winnerBackground}, 0 0 40px ${colors.winnerBorder}80` : isWinner ? `0 0 15px ${colors.winnerBackground}CC` : 'none'};
+            transform: ${isCentered ? 'scale(1.05)' : 'scale(1)'};
             z-index: ${isCentered ? '10' : isWinner ? '5' : '1'};
-            transition: all 0.1s;
           ">
             ${userId}
           </div>
@@ -5887,9 +5834,9 @@ async function generateGiveawayVideo(giveaway, outputPath) {
         <div style="
           position: absolute;
           left: ${index * rouletteWidth}px;
-          top: ${height / 2 - rouletteHeight / 2}px;
+          top: ${height * 0.15}px;
           width: ${rouletteWidth}px;
-          height: ${rouletteHeight + 100}px;
+          height: ${rouletteHeight + 80}px;
           overflow: hidden;
         ">
           <div style="
@@ -5900,7 +5847,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
             height: 30px;
             text-align: center;
             color: white;
-            font-size: 30px;
+            font-size: 24px;
             font-weight: bold;
           ">${prize.place} место - ${prize.name}</div>
           <div style="
@@ -5912,6 +5859,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
             overflow: hidden;
             background: rgba(0, 0, 0, 0.2);
             border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
           ">
             ${visibleItems.join('')}
           </div>
@@ -5921,7 +5869,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     
     const rouletteFrameHTML = generateFrameHTML(`
       <div style="position: relative; width: 100%; height: 100%;">
-        <h1 style="position: absolute; top: 50px; left: 50%; transform: translateX(-50%); color: white; font-size: 60px; font-weight: bold;">🎰 РУЛЕТКА 🎰</h1>
+        <h1 style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; font-size: 36px; font-weight: bold;">🎰 РУЛЕТКА 🎰</h1>
         ${roulettesHTML}
       </div>
     `);
@@ -5932,7 +5880,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     frameIndex++;
   }
   
-  // 4. Финальные кадры с результатами (2 секунды = 60 кадров)
+  // 3. Финальные кадры с результатами (2 секунды = 60 кадров)
   const resultsHTML = generateFrameHTML(`
     <div style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;">
       <h1 style="color: white; font-size: 60px; font-weight: bold; margin-bottom: 50px;">🏆 ПОБЕДИТЕЛИ 🏆</h1>
@@ -5967,7 +5915,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     frameIndex++;
   }
   
-  // 5. Финальный кадр (2 секунды = 60 кадров)
+  // 4. Финальный кадр (2 секунды = 60 кадров)
   const finalHTML = generateFrameHTML(`
     <div style="text-align: center; color: white;">
       <h1 style="font-size: 80px; font-weight: bold; margin-bottom: 20px;">🎉 ПОЗДРАВЛЯЕМ! 🎉</h1>
