@@ -5733,12 +5733,12 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     winnerBorder: '#ff6b6b'
   };
   
-  // 1. Рулетки с вертикальной прокруткой ID (5 секунд = 150 кадров)
+  // 1. Рулетки с вертикальной прокруткой ID (8 секунд = 240 кадров)
   // Создаем несколько рулеток - по одной на каждое призовое место
-  const rouletteDuration = 150; // Количество кадров для прокрутки
+  const rouletteDuration = 240; // Количество кадров для прокрутки (увеличено для более длинной прокрутки)
   const rouletteWidth = Math.floor(width / winners.length); // Ширина каждой рулетки
-  const rouletteHeight = Math.floor(height * 0.6); // Высота рулетки (60% высоты экрана)
-  const itemHeight = 45; // Высота одного ID в рулетке (уменьшена)
+  const rouletteHeight = Math.floor(height * 0.5); // Высота рулетки (50% высоты экрана, чтобы поместились все)
+  const itemHeight = 28; // Высота одного ID в рулетке (значительно уменьшена)
   
   // Создаем расширенный список ID для каждой рулетки (для плавной прокрутки)
   const rouletteData = winners.map((prize, index) => {
@@ -5770,18 +5770,23 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     const progress = frame / rouletteDuration;
     
     // Ease out функция для плавной остановки (как настоящая рулетка)
+    // Более длинная и плавная прокрутка с постепенным замедлением
     let easeProgress;
-    if (progress < 0.6) {
-      // Быстрая прокрутка в начале (60% времени)
-      easeProgress = progress * 2.0;
-    } else if (progress < 0.85) {
-      // Замедление (25% времени)
-      const slowProgress = (progress - 0.6) / 0.25;
-      easeProgress = 0.6 * 2.0 + slowProgress * 0.3 * (1 - Math.pow(1 - slowProgress, 2));
+    if (progress < 0.5) {
+      // Быстрая прокрутка в начале (50% времени)
+      easeProgress = progress * 2.5;
+    } else if (progress < 0.75) {
+      // Первое замедление (25% времени)
+      const slowProgress = (progress - 0.5) / 0.25;
+      easeProgress = 0.5 * 2.5 + slowProgress * 0.4 * (1 - Math.pow(1 - slowProgress, 2));
+    } else if (progress < 0.9) {
+      // Второе замедление (15% времени)
+      const slowProgress2 = (progress - 0.75) / 0.15;
+      easeProgress = 0.5 * 2.5 + 0.4 * (1 - Math.pow(1 - 1, 2)) + slowProgress2 * 0.08 * (1 - Math.pow(1 - slowProgress2, 3));
     } else {
-      // Финальная остановка (15% времени)
-      const finalProgress = (progress - 0.85) / 0.15;
-      easeProgress = 0.6 * 2.0 + 0.3 * (1 - Math.pow(1 - 1, 2)) + finalProgress * 0.1 * (1 - Math.pow(1 - finalProgress, 4));
+      // Финальное плавное подкатывание (10% времени)
+      const finalProgress = (progress - 0.9) / 0.1;
+      easeProgress = 0.5 * 2.5 + 0.4 * (1 - Math.pow(1 - 1, 2)) + 0.08 * (1 - Math.pow(1 - 1, 3)) + finalProgress * 0.02 * (1 - Math.pow(1 - finalProgress, 5));
     }
     
     // Генерируем HTML для всех рулеток
@@ -5818,7 +5823,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
             background: ${isCentered ? colors.winnerBackground : isWinner ? colors.winnerBackground + '80' : colors.itemBackground};
             border: ${isCentered ? `4px solid ${colors.winnerBorder}` : isWinner ? `3px solid ${colors.winnerBorder}` : '2px solid rgba(255, 255, 255, 0.3)'};
             border-radius: 10px;
-            font-size: ${isCentered ? '26px' : isWinner ? '22px' : '18px'};
+            font-size: ${isCentered ? '20px' : isWinner ? '18px' : '16px'};
             font-weight: ${isCentered || isWinner ? 'bold' : 'normal'};
             color: ${isCentered || isWinner ? colors.winnerText : colors.itemText};
             box-shadow: ${isCentered ? `0 0 20px ${colors.winnerBackground}, 0 0 40px ${colors.winnerBorder}80` : isWinner ? `0 0 15px ${colors.winnerBackground}CC` : 'none'};
@@ -5834,25 +5839,25 @@ async function generateGiveawayVideo(giveaway, outputPath) {
         <div style="
           position: absolute;
           left: ${index * rouletteWidth}px;
-          top: ${height * 0.15}px;
+          top: ${height * 0.1}px;
           width: ${rouletteWidth}px;
-          height: ${rouletteHeight + 80}px;
-          overflow: hidden;
+          height: ${rouletteHeight + 60}px;
+          overflow: visible;
         ">
           <div style="
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
-            height: 30px;
+            height: 25px;
             text-align: center;
             color: white;
-            font-size: 24px;
+            font-size: 20px;
             font-weight: bold;
           ">${prize.place} место - ${prize.name}</div>
           <div style="
             position: relative;
-            top: 40px;
+            top: 30px;
             left: 0;
             width: 100%;
             height: ${rouletteHeight}px;
@@ -5862,28 +5867,41 @@ async function generateGiveawayVideo(giveaway, outputPath) {
             border: 2px solid rgba(255, 255, 255, 0.1);
           ">
             ${visibleItems.join('')}
-            <!-- Стрелки для указания победителя -->
+            <!-- Стрелки для указания победителя (более заметные) -->
             <div style="
               position: absolute;
-              top: ${rouletteHeight / 2 - 25}px;
-              left: -15px;
+              top: ${rouletteHeight / 2 - 30}px;
+              left: -40px;
               width: 0;
               height: 0;
-              border-top: 15px solid transparent;
-              border-bottom: 15px solid transparent;
-              border-right: 20px solid ${colors.winnerBorder};
+              border-top: 30px solid transparent;
+              border-bottom: 30px solid transparent;
+              border-right: 35px solid ${colors.winnerBorder};
               z-index: 100;
+              filter: drop-shadow(0 0 10px ${colors.winnerBorder});
             "></div>
             <div style="
               position: absolute;
-              top: ${rouletteHeight / 2 - 25}px;
-              right: -15px;
+              top: ${rouletteHeight / 2 - 30}px;
+              right: -40px;
               width: 0;
               height: 0;
-              border-top: 15px solid transparent;
-              border-bottom: 15px solid transparent;
-              border-left: 20px solid ${colors.winnerBorder};
+              border-top: 30px solid transparent;
+              border-bottom: 30px solid transparent;
+              border-left: 35px solid ${colors.winnerBorder};
               z-index: 100;
+              filter: drop-shadow(0 0 10px ${colors.winnerBorder});
+            "></div>
+            <!-- Дополнительные индикаторы для лучшей видимости -->
+            <div style="
+              position: absolute;
+              top: ${rouletteHeight / 2 - 2}px;
+              left: 0;
+              right: 0;
+              height: 4px;
+              background: ${colors.winnerBorder};
+              z-index: 99;
+              box-shadow: 0 0 15px ${colors.winnerBorder};
             "></div>
           </div>
         </div>
