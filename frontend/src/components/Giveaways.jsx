@@ -266,7 +266,7 @@ const Giveaways = ({ botId, onClose }) => {
       return;
     }
 
-    if (!confirm('Отправить результаты розыгрыша в выбранные каналы?')) {
+    if (!window.confirm('Отправить результаты розыгрыша в выбранные каналы?')) {
       return;
     }
 
