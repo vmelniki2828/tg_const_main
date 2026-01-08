@@ -5738,7 +5738,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
   const rouletteDuration = 150; // Количество кадров для прокрутки
   const rouletteWidth = Math.floor(width / winners.length); // Ширина каждой рулетки
   const rouletteHeight = Math.floor(height * 0.6); // Высота рулетки (60% высоты экрана)
-  const itemHeight = 60; // Высота одного ID в рулетке
+  const itemHeight = 45; // Высота одного ID в рулетке (уменьшена)
   
   // Создаем расширенный список ID для каждой рулетки (для плавной прокрутки)
   const rouletteData = winners.map((prize, index) => {
@@ -5818,7 +5818,7 @@ async function generateGiveawayVideo(giveaway, outputPath) {
             background: ${isCentered ? colors.winnerBackground : isWinner ? colors.winnerBackground + '80' : colors.itemBackground};
             border: ${isCentered ? `4px solid ${colors.winnerBorder}` : isWinner ? `3px solid ${colors.winnerBorder}` : '2px solid rgba(255, 255, 255, 0.3)'};
             border-radius: 10px;
-            font-size: ${isCentered ? '32px' : isWinner ? '28px' : '24px'};
+            font-size: ${isCentered ? '26px' : isWinner ? '22px' : '18px'};
             font-weight: ${isCentered || isWinner ? 'bold' : 'normal'};
             color: ${isCentered || isWinner ? colors.winnerText : colors.itemText};
             box-shadow: ${isCentered ? `0 0 20px ${colors.winnerBackground}, 0 0 40px ${colors.winnerBorder}80` : isWinner ? `0 0 15px ${colors.winnerBackground}CC` : 'none'};
@@ -5862,6 +5862,29 @@ async function generateGiveawayVideo(giveaway, outputPath) {
             border: 2px solid rgba(255, 255, 255, 0.1);
           ">
             ${visibleItems.join('')}
+            <!-- Стрелки для указания победителя -->
+            <div style="
+              position: absolute;
+              top: ${rouletteHeight / 2 - 25}px;
+              left: -15px;
+              width: 0;
+              height: 0;
+              border-top: 15px solid transparent;
+              border-bottom: 15px solid transparent;
+              border-right: 20px solid ${colors.winnerBorder};
+              z-index: 100;
+            "></div>
+            <div style="
+              position: absolute;
+              top: ${rouletteHeight / 2 - 25}px;
+              right: -15px;
+              width: 0;
+              height: 0;
+              border-top: 15px solid transparent;
+              border-bottom: 15px solid transparent;
+              border-left: 20px solid ${colors.winnerBorder};
+              z-index: 100;
+            "></div>
           </div>
         </div>
       `;
@@ -5869,7 +5892,6 @@ async function generateGiveawayVideo(giveaway, outputPath) {
     
     const rouletteFrameHTML = generateFrameHTML(`
       <div style="position: relative; width: 100%; height: 100%;">
-        <h1 style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; font-size: 36px; font-weight: bold;">🎰 РУЛЕТКА 🎰</h1>
         ${roulettesHTML}
       </div>
     `);
