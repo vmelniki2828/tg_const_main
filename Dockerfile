@@ -1,20 +1,8 @@
 # Используем официальный образ Node.js
 FROM node:18-alpine
 
-# Устанавливаем системные зависимости для canvas, ffmpeg и утилиты
-RUN apk add --no-cache \
-    wget \
-    jq \
-    python3 \
-    make \
-    g++ \
-    cairo-dev \
-    pango-dev \
-    libjpeg-turbo-dev \
-    giflib-dev \
-    librsvg-dev \
-    ffmpeg \
-    && ln -sf python3 /usr/bin/python
+# Устанавливаем wget и jq для health check и мониторинга
+RUN apk add --no-cache wget jq
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
@@ -31,7 +19,7 @@ WORKDIR /app
 COPY . .
 
 # Создаем необходимые директории
-RUN mkdir -p backend/uploads backend/promocodes backend/backups backend/temp_frames backend/uploads/giveaways
+RUN mkdir -p backend/uploads backend/promocodes backend/backups
 
 # Устанавливаем права на директории
 RUN chmod 755 backend/uploads backend/promocodes backend/backups

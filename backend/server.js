@@ -6,8 +6,6 @@ const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
 const mongoose = require('mongoose');
-const { createCanvas, loadImage } = require('canvas');
-const ffmpeg = require('fluent-ffmpeg');
 const { 
   QuizStats, 
   Bot, 
@@ -5628,346 +5626,6 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
 });
 
 
-// Функция для генерации видео рулетки с победителями
-async function generateRouletteVideo(giveaway, outputPath) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const width = 1920;
-      const height = 1080;
-      const fps = 30;
-      const framesDir = path.join(__dirname, 'temp_frames', `giveaway_${giveaway._id}`);
-      
-      // Создаем директорию для кадров
-      if (!fs.existsSync(framesDir)) {
-        fs.mkdirSync(framesDir, { recursive: true });
-      }
-      
-      // Получаем победителей
-      const winners = giveaway.prizes
-        .filter(p => p.winner)
-        .sort((a, b) => a.place - b.place)
-        .map(p => p.winner);
-      
-      if (winners.length === 0) {
-        reject(new Error('No winners selected'));
-        return;
-      }
-      
-      let frameIndex = 0;
-      
-      // Фаза 1: Вращение рулетки (3 секунды = 90 кадров)
-      const spinFrames = 90;
-      for (let i = 0; i < spinFrames; i++) {
-        const canvas = createCanvas(width, height);
-        const ctx = canvas.getContext('2d');
-        
-        // Градиентный фон
-        const gradient = ctx.createLinearGradient(0, 0, width, height);
-        gradient.addColorStop(0, '#667eea');
-        gradient.addColorStop(1, '#764ba2');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, height);
-        
-        // Заголовок
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 80px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('🎲 РОЗЫГРЫШ 🎲', width / 2, 150);
-        
-        // Рисуем рулетку
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const radius = 300;
-        
-        // Вращающийся круг с участниками с плавным замедлением
-        // Используем easing функцию для плавного замедления
-        const progress = i / spinFrames;
-        const easeOut = 1 - Math.pow(1 - progress, 3); // Кубическое замедление
-        const totalRotations = 6 + (2 * easeOut); // Начинаем с 6 оборотов, добавляем еще 2 с замедлением
-        const rotation = totalRotations * Math.PI * 2;
-        const segmentAngle = (Math.PI * 2) / Math.max(giveaway.participants.length, 10);
-        
-        // Рисуем сегменты рулетки
-        giveaway.participants.forEach((participant, index) => {
-          const angle = (index * segmentAngle) + rotation;
-          const startAngle = angle;
-          const endAngle = angle + segmentAngle;
-          
-          ctx.beginPath();
-          ctx.moveTo(centerX, centerY);
-          ctx.arc(centerX, centerY, radius, startAngle, endAngle);
-          ctx.closePath();
-          
-          // Чередующиеся цвета
-          ctx.fillStyle = index % 2 === 0 ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.5)';
-          ctx.fill();
-          ctx.strokeStyle = 'white';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-          
-          // Текст участника (упрощенный)
-          const textAngle = startAngle + segmentAngle / 2;
-          const textX = centerX + Math.cos(textAngle) * (radius * 0.7);
-          const textY = centerY + Math.sin(textAngle) * (radius * 0.7);
-          
-          ctx.save();
-          ctx.translate(textX, textY);
-          ctx.rotate(textAngle + Math.PI / 2);
-          ctx.fillStyle = 'black';
-          ctx.font = 'bold 20px Arial';
-          ctx.textAlign = 'center';
-          const shortName = (participant.firstName || participant.username || String(participant.userId)).substring(0, 8);
-          ctx.fillText(shortName, 0, 0);
-          ctx.restore();
-        });
-        
-        // Центральный круг
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 100, 0, Math.PI * 2);
-        ctx.fillStyle = '#ff6b6b';
-        ctx.fill();
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 5;
-        ctx.stroke();
-        
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 40px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('🎯', centerX, centerY + 15);
-        
-        // Указатель (стрелка) вверху рулетки
-        ctx.save();
-        ctx.translate(centerX, centerY - radius - 20);
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(-30, -40);
-        ctx.lineTo(30, -40);
-        ctx.closePath();
-        ctx.fillStyle = '#ff6b6b';
-        ctx.fill();
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.restore();
-        
-        // Сохраняем кадр
-        const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
-        const buffer = canvas.toBuffer('image/png');
-        fs.writeFileSync(framePath, buffer);
-        frameIndex++;
-      }
-      
-      // Фаза 1.5: Остановка на победителе (1 секунда = 30 кадров)
-      const stopFrames = 30;
-      const firstWinner = winners[0];
-      const participantSegmentAngle = (Math.PI * 2) / Math.max(giveaway.participants.length, 10);
-      const firstWinnerIndex = giveaway.participants.findIndex(p => p.userId === firstWinner.userId);
-      const finalRotation = (firstWinnerIndex * participantSegmentAngle) + (Math.PI * 2 * 8); // Финальная позиция
-      
-      for (let i = 0; i < stopFrames; i++) {
-        const canvas = createCanvas(width, height);
-        const ctx = canvas.getContext('2d');
-        
-        // Градиентный фон
-        const gradient = ctx.createLinearGradient(0, 0, width, height);
-        gradient.addColorStop(0, '#667eea');
-        gradient.addColorStop(1, '#764ba2');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, height);
-        
-        // Заголовок
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 80px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('🎲 РОЗЫГРЫШ 🎲', width / 2, 150);
-        
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const radius = 300;
-        
-        // Рисуем рулетку в финальной позиции
-        giveaway.participants.forEach((participant, index) => {
-          const angle = (index * participantSegmentAngle) + finalRotation;
-          const startAngle = angle;
-          const endAngle = angle + participantSegmentAngle;
-          
-          // Подсвечиваем победителя
-          const isWinner = participant.userId === firstWinner.userId;
-          
-          ctx.beginPath();
-          ctx.moveTo(centerX, centerY);
-          ctx.arc(centerX, centerY, radius, startAngle, endAngle);
-          ctx.closePath();
-          
-          if (isWinner) {
-            ctx.fillStyle = 'rgba(255, 215, 0, 0.8)'; // Золотой цвет для победителя
-          } else {
-            ctx.fillStyle = index % 2 === 0 ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.5)';
-          }
-          ctx.fill();
-          ctx.strokeStyle = isWinner ? '#ffd700' : 'white';
-          ctx.lineWidth = isWinner ? 4 : 2;
-          ctx.stroke();
-          
-          // Текст участника
-          const textAngle = startAngle + segmentAngle / 2;
-          const textX = centerX + Math.cos(textAngle) * (radius * 0.7);
-          const textY = centerY + Math.sin(textAngle) * (radius * 0.7);
-          
-          ctx.save();
-          ctx.translate(textX, textY);
-          ctx.rotate(textAngle + Math.PI / 2);
-          ctx.fillStyle = isWinner ? '#ffd700' : 'black';
-          ctx.font = isWinner ? 'bold 24px Arial' : 'bold 20px Arial';
-          ctx.textAlign = 'center';
-          const shortName = (participant.firstName || participant.username || String(participant.userId)).substring(0, 8);
-          ctx.fillText(shortName, 0, 0);
-          ctx.restore();
-        });
-        
-        // Центральный круг
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 100, 0, Math.PI * 2);
-        ctx.fillStyle = '#ff6b6b';
-        ctx.fill();
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 5;
-        ctx.stroke();
-        
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 40px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('🎯', centerX, centerY + 15);
-        
-        // Указатель
-        ctx.save();
-        ctx.translate(centerX, centerY - radius - 20);
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(-30, -40);
-        ctx.lineTo(30, -40);
-        ctx.closePath();
-        ctx.fillStyle = '#ff6b6b';
-        ctx.fill();
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.restore();
-        
-        // Сохраняем кадр
-        const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
-        const buffer = canvas.toBuffer('image/png');
-        fs.writeFileSync(framePath, buffer);
-        frameIndex++;
-      }
-      
-      // Фаза 2: Выпадение победителей (по 2 секунды на каждого)
-      const winnerFrames = 60; // 2 секунды на победителя
-      
-      for (let winnerIndex = 0; winnerIndex < winners.length; winnerIndex++) {
-        const winner = winners[winnerIndex];
-        const prize = giveaway.prizes.find(p => p.winner && p.winner.userId === winner.userId);
-        
-        for (let i = 0; i < winnerFrames; i++) {
-          const canvas = createCanvas(width, height);
-          const ctx = canvas.getContext('2d');
-          
-          // Градиентный фон
-          const gradient = ctx.createLinearGradient(0, 0, width, height);
-          gradient.addColorStop(0, '#667eea');
-          gradient.addColorStop(1, '#764ba2');
-          ctx.fillStyle = gradient;
-          ctx.fillRect(0, 0, width, height);
-          
-          // Анимация появления (fade in)
-          const opacity = Math.min(1, i / 20);
-          ctx.globalAlpha = opacity;
-          
-          // Заголовок
-          ctx.fillStyle = 'white';
-          ctx.font = 'bold 80px Arial';
-          ctx.textAlign = 'center';
-          ctx.fillText('🎉 ПОБЕДИТЕЛЬ! 🎉', width / 2, 150);
-          
-          // Место
-          ctx.font = 'bold 60px Arial';
-          ctx.fillText(`🏆 ${prize.name} (${prize.place} место)`, width / 2, 250);
-          
-          // Имя победителя
-          const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim() || winner.username || `User ${winner.userId}`;
-          ctx.font = 'bold 70px Arial';
-          ctx.fillText(winnerName, width / 2, height / 2);
-          
-          // Username
-          if (winner.username) {
-            ctx.font = '50px Arial';
-            ctx.fillText(`@${winner.username}`, width / 2, height / 2 + 80);
-          }
-          
-          // Проект
-          if (winner.project) {
-            ctx.font = '40px Arial';
-            ctx.fillText(`📁 ${winner.project}`, width / 2, height / 2 + 150);
-          }
-          
-          // Эффект свечения
-          if (i > 10) {
-            ctx.shadowBlur = 30;
-            ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 70px Arial';
-            ctx.fillText(winnerName, width / 2, height / 2);
-            ctx.shadowBlur = 0;
-          }
-          
-          ctx.globalAlpha = 1;
-          
-          // Сохраняем кадр
-          const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
-          const buffer = canvas.toBuffer('image/png');
-          fs.writeFileSync(framePath, buffer);
-          frameIndex++;
-        }
-      }
-      
-      // Собираем видео из кадров с помощью ffmpeg
-      const framePattern = path.join(framesDir, 'frame_%06d.png');
-      
-      // Проверяем наличие ffmpeg (обычно в PATH, но можно указать явно)
-      // Для Docker: ffmpeg должен быть установлен через apk
-      
-      ffmpeg(framePattern)
-        .inputFPS(fps)
-        .outputOptions([
-          '-c:v libx264',
-          '-pix_fmt yuv420p',
-          '-crf 23',
-          '-preset medium',
-          '-r ' + fps
-        ])
-        .output(outputPath)
-        .on('end', () => {
-          console.log('✅ Видео рулетки сгенерировано:', outputPath);
-          // Удаляем временные кадры
-          fs.rmSync(framesDir, { recursive: true, force: true });
-          resolve(outputPath);
-        })
-        .on('error', (err) => {
-          console.error('❌ Ошибка генерации видео:', err);
-          // Удаляем временные кадры даже при ошибке
-          if (fs.existsSync(framesDir)) {
-            fs.rmSync(framesDir, { recursive: true, force: true });
-          }
-          reject(err);
-        })
-        .run();
-        
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
 // Отправка результатов розыгрыша в каналы
 app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
   try {
@@ -5983,32 +5641,40 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       return res.status(400).json({ error: 'No channels selected' });
     }
     
+    // Проверяем, что есть победители
+    const winnersWithPrizes = giveaway.prizes
+      .filter(p => p.winner)
+      .map(p => ({
+        ...p.winner,
+        prizeName: p.name,
+        place: p.place
+      }));
+    
+    if (winnersWithPrizes.length === 0) {
+      return res.status(400).json({ error: 'No winners selected. Please select winners first.' });
+    }
+    
     const bot = await Bot.findOne({ id: botId });
     if (!bot || !bot.token) {
       return res.status(404).json({ error: 'Bot not found or token missing' });
     }
     
-    // Проверяем, есть ли победители
-    const winners = giveaway.prizes.filter(p => p.winner);
-    if (winners.length === 0) {
-      return res.status(400).json({ error: 'No winners selected' });
-    }
-    
     // Генерируем видео рулетки
     let videoPath = null;
     try {
-      const videoDir = path.join(__dirname, 'uploads', 'giveaways');
-      if (!fs.existsSync(videoDir)) {
-        fs.mkdirSync(videoDir, { recursive: true });
+      const { generateRouletteVideo } = require('./generateRouletteVideo');
+      const uploadsDir = path.join(__dirname, 'uploads');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
       }
-      videoPath = path.join(videoDir, `roulette_${giveaway._id}_${Date.now()}.mp4`);
       
+      videoPath = path.join(uploadsDir, `roulette_${giveawayId}_${Date.now()}.mp4`);
       console.log('🎬 Начинаем генерацию видео рулетки...');
-      await generateRouletteVideo(giveaway, videoPath);
-      console.log('✅ Видео рулетки успешно сгенерировано');
+      await generateRouletteVideo(winnersWithPrizes, videoPath);
+      console.log('✅ Видео рулетки создано:', videoPath);
     } catch (videoError) {
       console.error('❌ Ошибка генерации видео:', videoError);
-      // Продолжаем отправку текстового сообщения даже если видео не сгенерировалось
+      // Продолжаем без видео, отправляем только текст
     }
     
     // Формируем сообщение с результатами
@@ -6039,119 +5705,114 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
     
     for (const channelId of selectedChannels) {
       try {
-        // Сначала отправляем видео, если оно сгенерировано
+        // Если есть видео, отправляем его с подписью
         if (videoPath && fs.existsSync(videoPath)) {
-          try {
-            const form = new FormData();
-            form.append('chat_id', channelId);
-            form.append('video', fs.createReadStream(videoPath));
-            form.append('caption', message);
-            form.append('parse_mode', 'Markdown');
-            
-            const videoApiUrl = `https://api.telegram.org/bot${bot.token}/sendVideo`;
-            const parsedUrl = url.parse(videoApiUrl);
-            
-            await new Promise((resolve, reject) => {
-              form.submit({
-                host: parsedUrl.hostname,
-                port: parsedUrl.port || 443,
-                path: parsedUrl.path,
-                method: 'POST',
-                headers: form.getHeaders()
-              }, (err, res) => {
-                if (err) {
-                  reject(err);
-                  return;
-                }
-                
-                let data = '';
-                res.on('data', (chunk) => { data += chunk; });
-                res.on('end', () => {
-                  if (res.statusCode === 200) {
-                    const result = JSON.parse(data);
-                    if (result.ok) {
-                      console.log(`✅ Видео отправлено в канал ${channelId}`);
-                      resolve();
-                    } else {
-                      reject(new Error(result.description));
-                    }
+          const form = new FormData();
+          form.append('chat_id', channelId);
+          form.append('caption', message);
+          form.append('parse_mode', 'Markdown');
+          form.append('video', fs.createReadStream(videoPath));
+          
+          const apiUrl = `https://api.telegram.org/bot${bot.token}/sendVideo`;
+          const parsedUrl = url.parse(apiUrl);
+          
+          await new Promise((resolve, reject) => {
+            form.submit({
+              host: parsedUrl.hostname,
+              port: parsedUrl.port || 443,
+              path: parsedUrl.path,
+              protocol: parsedUrl.protocol
+            }, (err, res) => {
+              if (err) {
+                results.push({ channelId, success: false, error: err.message });
+                reject(err);
+                return;
+              }
+              
+              let data = '';
+              res.on('data', (chunk) => { data += chunk; });
+              res.on('end', () => {
+                if (res.statusCode === 200) {
+                  const result = JSON.parse(data);
+                  if (result.ok) {
+                    results.push({ channelId, success: true, withVideo: true });
+                    resolve();
                   } else {
-                    reject(new Error(`HTTP ${res.statusCode}`));
+                    results.push({ channelId, success: false, error: result.description });
+                    reject(new Error(result.description));
                   }
-                });
+                } else {
+                  results.push({ channelId, success: false, error: `HTTP ${res.statusCode}` });
+                  reject(new Error(`HTTP ${res.statusCode}`));
+                }
               });
             });
-            
-            results.push({ channelId, success: true, videoSent: true });
-            continue; // Видео отправлено, пропускаем текстовое сообщение
-          } catch (videoSendError) {
-            console.error(`❌ Ошибка отправки видео в канал ${channelId}:`, videoSendError);
-            // Продолжаем отправку текстового сообщения
-          }
-        }
-        
-        // Отправляем текстовое сообщение (если видео не отправилось или не сгенерировалось)
-        const apiUrl = `https://api.telegram.org/bot${bot.token}/sendMessage`;
-        const postData = JSON.stringify({
-          chat_id: channelId,
-          text: message,
-          parse_mode: 'Markdown'
-        });
-        
-        const parsedUrl = url.parse(apiUrl);
-        const options = {
-          hostname: parsedUrl.hostname,
-          port: parsedUrl.port || 443,
-          path: parsedUrl.path,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(postData)
-          }
-        };
-        
-        await new Promise((resolve, reject) => {
-          const req = https.request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => {
-              if (res.statusCode === 200) {
-                const result = JSON.parse(data);
-                if (result.ok) {
-                  results.push({ channelId, success: true, videoSent: false });
-                  resolve();
+          });
+        } else {
+          // Отправляем только текст, если видео не создано
+          const apiUrl = `https://api.telegram.org/bot${bot.token}/sendMessage`;
+          const postData = JSON.stringify({
+            chat_id: channelId,
+            text: message,
+            parse_mode: 'Markdown'
+          });
+          
+          const parsedUrl = url.parse(apiUrl);
+          const options = {
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || 443,
+            path: parsedUrl.path,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(postData)
+            }
+          };
+          
+          await new Promise((resolve, reject) => {
+            const req = https.request(options, (res) => {
+              let data = '';
+              res.on('data', (chunk) => { data += chunk; });
+              res.on('end', () => {
+                if (res.statusCode === 200) {
+                  const result = JSON.parse(data);
+                  if (result.ok) {
+                    results.push({ channelId, success: true, withVideo: false });
+                    resolve();
+                  } else {
+                    results.push({ channelId, success: false, error: result.description });
+                    reject(new Error(result.description));
+                  }
                 } else {
-                  results.push({ channelId, success: false, error: result.description });
-                  reject(new Error(result.description));
+                  results.push({ channelId, success: false, error: `HTTP ${res.statusCode}` });
+                  reject(new Error(`HTTP ${res.statusCode}`));
                 }
-              } else {
-                results.push({ channelId, success: false, error: `HTTP ${res.statusCode}` });
-                reject(new Error(`HTTP ${res.statusCode}`));
-              }
+              });
             });
+            req.on('error', (err) => {
+              results.push({ channelId, success: false, error: err.message });
+              reject(err);
+            });
+            req.write(postData);
+            req.end();
           });
-          req.on('error', (err) => {
-            results.push({ channelId, success: false, error: err.message });
-            reject(err);
-          });
-          req.write(postData);
-          req.end();
-        });
+        }
       } catch (error) {
         console.error(`❌ Ошибка отправки в канал ${channelId}:`, error);
         results.push({ channelId, success: false, error: error.message });
       }
     }
     
-    // Удаляем видео после отправки (опционально, можно оставить для архива)
+    const videoWasGenerated = videoPath !== null && fs.existsSync(videoPath);
+    
+    // Удаляем временное видео после отправки
     if (videoPath && fs.existsSync(videoPath)) {
-      // Удаляем через 5 минут после отправки
-      setTimeout(() => {
-        if (fs.existsSync(videoPath)) {
-          fs.unlinkSync(videoPath);
-          console.log('🗑️ Временное видео удалено:', videoPath);
-        }
-      }, 5 * 60 * 1000);
+      try {
+        fs.unlinkSync(videoPath);
+        console.log('🗑️ Временное видео удалено');
+      } catch (deleteError) {
+        console.error('⚠️ Ошибка удаления временного видео:', deleteError);
+      }
     }
     
     // Обновляем статус розыгрыша
@@ -6162,7 +5823,8 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       success: true, 
       results,
       sent: results.filter(r => r.success).length,
-      failed: results.filter(r => !r.success).length
+      failed: results.filter(r => !r.success).length,
+      videoGenerated: videoWasGenerated
     });
   } catch (error) {
     console.error('❌ Ошибка при отправке результатов:', error);

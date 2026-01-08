@@ -46,7 +46,6 @@ services:
       - ./backend/editorState.json:/app/backend/editorState.json
       - ./backend/quizStats.json:/app/backend/quizStats.json
       - ./backend/backups:/app/backend/backups
-      - ./backend/temp_frames:/app/backend/temp_frames
     depends_on:
       mongodb:
         condition: service_healthy

@@ -2,19 +2,6 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Устанавливаем системные зависимости для canvas и ffmpeg
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    cairo-dev \
-    pango-dev \
-    libjpeg-turbo-dev \
-    giflib-dev \
-    librsvg-dev \
-    ffmpeg \
-    && ln -sf python3 /usr/bin/python
-
 # Копируем package.json и package-lock.json для backend
 COPY backend/package*.json ./backend/
 
@@ -28,7 +15,7 @@ RUN npm install
 COPY backend/ ./
 
 # Создаем необходимые директории
-RUN mkdir -p uploads promocodes logs temp_frames uploads/giveaways
+RUN mkdir -p uploads promocodes logs
 
 # Устанавливаем права
 RUN chmod 755 uploads promocodes
