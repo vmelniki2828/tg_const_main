@@ -1,22 +1,6 @@
-FROM node:18-slim
+FROM node:18-alpine
 
 WORKDIR /app
-
-# Устанавливаем системные зависимости для canvas и ffmpeg
-# Используем --no-install-recommends для уменьшения размера
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    python3 \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg-dev \
-    libgif-dev \
-    librsvg2-dev \
-    ffmpeg \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /tmp/* \
-    && rm -rf /var/tmp/*
 
 # Копируем package.json и package-lock.json для backend
 COPY backend/package*.json ./backend/
@@ -31,10 +15,10 @@ RUN npm install
 COPY backend/ ./
 
 # Создаем необходимые директории
-RUN mkdir -p uploads promocodes logs videos temp_frames
+RUN mkdir -p uploads promocodes logs
 
 # Устанавливаем права
-RUN chmod 755 uploads promocodes videos temp_frames
+RUN chmod 755 uploads promocodes
 
 # Открываем порт
 EXPOSE 3001

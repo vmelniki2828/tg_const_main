@@ -1,23 +1,8 @@
-# Используем официальный образ Node.js (Debian-based для поддержки canvas)
-FROM node:18-slim
+# Используем официальный образ Node.js
+FROM node:18-alpine
 
-# Устанавливаем системные зависимости для canvas, ffmpeg и утилиты
-# Используем --no-install-recommends для уменьшения размера
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    python3 \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg-dev \
-    libgif-dev \
-    librsvg2-dev \
-    ffmpeg \
-    wget \
-    jq \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /tmp/* \
-    && rm -rf /var/tmp/*
+# Устанавливаем wget и jq для health check и мониторинга
+RUN apk add --no-cache wget jq
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
@@ -34,10 +19,10 @@ WORKDIR /app
 COPY . .
 
 # Создаем необходимые директории
-RUN mkdir -p backend/uploads backend/promocodes backend/backups backend/videos backend/temp_frames
+RUN mkdir -p backend/uploads backend/promocodes backend/backups
 
 # Устанавливаем права на директории
-RUN chmod 755 backend/uploads backend/promocodes backend/backups backend/videos backend/temp_frames
+RUN chmod 755 backend/uploads backend/promocodes backend/backups
 
 # Открываем порт
 EXPOSE 3001
