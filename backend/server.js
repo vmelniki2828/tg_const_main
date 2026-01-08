@@ -8,11 +8,17 @@ const multer = require('multer');
 const mongoose = require('mongoose');
 const { createCanvas } = require('canvas');
 const ffmpeg = require('fluent-ffmpeg');
-const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const FormData = require('form-data');
 
-// Устанавливаем путь к ffmpeg
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+// Устанавливаем путь к ffmpeg (используем системный, если установщик недоступен)
+try {
+  const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+  ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+  console.log('Используется ffmpeg из @ffmpeg-installer');
+} catch (err) {
+  // Используем системный ffmpeg (должен быть в PATH)
+  console.log('Используется системный ffmpeg');
+}
 const { 
   QuizStats, 
   Bot, 
