@@ -1,4 +1,18 @@
-FROM node:18-alpine
+FROM node:18-slim
+
+# Устанавливаем системные зависимости для canvas и ffmpeg
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    pkg-config \
+    libcairo2-dev \
+    libjpeg-dev \
+    libpango1.0-dev \
+    libgif-dev \
+    librsvg2-dev \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

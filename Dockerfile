@@ -1,8 +1,21 @@
-# Используем официальный образ Node.js
-FROM node:18-alpine
+# Используем официальный образ Node.js (Debian-based для поддержки canvas)
+FROM node:18-slim
 
-# Устанавливаем wget и jq для health check и мониторинга
-RUN apk add --no-cache wget jq
+# Устанавливаем системные зависимости для canvas и ffmpeg
+RUN apt-get update && apt-get install -y \
+    wget \
+    jq \
+    python3 \
+    make \
+    g++ \
+    pkg-config \
+    libcairo2-dev \
+    libjpeg-dev \
+    libpango1.0-dev \
+    libgif-dev \
+    librsvg2-dev \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
