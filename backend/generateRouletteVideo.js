@@ -16,9 +16,9 @@ async function generateRouletteVideo(winners, outputPath) {
   const frameDuration = 1 / fps;
   
   // Параметры анимации
-  const spinDuration = 3; // Длительность вращения рулетки (секунды)
-  const revealDuration = 2; // Длительность показа каждого победителя (секунды)
-  const totalFrames = Math.ceil((spinDuration + revealDuration * winners.length) * fps);
+  const spinDuration = 3.5; // Длительность прокрутки рулетки для каждого победителя (секунды)
+  const revealDuration = 2.5; // Длительность показа каждого победителя (секунды)
+  const totalFrames = Math.ceil((spinDuration + revealDuration) * winners.length * fps);
   
   // Создаем директорию для временных кадров
   const framesDir = path.join(path.dirname(outputPath), 'roulette_frames');
@@ -45,24 +45,28 @@ async function generateRouletteVideo(winners, outputPath) {
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 60px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('🎲 РОЗЫГРЫШ 🎲', width / 2, 150);
+    ctx.fillText('🎰 РОЗЫГРЫШ 🎰', width / 2, 150);
     
-    if (time < spinDuration) {
-      // Фаза вращения рулетки
-      drawSpinningRoulette(ctx, width, height, time, spinDuration, winners);
-    } else {
-      // Фаза показа победителей
-      const revealTime = time - spinDuration;
-      const winnerIndex = Math.floor(revealTime / revealDuration);
+    // Определяем, какой победитель сейчас показывается
+    const segmentDuration = spinDuration + revealDuration;
+    const currentSegment = Math.floor(time / segmentDuration);
+    const localTime = time % segmentDuration;
+    
+    if (currentSegment < winners.length) {
+      const currentWinner = winners[currentSegment];
       
-      if (winnerIndex < winners.length) {
-        const localTime = revealTime - (winnerIndex * revealDuration);
-        drawWinnerReveal(ctx, width, height, winners[winnerIndex], localTime, revealDuration);
+      if (localTime < spinDuration) {
+        // Фаза горизонтальной прокрутки рулетки для текущего победителя
+        drawHorizontalRoulette(ctx, width, height, localTime, spinDuration, winners, currentWinner);
       } else {
-        // Показываем последнего победителя в конце
-        const lastWinner = winners[winners.length - 1];
-        drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (revealTime - (winners.length - 1) * revealDuration) / revealDuration), revealDuration);
+        // Фаза показа победителя
+        const revealTime = localTime - spinDuration;
+        drawWinnerReveal(ctx, width, height, currentWinner, revealTime, revealDuration);
       }
+    } else {
+      // Показываем последнего победителя в конце
+      const lastWinner = winners[winners.length - 1];
+      drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (time - (winners.length - 1) * segmentDuration) / revealDuration), revealDuration);
     }
     
     // Сохраняем кадр
@@ -117,66 +121,124 @@ async function generateRouletteVideo(winners, outputPath) {
 }
 
 /**
- * Рисует вращающуюся рулетку
+ * Рисует горизонтальную прокручивающуюся рулетку
  */
-function drawSpinningRoulette(ctx, width, height, time, duration, winners) {
+function drawHorizontalRoulette(ctx, width, height, time, duration, allWinners, targetWinner) {
   const centerX = width / 2;
   const centerY = height / 2;
-  const radius = Math.min(width, height) * 0.35;
+  const slotHeight = 200; // Высота одного слота
+  const slotWidth = width * 0.8; // Ширина слота
+  const visibleSlots = 3; // Количество видимых слотов
   
-  // Ускорение и замедление вращения
+  // Ускорение и замедление прокрутки
   const progress = time / duration;
   const easeOut = 1 - Math.pow(1 - progress, 3); // Кубическое замедление
-  const rotation = easeOut * Math.PI * 8; // 4 полных оборота
   
-  // Рисуем рулетку
-  ctx.save();
-  ctx.translate(centerX, centerY);
-  ctx.rotate(rotation);
-  
-  // Сектора рулетки
-  const sectorCount = Math.max(winners.length, 8);
-  const sectorAngle = (Math.PI * 2) / sectorCount;
-  
-  const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#6c5ce7', '#a29bfe', '#fd79a8', '#00b894'];
-  
-  for (let i = 0; i < sectorCount; i++) {
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.arc(0, 0, radius, i * sectorAngle, (i + 1) * sectorAngle);
-    ctx.closePath();
-    ctx.fillStyle = colors[i % colors.length];
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    
-    // Текст в секторе
-    ctx.save();
-    ctx.rotate(i * sectorAngle + sectorAngle / 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 30px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(`🎁`, radius * 0.6, 10);
-    ctx.restore();
+  // Создаем список всех участников для прокрутки (повторяем несколько раз для эффекта)
+  const allParticipantsList = [];
+  const repeatCount = 25; // Количество повторений списка
+  for (let i = 0; i < repeatCount; i++) {
+    allParticipantsList.push(...allWinners);
   }
   
-  // Центральный круг
+  // Находим позицию целевого победителя в списке
+  const targetPosition = allParticipantsList.findIndex(p => 
+    p.userId === targetWinner.userId && 
+    p.prizeName === targetWinner.prizeName
+  );
+  
+  // Вычисляем смещение так, чтобы в конце остановиться на целевом победителе
+  const totalDistance = allParticipantsList.length * slotHeight;
+  const targetOffset = targetPosition * slotHeight;
+  // Прокручиваем большую часть списка + смещение до целевого победителя
+  const scrollOffset = easeOut * (totalDistance * 0.6 + targetOffset);
+  
+  // Рисуем рамку для рулетки
+  const rouletteY = centerY - (visibleSlots * slotHeight) / 2;
+  const rouletteX = centerX - slotWidth / 2;
+  
+  // Фон для рулетки
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(rouletteX - 20, rouletteY - 20, slotWidth + 40, visibleSlots * slotHeight + 40);
+  
+  // Рисуем слоты
+  ctx.save();
+  ctx.translate(rouletteX, rouletteY);
+  // Создаем область отсечения
   ctx.beginPath();
-  ctx.arc(0, 0, radius * 0.3, 0, Math.PI * 2);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
-  ctx.strokeStyle = '#1a1a2e';
-  ctx.lineWidth = 5;
-  ctx.stroke();
+  ctx.rect(0, 0, slotWidth, visibleSlots * slotHeight);
+  ctx.clip();
+  
+  const startIndex = Math.floor(scrollOffset / slotHeight);
+  
+  for (let i = -1; i <= visibleSlots + 1; i++) {
+    const slotIndex = startIndex + i;
+    const slotY = i * slotHeight - (scrollOffset % slotHeight);
+    
+    if (slotY > -slotHeight && slotY < visibleSlots * slotHeight + slotHeight) {
+      const participant = allParticipantsList[slotIndex % allParticipantsList.length];
+      
+      // Определяем, является ли это целевым победителем
+      const isTargetWinner = participant && targetWinner && 
+                           participant.userId === targetWinner.userId &&
+                           participant.prizeName === targetWinner.prizeName &&
+                           Math.abs(i - Math.floor(visibleSlots / 2)) < 0.5;
+      
+      // Цвет фона слота
+      if (isTargetWinner && progress > 0.9) {
+        // Подсвечиваем победителя в конце
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+      } else if (i === Math.floor(visibleSlots / 2)) {
+        // Центральный слот (где остановится)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      } else {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      }
+      
+      ctx.fillRect(0, slotY, slotWidth, slotHeight);
+      
+      // Рамка слота
+      ctx.strokeStyle = isTargetWinner && progress > 0.9 ? '#ffd700' : '#ffffff';
+      ctx.lineWidth = isTargetWinner && progress > 0.9 ? 4 : 2;
+      ctx.strokeRect(0, slotY, slotWidth, slotHeight);
+      
+      if (participant) {
+        // Имя участника
+        const firstName = (participant.firstName || '').trim();
+        const lastName = (participant.lastName || '').trim();
+        const fullName = `${firstName} ${lastName}`.trim() || 
+                        (participant.username ? `@${participant.username}` : `ID: ${participant.userId}`);
+        
+        ctx.fillStyle = isTargetWinner && progress > 0.9 ? '#ffd700' : '#ffffff';
+        ctx.font = isTargetWinner && progress > 0.9 ? 'bold 50px Arial' : 'bold 40px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(fullName, slotWidth / 2, slotY + slotHeight / 2 + 15);
+        
+        // Username или проект
+        if (participant.username && fullName !== `@${participant.username}`) {
+          ctx.font = '30px Arial';
+          ctx.fillStyle = '#cccccc';
+          ctx.fillText(`@${participant.username}`, slotWidth / 2, slotY + slotHeight / 2 + 50);
+        } else if (participant.project) {
+          ctx.font = '30px Arial';
+          ctx.fillStyle = '#cccccc';
+          ctx.fillText(`📁 ${participant.project}`, slotWidth / 2, slotY + slotHeight / 2 + 50);
+        }
+      }
+    }
+  }
   
   ctx.restore();
   
-  // Указатель
+  // Указатели сверху и снизу (стрелки)
+  const pointerY = rouletteY;
+  const pointerY2 = rouletteY + visibleSlots * slotHeight;
+  
+  // Верхний указатель
   ctx.beginPath();
-  ctx.moveTo(centerX, centerY - radius - 30);
-  ctx.lineTo(centerX - 20, centerY - radius - 10);
-  ctx.lineTo(centerX + 20, centerY - radius - 10);
+  ctx.moveTo(centerX, pointerY - 15);
+  ctx.lineTo(centerX - 30, pointerY + 15);
+  ctx.lineTo(centerX + 30, pointerY + 15);
   ctx.closePath();
   ctx.fillStyle = '#ffd700';
   ctx.fill();
@@ -184,11 +246,27 @@ function drawSpinningRoulette(ctx, width, height, time, duration, winners) {
   ctx.lineWidth = 3;
   ctx.stroke();
   
-  // Текст "Вращается..."
+  // Нижний указатель
+  ctx.beginPath();
+  ctx.moveTo(centerX, pointerY2 + 15);
+  ctx.lineTo(centerX - 30, pointerY2 - 15);
+  ctx.lineTo(centerX + 30, pointerY2 - 15);
+  ctx.closePath();
+  ctx.fillStyle = '#ffd700';
+  ctx.fill();
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  
+  // Текст "Прокручивается..."
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 40px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText('🎡 Вращается...', centerX, height - 200);
+  if (progress < 0.95) {
+    ctx.fillText('🎰 Прокручивается...', centerX, height - 200);
+  } else {
+    ctx.fillText('🎉 Остановка!', centerX, height - 200);
+  }
 }
 
 /**
