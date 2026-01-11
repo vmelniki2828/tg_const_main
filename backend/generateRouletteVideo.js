@@ -31,12 +31,7 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
   // Генерируем кадры
   const frameFiles = [];
   
-  console.log(`🎬 [ROULETTE] Генерация ${totalFrames} кадров...`);
-  
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
-    if (frameIndex % 30 === 0) {
-      console.log(`📹 [ROULETTE] Прогресс: ${((frameIndex / totalFrames) * 100).toFixed(1)}%`);
-    }
     const time = frameIndex * frameDuration;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
@@ -66,6 +61,11 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     if (currentSegment < winners.length) {
       const currentWinner = winners[currentSegment];
       
+      // Логируем для отладки (только в начале каждого сегмента)
+      if (frameIndex % fps === 0) {
+        console.log(`🎬 [ROULETTE] Сегмент ${currentSegment + 1}/${winners.length}: Победитель userId=${currentWinner.userId}, prizeName=${currentWinner.prizeName || 'N/A'}`);
+      }
+      
       if (localTime < spinDuration) {
         // Фаза горизонтальной прокрутки рулетки для текущего победителя
         drawHorizontalRoulette(ctx, width, height, localTime, spinDuration, allParticipants || winners, currentWinner, colorPalette);
@@ -87,22 +87,12 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     frameFiles.push(framePath);
   }
   
-  // Проверяем, что кадры созданы
-  if (frameFiles.length === 0) {
-    throw new Error('Не удалось создать кадры для видео');
-  }
-  
-  console.log(`✅ [ROULETTE] Создано ${frameFiles.length} кадров. Начинаем сборку видео...`);
-  
   // Собираем видео из кадров с помощью ffmpeg
   return new Promise((resolve, reject) => {
     const tempVideoPath = outputPath.replace('.mp4', '_temp.mp4');
     
-    const inputPattern = path.join(framesDir, 'frame_%06d.png');
-    console.log(`🎬 [ROULETTE] Используем паттерн кадров: ${inputPattern}`);
-    
     ffmpeg()
-      .input(inputPattern)
+      .input(path.join(framesDir, 'frame_%06d.png'))
       .inputFPS(fps)
       .outputOptions([
         '-c:v libx264',
@@ -112,79 +102,29 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
         '-r ' + fps
       ])
       .output(tempVideoPath)
-      .on('start', (commandLine) => {
-        console.log('🎬 [ROULETTE] FFmpeg команда:', commandLine);
-      })
-      .on('progress', (progress) => {
-        if (progress.percent) {
-          console.log(`📹 [ROULETTE] Прогресс сборки: ${Math.floor(progress.percent)}%`);
-        }
-      })
       .on('end', () => {
-        console.log('✅ [ROULETTE] FFmpeg завершил обработку');
-        
         // Переименовываем временный файл
         if (fs.existsSync(tempVideoPath)) {
-          try {
-            fs.renameSync(tempVideoPath, outputPath);
-            console.log(`✅ [ROULETTE] Видео переименовано: ${outputPath}`);
-          } catch (renameError) {
-            console.error('❌ [ROULETTE] Ошибка переименования:', renameError);
-            // Пробуем скопировать
-            try {
-              fs.copyFileSync(tempVideoPath, outputPath);
-              fs.unlinkSync(tempVideoPath);
-            } catch (copyError) {
-              console.error('❌ [ROULETTE] Ошибка копирования:', copyError);
-              reject(new Error('Не удалось сохранить видео файл'));
-              return;
-            }
-          }
-        } else {
-          console.error('❌ [ROULETTE] Временный видео файл не найден:', tempVideoPath);
-          reject(new Error('Временный видео файл не был создан'));
-          return;
+          fs.renameSync(tempVideoPath, outputPath);
         }
-        
-        // Проверяем финальный файл
-        if (!fs.existsSync(outputPath)) {
-          console.error('❌ [ROULETTE] Финальный видео файл не найден:', outputPath);
-          reject(new Error('Финальный видео файл не был создан'));
-          return;
-        }
-        
-        const stats = fs.statSync(outputPath);
-        console.log(`✅ [ROULETTE] Видео создано: ${outputPath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         
         // Удаляем временные кадры
         frameFiles.forEach(file => {
-          try {
-            if (fs.existsSync(file)) {
-              fs.unlinkSync(file);
-            }
-          } catch (err) {
-            console.warn(`⚠️ [ROULETTE] Не удалось удалить кадр ${file}:`, err.message);
+          if (fs.existsSync(file)) {
+            fs.unlinkSync(file);
           }
         });
         
         // Удаляем директорию кадров
-        try {
-          if (fs.existsSync(framesDir)) {
-            fs.rmSync(framesDir, { recursive: true, force: true });
-          }
-        } catch (err) {
-          console.warn(`⚠️ [ROULETTE] Не удалось удалить директорию кадров:`, err.message);
+        if (fs.existsSync(framesDir)) {
+          fs.rmSync(framesDir, { recursive: true, force: true });
         }
         
+        console.log(`✅ Видео рулетки создано: ${outputPath}`);
         resolve(outputPath);
       })
       .on('error', (err) => {
-        console.error('❌ [ROULETTE] Ошибка FFmpeg:', err);
-        console.error('❌ [ROULETTE] Детали ошибки:', {
-          message: err.message,
-          stack: err.stack,
-          code: err.code
-        });
+        console.error('❌ Ошибка создания видео:', err);
         reject(err);
       })
       .run();
@@ -200,6 +140,7 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
   const slotHeight = 200; // Высота одного слота
   const slotWidth = width * 0.8; // Ширина слота
   const visibleSlots = 3; // Количество видимых слотов
+  const centerSlotIndex = Math.floor(visibleSlots / 2); // Индекс центрального слота (1 для 3 слотов)
   
   // Ускорение и замедление прокрутки
   const progress = time / duration;
@@ -208,13 +149,6 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
   // Используем всех участников для прокрутки (не только победителей)
   const participantsForSpin = allParticipants && allParticipants.length > 0 ? allParticipants : [targetWinner];
   
-  // Убеждаемся, что целевой победитель есть в списке участников
-  const targetInList = participantsForSpin.find(p => p.userId === targetWinner.userId);
-  if (!targetInList && participantsForSpin.length > 0) {
-    // Если победителя нет в списке, добавляем его
-    participantsForSpin.push(targetWinner);
-  }
-  
   // Создаем список всех участников для прокрутки (повторяем несколько раз для эффекта)
   const allParticipantsList = [];
   const repeatCount = 25; // Количество повторений списка
@@ -222,32 +156,32 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
     allParticipantsList.push(...participantsForSpin);
   }
   
-  // Находим позицию целевого победителя в исходном списке участников (только по userId)
-  const targetIndexInOriginal = participantsForSpin.findIndex(p => p.userId === targetWinner.userId);
+  // Находим позицию целевого победителя в списке (ищем только по userId)
+  let targetPosition = allParticipantsList.findIndex(p => p && p.userId === targetWinner.userId);
   
-  if (targetIndexInOriginal === -1) {
-    console.warn(`⚠️ [ROULETTE] Победитель ${targetWinner.userId} не найден в списке участников. Добавляем его.`);
-    // Добавляем победителя в список, если его там нет
-    participantsForSpin.push(targetWinner);
+  // Если не нашли по userId, добавляем победителя в список
+  if (targetPosition === -1) {
+    console.log(`⚠️ [ROULETTE] Победитель userId=${targetWinner.userId} не найден в списке участников (всего ${allParticipantsList.length}), добавляем его`);
+    // Добавляем победителя в середину списка для гарантированной остановки
+    const insertPosition = Math.floor(allParticipantsList.length / 2);
+    allParticipantsList.splice(insertPosition, 0, targetWinner);
+    targetPosition = insertPosition;
+    console.log(`✅ [ROULETTE] Победитель добавлен на позицию ${targetPosition}`);
+  } else {
+    console.log(`✅ [ROULETTE] Победитель userId=${targetWinner.userId} найден на позиции ${targetPosition} из ${allParticipantsList.length}`);
   }
   
-  // Используем найденную позицию или последнюю (только что добавленную)
-  const finalTargetIndex = targetIndexInOriginal !== -1 ? targetIndexInOriginal : participantsForSpin.length - 1;
-  
-  // Вычисляем смещение так, чтобы в конце остановиться точно на целевом победителе
+  // Вычисляем смещение так, чтобы в конце остановиться на целевом победителе
   const totalDistance = allParticipantsList.length * slotHeight;
+  const centerSlotIndex = Math.floor(visibleSlots / 2); // Индекс центрального слота (1 для 3 слотов)
   
   // Вычисляем, сколько нужно прокрутить, чтобы целевой победитель оказался в центре
-  // Прокручиваем несколько полных циклов + смещение до нужного участника
-  const cyclesToScroll = Math.floor(repeatCount * 0.6); // Прокручиваем 60% циклов
-  const targetOffset = (cyclesToScroll * participantsForSpin.length + finalTargetIndex) * slotHeight;
+  // targetPosition должен оказаться на позиции centerSlotIndex от начала видимой области
+  const targetOffset = (targetPosition - centerSlotIndex) * slotHeight;
   
-  // Добавляем небольшое смещение, чтобы целевой был точно в центре
-  const centerSlot = Math.floor(visibleSlots / 2);
-  const finalOffset = targetOffset - (centerSlot * slotHeight);
-  
-  // Прокручиваем с замедлением
-  const scrollOffset = easeOut * finalOffset;
+  // Прокручиваем: базовый прокрут + смещение до цели
+  const baseScroll = totalDistance * 0.5; // Базовый прокрут (50% списка)
+  const scrollOffset = baseScroll + easeOut * (targetOffset + totalDistance * 0.3); // Добавляем смещение с анимацией
   
   // Рисуем рамку для рулетки
   const rouletteY = centerY - (visibleSlots * slotHeight) / 2;
@@ -266,28 +200,24 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
   ctx.clip();
   
   const startIndex = Math.floor(scrollOffset / slotHeight);
-  const centerSlot = Math.floor(visibleSlots / 2);
-  
-  // Логируем для отладки (только в последних кадрах)
-  if (progress > 0.95 && Math.floor(time * 30) % 10 === 0) {
-    const centerIndex = (startIndex + centerSlot) % allParticipantsList.length;
-    const centerParticipant = allParticipantsList[centerIndex];
-    console.log(`🔍 [ROULETTE] Прогресс: ${(progress * 100).toFixed(1)}%, Центр: ID ${centerParticipant?.userId}, Цель: ID ${targetWinner.userId}`);
-  }
   
   for (let i = -1; i <= visibleSlots + 1; i++) {
     const slotIndex = startIndex + i;
     const slotY = i * slotHeight - (scrollOffset % slotHeight);
     
     if (slotY > -slotHeight && slotY < visibleSlots * slotHeight + slotHeight) {
-      const participant = allParticipantsList[slotIndex % allParticipantsList.length];
+      // Безопасный доступ к участнику с проверкой границ
+      const safeIndex = ((slotIndex % allParticipantsList.length) + allParticipantsList.length) % allParticipantsList.length;
+      const participant = allParticipantsList[safeIndex];
       
-      // Определяем, является ли это целевым победителем (только по userId)
-      const centerSlot = Math.floor(visibleSlots / 2);
+      // Проверяем, находится ли этот слот в центре
+      const isCenterSlot = Math.abs(i - centerSlotIndex) < 0.1;
+      
+      // Определяем, является ли это целевым победителем (сравниваем только по userId)
       const isTargetWinner = participant && targetWinner && 
                            participant.userId === targetWinner.userId &&
-                           i === centerSlot &&
-                           progress > 0.9; // Только в конце прокрутки
+                           isCenterSlot &&
+                           progress > 0.95; // Только в конце прокрутки
       
       // Цвета из палитры
       const winnerColor = colorPalette.winnerColor || '#ffd700';
@@ -500,23 +430,11 @@ function drawRoundedRect(ctx, x, y, width, height, radius) {
  * Затемняет цвет на указанный процент
  */
 function darkenColor(color, percent) {
-  try {
-    if (!color || !color.startsWith('#')) {
-      return color || '#1a1a2e';
-    }
-    const num = parseInt(color.replace('#', ''), 16);
-    if (isNaN(num)) {
-      return color;
-    }
-    const r = Math.max(0, Math.floor((num >> 16) * (1 - percent)));
-    const g = Math.max(0, Math.floor(((num >> 8) & 0x00FF) * (1 - percent)));
-    const b = Math.max(0, Math.floor((num & 0x0000FF) * (1 - percent)));
-    const result = '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
-    return result;
-  } catch (error) {
-    console.error('❌ Ошибка затемнения цвета:', error, color);
-    return color || '#1a1a2e';
-  }
+  const num = parseInt(color.replace('#', ''), 16);
+  const r = Math.max(0, Math.floor((num >> 16) * (1 - percent)));
+  const g = Math.max(0, Math.floor(((num >> 8) & 0x00FF) * (1 - percent)));
+  const b = Math.max(0, Math.floor((num & 0x0000FF) * (1 - percent)));
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
 }
 
 module.exports = { generateRouletteVideo };
