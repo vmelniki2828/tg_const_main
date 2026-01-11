@@ -507,6 +507,61 @@ const Giveaways = ({ botId, onClose }) => {
         }
       }
 
+      // Получаем актуальные данные розыгрыша перед проверкой победителей
+      const currentGiveawayResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}`);
+      let currentGiveaway = null;
+      if (currentGiveawayResponse.ok) {
+        const currentData = await currentGiveawayResponse.json();
+        currentGiveaway = currentData.giveaway;
+        if (currentGiveaway) {
+          handleSelectGiveaway(currentGiveaway);
+        }
+      }
+
+      // Проверяем, есть ли невыбранные победители
+      const currentPrizes = currentGiveaway?.prizes || giveawayData.prizes;
+      const hasUnselectedWinners = currentPrizes.some(prize => !prize.winner);
+      const hasParticipants = currentGiveaway?.participants && currentGiveaway.participants.length > 0;
+      
+      // Если есть невыбранные победители и есть участники, выбираем их автоматически
+      if (hasUnselectedWinners && hasParticipants) {
+        try {
+          const randomResponse = await fetch(
+            `${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}/random-winners`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                prizePlaces: giveawayData.prizePlaces
+              })
+            }
+          );
+
+          if (randomResponse.ok) {
+            const randomData = await randomResponse.json();
+            // Обновляем данные розыгрыша с выбранными победителями
+            setGiveawayData({
+              ...giveawayData,
+              prizes: randomData.prizes
+            });
+            
+            // Обновляем selectedGiveaway для получения актуальных данных
+            const updatedResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}`);
+            if (updatedResponse.ok) {
+              const updatedData = await updatedResponse.json();
+              if (updatedData.giveaway) {
+                currentGiveaway = updatedData.giveaway;
+                handleSelectGiveaway(updatedData.giveaway);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Ошибка при автоматическом выборе победителей:', error);
+        }
+      }
+
       // Публикуем розыгрыш
       const response = await fetch(
         `${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}/publish`,
