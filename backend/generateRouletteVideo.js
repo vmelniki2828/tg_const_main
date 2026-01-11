@@ -143,6 +143,13 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
   // Используем всех участников для прокрутки (не только победителей)
   const participantsForSpin = allParticipants && allParticipants.length > 0 ? allParticipants : [targetWinner];
   
+  // Убеждаемся, что целевой победитель есть в списке участников
+  const targetInList = participantsForSpin.find(p => p.userId === targetWinner.userId);
+  if (!targetInList && participantsForSpin.length > 0) {
+    // Если победителя нет в списке, добавляем его
+    participantsForSpin.push(targetWinner);
+  }
+  
   // Создаем список всех участников для прокрутки (повторяем несколько раз для эффекта)
   const allParticipantsList = [];
   const repeatCount = 25; // Количество повторений списка
@@ -150,17 +157,32 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
     allParticipantsList.push(...participantsForSpin);
   }
   
-  // Находим позицию целевого победителя в списке
-  const targetPosition = allParticipantsList.findIndex(p => 
-    p.userId === targetWinner.userId && 
-    p.prizeName === targetWinner.prizeName
-  );
+  // Находим позицию целевого победителя в исходном списке участников (только по userId)
+  const targetIndexInOriginal = participantsForSpin.findIndex(p => p.userId === targetWinner.userId);
   
-  // Вычисляем смещение так, чтобы в конце остановиться на целевом победителе
+  if (targetIndexInOriginal === -1) {
+    console.warn(`⚠️ [ROULETTE] Победитель ${targetWinner.userId} не найден в списке участников. Добавляем его.`);
+    // Добавляем победителя в список, если его там нет
+    participantsForSpin.push(targetWinner);
+  }
+  
+  // Используем найденную позицию или последнюю (только что добавленную)
+  const finalTargetIndex = targetIndexInOriginal !== -1 ? targetIndexInOriginal : participantsForSpin.length - 1;
+  
+  // Вычисляем смещение так, чтобы в конце остановиться точно на целевом победителе
   const totalDistance = allParticipantsList.length * slotHeight;
-  const targetOffset = targetPosition * slotHeight;
-  // Прокручиваем большую часть списка + смещение до целевого победителя
-  const scrollOffset = easeOut * (totalDistance * 0.6 + targetOffset);
+  
+  // Вычисляем, сколько нужно прокрутить, чтобы целевой победитель оказался в центре
+  // Прокручиваем несколько полных циклов + смещение до нужного участника
+  const cyclesToScroll = Math.floor(repeatCount * 0.6); // Прокручиваем 60% циклов
+  const targetOffset = (cyclesToScroll * participantsForSpin.length + finalTargetIndex) * slotHeight;
+  
+  // Добавляем небольшое смещение, чтобы целевой был точно в центре
+  const centerSlot = Math.floor(visibleSlots / 2);
+  const finalOffset = targetOffset - (centerSlot * slotHeight);
+  
+  // Прокручиваем с замедлением
+  const scrollOffset = easeOut * finalOffset;
   
   // Рисуем рамку для рулетки
   const rouletteY = centerY - (visibleSlots * slotHeight) / 2;
@@ -179,6 +201,14 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
   ctx.clip();
   
   const startIndex = Math.floor(scrollOffset / slotHeight);
+  const centerSlot = Math.floor(visibleSlots / 2);
+  
+  // Логируем для отладки (только в последних кадрах)
+  if (progress > 0.95 && Math.floor(time * 30) % 10 === 0) {
+    const centerIndex = (startIndex + centerSlot) % allParticipantsList.length;
+    const centerParticipant = allParticipantsList[centerIndex];
+    console.log(`🔍 [ROULETTE] Прогресс: ${(progress * 100).toFixed(1)}%, Центр: ID ${centerParticipant?.userId}, Цель: ID ${targetWinner.userId}`);
+  }
   
   for (let i = -1; i <= visibleSlots + 1; i++) {
     const slotIndex = startIndex + i;
@@ -187,11 +217,12 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
     if (slotY > -slotHeight && slotY < visibleSlots * slotHeight + slotHeight) {
       const participant = allParticipantsList[slotIndex % allParticipantsList.length];
       
-      // Определяем, является ли это целевым победителем
+      // Определяем, является ли это целевым победителем (только по userId)
+      const centerSlot = Math.floor(visibleSlots / 2);
       const isTargetWinner = participant && targetWinner && 
                            participant.userId === targetWinner.userId &&
-                           participant.prizeName === targetWinner.prizeName &&
-                           Math.abs(i - Math.floor(visibleSlots / 2)) < 0.5;
+                           i === centerSlot &&
+                           progress > 0.9; // Только в конце прокрутки
       
       // Цвета из палитры
       const winnerColor = colorPalette.winnerColor || '#ffd700';
