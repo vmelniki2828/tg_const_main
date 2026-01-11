@@ -37,11 +37,13 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     const ctx = canvas.getContext('2d');
     
     // Фон с настройками цветов
-    const bgStart = colorPalette.backgroundStart || '#1a1a2e';
-    const bgEnd = colorPalette.backgroundEnd || '#16213e';
+    const bgColor = colorPalette.backgroundColor || '#1a1a2e';
+    // Создаем градиент на основе основного цвета (немного темнее внизу)
     const gradient = ctx.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, bgStart);
-    gradient.addColorStop(1, bgEnd);
+    gradient.addColorStop(0, bgColor);
+    // Немного затемняем цвет для нижней части
+    const darkerColor = darkenColor(bgColor, 0.1);
+    gradient.addColorStop(1, darkerColor);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
     
@@ -192,27 +194,25 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
                            Math.abs(i - Math.floor(visibleSlots / 2)) < 0.5;
       
       // Цвета из палитры
-      const winnerBg = colorPalette.winnerBackground || '#ffd700';
-      const winnerBorder = colorPalette.winnerBorder || '#ffaa00';
-      const winnerText = colorPalette.winnerText || '#000000';
-      const participantBg = colorPalette.participantBackground || 'rgba(255, 255, 255, 0.05)';
-      const participantText = colorPalette.participantText || '#ffffff';
+      const winnerColor = colorPalette.winnerColor || '#ffd700';
+      const winnerTextColor = colorPalette.winnerTextColor || '#000000';
+      const participantColor = colorPalette.participantColor || '#ffffff';
       
       // Цвет фона слота
       if (isTargetWinner && progress > 0.9) {
         // Подсвечиваем победителя в конце
-        ctx.fillStyle = winnerBg + '4D'; // Добавляем прозрачность
+        ctx.fillStyle = winnerColor + '4D'; // Добавляем прозрачность
       } else if (i === Math.floor(visibleSlots / 2)) {
         // Центральный слот (где остановится)
         ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
       } else {
-        ctx.fillStyle = participantBg;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
       }
       
       ctx.fillRect(0, slotY, slotWidth, slotHeight);
       
       // Рамка слота
-      ctx.strokeStyle = isTargetWinner && progress > 0.9 ? winnerBorder : '#ffffff';
+      ctx.strokeStyle = isTargetWinner && progress > 0.9 ? winnerColor : '#ffffff';
       ctx.lineWidth = isTargetWinner && progress > 0.9 ? 4 : 2;
       ctx.strokeRect(0, slotY, slotWidth, slotHeight);
       
@@ -223,7 +223,7 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
         const fullName = `${firstName} ${lastName}`.trim() || 
                         (participant.username ? `@${participant.username}` : `ID: ${participant.userId}`);
         
-        ctx.fillStyle = isTargetWinner && progress > 0.9 ? winnerText : participantText;
+        ctx.fillStyle = isTargetWinner && progress > 0.9 ? winnerTextColor : participantColor;
         ctx.font = isTargetWinner && progress > 0.9 ? 'bold 50px Arial' : 'bold 40px Arial';
         ctx.textAlign = 'center';
         ctx.fillText(fullName, slotWidth / 2, slotY + slotHeight / 2 + 15);
@@ -248,8 +248,8 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
   const pointerY = rouletteY;
   const pointerY2 = rouletteY + visibleSlots * slotHeight;
   
-  // Цвет указателей из палитры
-  const pointerColor = colorPalette.pointerColor || '#ffd700';
+  // Цвет указателей из палитры (используем цвет победителя)
+  const pointerColor = colorPalette.winnerColor || '#ffd700';
   
   // Верхний указатель
   ctx.beginPath();
@@ -307,10 +307,11 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
   const cardHeight = height * 0.5;
   
   const cardGradient = ctx.createLinearGradient(-cardWidth/2, -cardHeight/2, cardWidth/2, cardHeight/2);
-  const cardStart = colorPalette.cardGradientStart || '#667eea';
-  const cardEnd = colorPalette.cardGradientEnd || '#764ba2';
-  cardGradient.addColorStop(0, cardStart);
-  cardGradient.addColorStop(1, cardEnd);
+  const cardColor = colorPalette.cardColor || '#667eea';
+  cardGradient.addColorStop(0, cardColor);
+  // Немного затемняем для градиента
+  const cardDarker = darkenColor(cardColor, 0.2);
+  cardGradient.addColorStop(1, cardDarker);
   
   ctx.fillStyle = cardGradient;
   // Рисуем скругленный прямоугольник вручную
@@ -397,6 +398,17 @@ function drawRoundedRect(ctx, x, y, width, height, radius) {
   ctx.lineTo(x, y + radius);
   ctx.quadraticCurveTo(x, y, x + radius, y);
   ctx.closePath();
+}
+
+/**
+ * Затемняет цвет на указанный процент
+ */
+function darkenColor(color, percent) {
+  const num = parseInt(color.replace('#', ''), 16);
+  const r = Math.max(0, Math.floor((num >> 16) * (1 - percent)));
+  const g = Math.max(0, Math.floor(((num >> 8) & 0x00FF) * (1 - percent)));
+  const b = Math.max(0, Math.floor((num & 0x0000FF) * (1 - percent)));
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
 }
 
 module.exports = { generateRouletteVideo };

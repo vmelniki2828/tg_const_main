@@ -5429,16 +5429,11 @@ app.post('/api/giveaways/:botId', async (req, res) => {
       description: description || '',
       selectedChannels: selectedChannels || [],
       colorPalette: colorPalette || {
-        backgroundStart: '#1a1a2e',
-        backgroundEnd: '#16213e',
-        winnerBackground: '#ffd700',
-        winnerBorder: '#ffaa00',
-        winnerText: '#000000',
-        participantBackground: 'rgba(255, 255, 255, 0.05)',
-        participantText: '#ffffff',
-        pointerColor: '#ffd700',
-        cardGradientStart: '#667eea',
-        cardGradientEnd: '#764ba2'
+        backgroundColor: '#1a1a2e',
+        winnerColor: '#ffd700',
+        winnerTextColor: '#000000',
+        participantColor: '#ffffff',
+        cardColor: '#667eea'
       },
       status: 'draft'
     });
