@@ -48,11 +48,7 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
     
-    // Заголовок
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 60px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('🎰 РОЗЫГРЫШ 🎰', width / 2, 150);
+    // Заголовок убран по запросу пользователя
     
     // Определяем, какой победитель сейчас показывается
     const segmentDuration = spinDuration + pauseDuration + revealDuration;
@@ -304,7 +300,7 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
         ctx.textAlign = 'center';
         ctx.fillText(fullName, slotWidth / 2, slotY + slotHeight / 2 + 15);
         
-        // Username или проект
+        // Username или проект (без эмодзи)
         if (participant.username && fullName !== `@${participant.username}`) {
           ctx.font = '30px Arial';
           ctx.fillStyle = '#cccccc';
@@ -312,7 +308,7 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
         } else if (participant.project) {
           ctx.font = '30px Arial';
           ctx.fillStyle = '#cccccc';
-          ctx.fillText(`📁 ${participant.project}`, slotWidth / 2, slotY + slotHeight / 2 + 50);
+          ctx.fillText(participant.project, slotWidth / 2, slotY + slotHeight / 2 + 50);
         }
       }
     }
@@ -351,19 +347,7 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
   ctx.lineWidth = 3;
   ctx.stroke();
   
-  // Текст внизу
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 40px Arial';
-  ctx.textAlign = 'center';
-  ctx.shadowBlur = 0; // Сбрасываем тень
-  if (isPaused) {
-    // Во время паузы показываем, что победитель выбран
-    ctx.fillText('🎉 Победитель выбран!', centerX, height - 200);
-  } else if (progress < 0.95) {
-    ctx.fillText('🎰 Прокручивается...', centerX, height - 200);
-  } else {
-    ctx.fillText('🎉 Остановка!', centerX, height - 200);
-  }
+  // Тексты внизу убраны по запросу пользователя
 }
 
 /**
@@ -402,16 +386,11 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
   ctx.lineWidth = 5;
   ctx.stroke();
   
-  // Эмодзи приза
-  ctx.fillStyle = '#ffd700';
-  ctx.font = 'bold 80px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('🏆', 0, -cardHeight/2 + 120);
-  
-  // Название приза
+  // Название приза (без эмодзи)
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 50px Arial';
-  ctx.fillText(winner.prizeName || 'Победитель', 0, -cardHeight/2 + 200);
+  ctx.textAlign = 'center';
+  ctx.fillText(winner.prizeName || 'Победитель', 0, -cardHeight/2 + 150);
   
   // Имя победителя
   const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim() || `ID: ${winner.userId}`;
@@ -425,11 +404,11 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
     ctx.fillText(`@${winner.username}`, 0, 60);
   }
   
-  // Проект
+  // Проект (без эмодзи)
   if (winner.project) {
     ctx.font = '35px Arial';
     ctx.fillStyle = '#b0b0b0';
-    ctx.fillText(`📁 ${winner.project}`, 0, 120);
+    ctx.fillText(winner.project, 0, 120);
   }
   
   ctx.restore();
