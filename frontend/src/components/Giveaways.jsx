@@ -526,6 +526,8 @@ const Giveaways = ({ botId, onClose }) => {
       // Если есть невыбранные победители и есть участники, выбираем их автоматически
       if (hasUnselectedWinners && hasParticipants) {
         try {
+          console.log('🎲 [GIVEAWAY] Автоматически выбираем победителей для невыбранных призов...');
+          
           const randomResponse = await fetch(
             `${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}/random-winners`,
             {
@@ -541,23 +543,12 @@ const Giveaways = ({ botId, onClose }) => {
 
           if (randomResponse.ok) {
             const randomData = await randomResponse.json();
-            // Обновляем только невыбранные призы случайными победителями
-            const updatedPrizes = currentPrizes.map(prize => {
-              // Если победитель уже выбран, оставляем его
-              if (prize.winner) {
-                return prize;
-              }
-              // Иначе используем случайный выбор
-              const randomPrize = randomData.prizes.find(rp => rp.place === prize.place);
-              return randomPrize || prize;
-            });
+            console.log('✅ [GIVEAWAY] Победители выбраны автоматически:', randomData.prizes);
             
-            setGiveawayData({
-              ...giveawayData,
-              prizes: updatedPrizes
-            });
+            // Ждем обновления данных из БД
+            await new Promise(resolve => setTimeout(resolve, 500));
             
-            // Обновляем selectedGiveaway для получения актуальных данных
+            // Получаем актуальные данные после выбора победителей
             const updatedResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}`);
             if (updatedResponse.ok) {
               const updatedData = await updatedResponse.json();
@@ -569,16 +560,26 @@ const Giveaways = ({ botId, onClose }) => {
                   ...giveawayData,
                   prizes: updatedData.giveaway.prizes
                 });
+                console.log('✅ [GIVEAWAY] Данные обновлены после автоматического выбора:', updatedData.giveaway.prizes);
               }
             }
           } else {
             const errorData = await randomResponse.json();
-            console.error('Ошибка при автоматическом выборе победителей:', errorData);
+            console.error('❌ [GIVEAWAY] Ошибка при автоматическом выборе победителей:', errorData);
             setError(errorData.error || 'Ошибка при автоматическом выборе победителей');
+            setSaving(false);
+            return;
           }
         } catch (error) {
-          console.error('Ошибка при автоматическом выборе победителей:', error);
+          console.error('❌ [GIVEAWAY] Ошибка при автоматическом выборе победителей:', error);
+          setError('Ошибка при автоматическом выборе победителей');
+          setSaving(false);
+          return;
         }
+      } else if (hasUnselectedWinners && !hasParticipants) {
+        setError('Необходимо загрузить участников перед публикацией');
+        setSaving(false);
+        return;
       }
 
       // Публикуем розыгрыш

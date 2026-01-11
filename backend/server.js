@@ -5723,6 +5723,48 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       prizesCount: giveaway.prizes?.length
     }, null, 2));
     
+    // Проверяем, есть ли невыбранные победители, и выбираем их автоматически
+    const prizesNeedingWinners = giveaway.prizes.filter(prize => !prize.winner);
+    
+    if (prizesNeedingWinners.length > 0 && giveaway.participants && giveaway.participants.length > 0) {
+      console.log('🎲 [GIVEAWAY] Автоматически выбираем победителей для невыбранных призов...');
+      
+      // Получаем уже выбранных победителей
+      const alreadySelectedUserIds = giveaway.prizes
+        .filter(p => p.winner && p.winner.userId)
+        .map(p => String(p.winner.userId));
+      
+      // Фильтруем участников, исключая уже выбранных
+      const availableParticipants = giveaway.participants.filter(
+        p => !alreadySelectedUserIds.includes(String(p.userId))
+      );
+      
+      if (availableParticipants.length >= prizesNeedingWinners.length) {
+        // Выбираем случайных победителей с учетом весов
+        const winners = weightedRandomSelect(availableParticipants, prizesNeedingWinners.length);
+        
+        // Обновляем только призы без победителей
+        let winnerIndex = 0;
+        giveaway.prizes = giveaway.prizes.map((prize) => {
+          if (prize.winner) {
+            return prize;
+          }
+          if (winnerIndex < winners.length) {
+            const updatedPrize = {
+              ...prize,
+              winner: winners[winnerIndex]
+            };
+            winnerIndex++;
+            return updatedPrize;
+          }
+          return prize;
+        });
+        
+        await giveaway.save();
+        console.log('✅ [GIVEAWAY] Победители выбраны автоматически');
+      }
+    }
+    
     // Проверяем, что есть победители
     const winnersWithPrizes = giveaway.prizes
       .filter(p => p.winner && (p.winner.userId || p.winner.username))
