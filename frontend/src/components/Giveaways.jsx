@@ -18,7 +18,19 @@ const Giveaways = ({ botId, onClose }) => {
     prizePlaces: 1,
     prizes: [],
     description: '',
-    selectedChannels: []
+    selectedChannels: [],
+    colorPalette: {
+      backgroundStart: '#1a1a2e',
+      backgroundEnd: '#16213e',
+      winnerBackground: '#ffd700',
+      winnerBorder: '#ffaa00',
+      winnerText: '#000000',
+      participantBackground: 'rgba(255, 255, 255, 0.05)',
+      participantText: '#ffffff',
+      pointerColor: '#ffd700',
+      cardGradientStart: '#667eea',
+      cardGradientEnd: '#764ba2'
+    }
   });
 
   useEffect(() => {
@@ -66,7 +78,19 @@ const Giveaways = ({ botId, onClose }) => {
       prizePlaces: 1,
       prizes: [],
       description: '',
-      selectedChannels: []
+      selectedChannels: [],
+      colorPalette: {
+        backgroundStart: '#1a1a2e',
+        backgroundEnd: '#16213e',
+        winnerBackground: '#ffd700',
+        winnerBorder: '#ffaa00',
+        winnerText: '#000000',
+        participantBackground: 'rgba(255, 255, 255, 0.05)',
+        participantText: '#ffffff',
+        pointerColor: '#ffd700',
+        cardGradientStart: '#667eea',
+        cardGradientEnd: '#764ba2'
+      }
     });
     setFile(null);
   };
@@ -78,7 +102,19 @@ const Giveaways = ({ botId, onClose }) => {
       prizePlaces: giveaway.prizePlaces,
       prizes: giveaway.prizes || [],
       description: giveaway.description || '',
-      selectedChannels: giveaway.selectedChannels || []
+      selectedChannels: giveaway.selectedChannels || [],
+      colorPalette: giveaway.colorPalette || {
+        backgroundStart: '#1a1a2e',
+        backgroundEnd: '#16213e',
+        winnerBackground: '#ffd700',
+        winnerBorder: '#ffaa00',
+        winnerText: '#000000',
+        participantBackground: 'rgba(255, 255, 255, 0.05)',
+        participantText: '#ffffff',
+        pointerColor: '#ffd700',
+        cardGradientStart: '#667eea',
+        cardGradientEnd: '#764ba2'
+      }
     });
   };
 
@@ -547,6 +583,148 @@ const Giveaways = ({ botId, onClose }) => {
                       🎲 Выбрать победителей случайно
                     </button>
                   )}
+                </div>
+
+                {/* Настройки цветовой палитры */}
+                <div className="editor-section">
+                  <h3>🎨 Цветовая палитра</h3>
+                  <div className="color-palette-grid">
+                    <div className="color-input-group">
+                      <label>Фон (начало):</label>
+                      <input
+                        type="color"
+                        value={giveawayData.colorPalette.backgroundStart}
+                        onChange={(e) => setGiveawayData({
+                          ...giveawayData,
+                          colorPalette: {
+                            ...giveawayData.colorPalette,
+                            backgroundStart: e.target.value
+                          }
+                        })}
+                        className="color-input"
+                      />
+                    </div>
+                    <div className="color-input-group">
+                      <label>Фон (конец):</label>
+                      <input
+                        type="color"
+                        value={giveawayData.colorPalette.backgroundEnd}
+                        onChange={(e) => setGiveawayData({
+                          ...giveawayData,
+                          colorPalette: {
+                            ...giveawayData.colorPalette,
+                            backgroundEnd: e.target.value
+                          }
+                        })}
+                        className="color-input"
+                      />
+                    </div>
+                    <div className="color-input-group">
+                      <label>Фон победителя:</label>
+                      <input
+                        type="color"
+                        value={giveawayData.colorPalette.winnerBackground}
+                        onChange={(e) => setGiveawayData({
+                          ...giveawayData,
+                          colorPalette: {
+                            ...giveawayData.colorPalette,
+                            winnerBackground: e.target.value
+                          }
+                        })}
+                        className="color-input"
+                      />
+                    </div>
+                    <div className="color-input-group">
+                      <label>Рамка победителя:</label>
+                      <input
+                        type="color"
+                        value={giveawayData.colorPalette.winnerBorder}
+                        onChange={(e) => setGiveawayData({
+                          ...giveawayData,
+                          colorPalette: {
+                            ...giveawayData.colorPalette,
+                            winnerBorder: e.target.value
+                          }
+                        })}
+                        className="color-input"
+                      />
+                    </div>
+                    <div className="color-input-group">
+                      <label>Текст победителя:</label>
+                      <input
+                        type="color"
+                        value={giveawayData.colorPalette.winnerText}
+                        onChange={(e) => setGiveawayData({
+                          ...giveawayData,
+                          colorPalette: {
+                            ...giveawayData.colorPalette,
+                            winnerText: e.target.value
+                          }
+                        })}
+                        className="color-input"
+                      />
+                    </div>
+                    <div className="color-input-group">
+                      <label>Текст участника:</label>
+                      <input
+                        type="color"
+                        value={giveawayData.colorPalette.participantText}
+                        onChange={(e) => setGiveawayData({
+                          ...giveawayData,
+                          colorPalette: {
+                            ...giveawayData.colorPalette,
+                            participantText: e.target.value
+                          }
+                        })}
+                        className="color-input"
+                      />
+                    </div>
+                    <div className="color-input-group">
+                      <label>Цвет указателей:</label>
+                      <input
+                        type="color"
+                        value={giveawayData.colorPalette.pointerColor}
+                        onChange={(e) => setGiveawayData({
+                          ...giveawayData,
+                          colorPalette: {
+                            ...giveawayData.colorPalette,
+                            pointerColor: e.target.value
+                          }
+                        })}
+                        className="color-input"
+                      />
+                    </div>
+                    <div className="color-input-group">
+                      <label>Карточка (начало):</label>
+                      <input
+                        type="color"
+                        value={giveawayData.colorPalette.cardGradientStart}
+                        onChange={(e) => setGiveawayData({
+                          ...giveawayData,
+                          colorPalette: {
+                            ...giveawayData.colorPalette,
+                            cardGradientStart: e.target.value
+                          }
+                        })}
+                        className="color-input"
+                      />
+                    </div>
+                    <div className="color-input-group">
+                      <label>Карточка (конец):</label>
+                      <input
+                        type="color"
+                        value={giveawayData.colorPalette.cardGradientEnd}
+                        onChange={(e) => setGiveawayData({
+                          ...giveawayData,
+                          colorPalette: {
+                            ...giveawayData.colorPalette,
+                            cardGradientEnd: e.target.value
+                          }
+                        })}
+                        className="color-input"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Выбор каналов */}

@@ -7,9 +7,11 @@ const ffmpeg = require('fluent-ffmpeg');
  * Генерирует видео рулетки с выпадением победителей
  * @param {Array} winners - Массив победителей с информацией о призах
  * @param {String} outputPath - Путь для сохранения видео
+ * @param {Array} allParticipants - Все участники для прокрутки
+ * @param {Object} colorPalette - Настройки цветовой палитры
  * @returns {Promise<String>} Путь к созданному видео файлу
  */
-async function generateRouletteVideo(winners, outputPath) {
+async function generateRouletteVideo(winners, outputPath, allParticipants = null, colorPalette = {}) {
   const width = 1080;
   const height = 1920; // Вертикальное видео для Telegram
   const fps = 30;
@@ -34,10 +36,12 @@ async function generateRouletteVideo(winners, outputPath) {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
     
-    // Фон
+    // Фон с настройками цветов
+    const bgStart = colorPalette.backgroundStart || '#1a1a2e';
+    const bgEnd = colorPalette.backgroundEnd || '#16213e';
     const gradient = ctx.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, '#1a1a2e');
-    gradient.addColorStop(1, '#16213e');
+    gradient.addColorStop(0, bgStart);
+    gradient.addColorStop(1, bgEnd);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
     
@@ -57,11 +61,11 @@ async function generateRouletteVideo(winners, outputPath) {
       
       if (localTime < spinDuration) {
         // Фаза горизонтальной прокрутки рулетки для текущего победителя
-        drawHorizontalRoulette(ctx, width, height, localTime, spinDuration, winners, currentWinner);
+        drawHorizontalRoulette(ctx, width, height, localTime, spinDuration, allParticipants || winners, currentWinner, colorPalette);
       } else {
         // Фаза показа победителя
         const revealTime = localTime - spinDuration;
-        drawWinnerReveal(ctx, width, height, currentWinner, revealTime, revealDuration);
+        drawWinnerReveal(ctx, width, height, currentWinner, revealTime, revealDuration, colorPalette);
       }
     } else {
       // Показываем последнего победителя в конце
@@ -123,7 +127,7 @@ async function generateRouletteVideo(winners, outputPath) {
 /**
  * Рисует горизонтальную прокручивающуюся рулетку
  */
-function drawHorizontalRoulette(ctx, width, height, time, duration, allWinners, targetWinner) {
+function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipants, targetWinner, colorPalette = {}) {
   const centerX = width / 2;
   const centerY = height / 2;
   const slotHeight = 200; // Высота одного слота
@@ -134,11 +138,14 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allWinners, 
   const progress = time / duration;
   const easeOut = 1 - Math.pow(1 - progress, 3); // Кубическое замедление
   
+  // Используем всех участников для прокрутки (не только победителей)
+  const participantsForSpin = allParticipants && allParticipants.length > 0 ? allParticipants : [targetWinner];
+  
   // Создаем список всех участников для прокрутки (повторяем несколько раз для эффекта)
   const allParticipantsList = [];
   const repeatCount = 25; // Количество повторений списка
   for (let i = 0; i < repeatCount; i++) {
-    allParticipantsList.push(...allWinners);
+    allParticipantsList.push(...participantsForSpin);
   }
   
   // Находим позицию целевого победителя в списке
@@ -184,21 +191,28 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allWinners, 
                            participant.prizeName === targetWinner.prizeName &&
                            Math.abs(i - Math.floor(visibleSlots / 2)) < 0.5;
       
+      // Цвета из палитры
+      const winnerBg = colorPalette.winnerBackground || '#ffd700';
+      const winnerBorder = colorPalette.winnerBorder || '#ffaa00';
+      const winnerText = colorPalette.winnerText || '#000000';
+      const participantBg = colorPalette.participantBackground || 'rgba(255, 255, 255, 0.05)';
+      const participantText = colorPalette.participantText || '#ffffff';
+      
       // Цвет фона слота
       if (isTargetWinner && progress > 0.9) {
         // Подсвечиваем победителя в конце
-        ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+        ctx.fillStyle = winnerBg + '4D'; // Добавляем прозрачность
       } else if (i === Math.floor(visibleSlots / 2)) {
         // Центральный слот (где остановится)
         ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
       } else {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.fillStyle = participantBg;
       }
       
       ctx.fillRect(0, slotY, slotWidth, slotHeight);
       
       // Рамка слота
-      ctx.strokeStyle = isTargetWinner && progress > 0.9 ? '#ffd700' : '#ffffff';
+      ctx.strokeStyle = isTargetWinner && progress > 0.9 ? winnerBorder : '#ffffff';
       ctx.lineWidth = isTargetWinner && progress > 0.9 ? 4 : 2;
       ctx.strokeRect(0, slotY, slotWidth, slotHeight);
       
@@ -209,7 +223,7 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allWinners, 
         const fullName = `${firstName} ${lastName}`.trim() || 
                         (participant.username ? `@${participant.username}` : `ID: ${participant.userId}`);
         
-        ctx.fillStyle = isTargetWinner && progress > 0.9 ? '#ffd700' : '#ffffff';
+        ctx.fillStyle = isTargetWinner && progress > 0.9 ? winnerText : participantText;
         ctx.font = isTargetWinner && progress > 0.9 ? 'bold 50px Arial' : 'bold 40px Arial';
         ctx.textAlign = 'center';
         ctx.fillText(fullName, slotWidth / 2, slotY + slotHeight / 2 + 15);
@@ -234,13 +248,16 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allWinners, 
   const pointerY = rouletteY;
   const pointerY2 = rouletteY + visibleSlots * slotHeight;
   
+  // Цвет указателей из палитры
+  const pointerColor = colorPalette.pointerColor || '#ffd700';
+  
   // Верхний указатель
   ctx.beginPath();
   ctx.moveTo(centerX, pointerY - 15);
   ctx.lineTo(centerX - 30, pointerY + 15);
   ctx.lineTo(centerX + 30, pointerY + 15);
   ctx.closePath();
-  ctx.fillStyle = '#ffd700';
+  ctx.fillStyle = pointerColor;
   ctx.fill();
   ctx.strokeStyle = '#000000';
   ctx.lineWidth = 3;
@@ -252,7 +269,7 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allWinners, 
   ctx.lineTo(centerX - 30, pointerY2 - 15);
   ctx.lineTo(centerX + 30, pointerY2 - 15);
   ctx.closePath();
-  ctx.fillStyle = '#ffd700';
+  ctx.fillStyle = pointerColor;
   ctx.fill();
   ctx.strokeStyle = '#000000';
   ctx.lineWidth = 3;
@@ -272,7 +289,7 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allWinners, 
 /**
  * Рисует выпадение победителя
  */
-function drawWinnerReveal(ctx, width, height, winner, time, duration) {
+function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalette = {}) {
   const centerX = width / 2;
   const centerY = height / 2;
   
@@ -290,8 +307,10 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration) {
   const cardHeight = height * 0.5;
   
   const cardGradient = ctx.createLinearGradient(-cardWidth/2, -cardHeight/2, cardWidth/2, cardHeight/2);
-  cardGradient.addColorStop(0, '#667eea');
-  cardGradient.addColorStop(1, '#764ba2');
+  const cardStart = colorPalette.cardGradientStart || '#667eea';
+  const cardEnd = colorPalette.cardGradientEnd || '#764ba2';
+  cardGradient.addColorStop(0, cardStart);
+  cardGradient.addColorStop(1, cardEnd);
   
   ctx.fillStyle = cardGradient;
   // Рисуем скругленный прямоугольник вручную

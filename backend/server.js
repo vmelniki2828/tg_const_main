@@ -5407,7 +5407,7 @@ app.get('/api/giveaways/:botId', async (req, res) => {
 app.post('/api/giveaways/:botId', async (req, res) => {
   try {
     const { botId } = req.params;
-    const { name, prizePlaces, prizes, description, selectedChannels } = req.body;
+    const { name, prizePlaces, prizes, description, selectedChannels, colorPalette } = req.body;
     
     // Создаем массив призов если его нет
     const prizesArray = prizes || [];
@@ -5428,6 +5428,18 @@ app.post('/api/giveaways/:botId', async (req, res) => {
       prizes: prizesArray,
       description: description || '',
       selectedChannels: selectedChannels || [],
+      colorPalette: colorPalette || {
+        backgroundStart: '#1a1a2e',
+        backgroundEnd: '#16213e',
+        winnerBackground: '#ffd700',
+        winnerBorder: '#ffaa00',
+        winnerText: '#000000',
+        participantBackground: 'rgba(255, 255, 255, 0.05)',
+        participantText: '#ffffff',
+        pointerColor: '#ffd700',
+        cardGradientStart: '#667eea',
+        cardGradientEnd: '#764ba2'
+      },
       status: 'draft'
     });
     
@@ -5443,7 +5455,7 @@ app.post('/api/giveaways/:botId', async (req, res) => {
 app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
   try {
     const { botId, giveawayId } = req.params;
-    const { name, prizePlaces, prizes, description, selectedChannels } = req.body;
+    const { name, prizePlaces, prizes, description, selectedChannels, colorPalette } = req.body;
     
     const giveaway = await Giveaway.findOne({ _id: giveawayId, botId });
     if (!giveaway) {
@@ -5457,6 +5469,7 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (selectedChannels !== undefined) updateData.selectedChannels = selectedChannels;
+    if (colorPalette !== undefined) updateData.colorPalette = colorPalette;
     
     // Обновляем призы и количество призовых мест
     if (prizePlaces !== undefined) {
@@ -5714,7 +5727,12 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       
       videoPath = path.join(uploadsDir, `roulette_${giveawayId}_${Date.now()}.mp4`);
       console.log('🎬 Начинаем генерацию видео рулетки...');
-      await generateRouletteVideo(winnersWithPrizes, videoPath);
+      
+      // Передаем всех участников для прокрутки и настройки цветов
+      const allParticipants = giveaway.participants || [];
+      const colorPalette = giveaway.colorPalette || {};
+      
+      await generateRouletteVideo(winnersWithPrizes, videoPath, allParticipants, colorPalette);
       console.log('✅ Видео рулетки создано:', videoPath);
     } catch (videoError) {
       console.error('❌ Ошибка генерации видео:', videoError);
