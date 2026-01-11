@@ -541,10 +541,20 @@ const Giveaways = ({ botId, onClose }) => {
 
           if (randomResponse.ok) {
             const randomData = await randomResponse.json();
-            // Обновляем данные розыгрыша с выбранными победителями
+            // Обновляем только невыбранные призы случайными победителями
+            const updatedPrizes = currentPrizes.map(prize => {
+              // Если победитель уже выбран, оставляем его
+              if (prize.winner) {
+                return prize;
+              }
+              // Иначе используем случайный выбор
+              const randomPrize = randomData.prizes.find(rp => rp.place === prize.place);
+              return randomPrize || prize;
+            });
+            
             setGiveawayData({
               ...giveawayData,
-              prizes: randomData.prizes
+              prizes: updatedPrizes
             });
             
             // Обновляем selectedGiveaway для получения актуальных данных
@@ -554,8 +564,17 @@ const Giveaways = ({ botId, onClose }) => {
               if (updatedData.giveaway) {
                 currentGiveaway = updatedData.giveaway;
                 handleSelectGiveaway(updatedData.giveaway);
+                // Обновляем prizes в giveawayData из актуальных данных
+                setGiveawayData({
+                  ...giveawayData,
+                  prizes: updatedData.giveaway.prizes
+                });
               }
             }
+          } else {
+            const errorData = await randomResponse.json();
+            console.error('Ошибка при автоматическом выборе победителей:', errorData);
+            setError(errorData.error || 'Ошибка при автоматическом выборе победителей');
           }
         } catch (error) {
           console.error('Ошибка при автоматическом выборе победителей:', error);
@@ -1016,9 +1035,12 @@ const Giveaways = ({ botId, onClose }) => {
                             <strong>{prize.name}</strong> (место {prize.place}):
                             {prize.winner ? (
                               <div>
-                                {prize.winner.firstName || ''} {prize.winner.lastName || ''}
-                                {prize.winner.username && ` (@${prize.winner.username})`}
-                                {prize.winner.project && ` - ${prize.winner.project}`}
+                                ID: {prize.winner.userId}
+                                {prize.winner.firstName || prize.winner.lastName ? (
+                                  <span> | {prize.winner.firstName || ''} {prize.winner.lastName || ''}</span>
+                                ) : null}
+                                {prize.winner.username && ` | @${prize.winner.username}`}
+                                {prize.winner.project && ` | ${prize.winner.project}`}
                               </div>
                             ) : (
                               <div>Победитель не выбран</div>

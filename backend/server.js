@@ -5644,16 +5644,49 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
       return res.status(400).json({ error: 'No participants loaded' });
     }
     
-    // Выбираем случайных победителей с учетом весов
-    const winners = weightedRandomSelect(giveaway.participants, prizePlaces || giveaway.prizePlaces);
+    // Определяем, для каких призов нужно выбрать победителей
+    const prizesNeedingWinners = giveaway.prizes.filter(prize => !prize.winner);
+    const numberOfWinnersNeeded = prizesNeedingWinners.length;
     
-    // Обновляем призы
-    const updatedPrizes = giveaway.prizes.map((prize, index) => {
-      if (index < winners.length) {
-        return {
+    if (numberOfWinnersNeeded === 0) {
+      // Все победители уже выбраны
+      return res.json({ success: true, prizes: giveaway.prizes });
+    }
+    
+    // Получаем уже выбранных победителей, чтобы исключить их из выборки
+    const alreadySelectedUserIds = giveaway.prizes
+      .filter(p => p.winner && p.winner.userId)
+      .map(p => String(p.winner.userId));
+    
+    // Фильтруем участников, исключая уже выбранных
+    const availableParticipants = giveaway.participants.filter(
+      p => !alreadySelectedUserIds.includes(String(p.userId))
+    );
+    
+    if (availableParticipants.length < numberOfWinnersNeeded) {
+      return res.status(400).json({ 
+        error: `Недостаточно доступных участников. Нужно: ${numberOfWinnersNeeded}, доступно: ${availableParticipants.length}` 
+      });
+    }
+    
+    // Выбираем случайных победителей с учетом весов только из доступных участников
+    const winners = weightedRandomSelect(availableParticipants, numberOfWinnersNeeded);
+    
+    // Обновляем только призы без победителей
+    let winnerIndex = 0;
+    const updatedPrizes = giveaway.prizes.map((prize) => {
+      // Если победитель уже выбран, оставляем его
+      if (prize.winner) {
+        return prize;
+      }
+      // Иначе назначаем случайного победителя
+      if (winnerIndex < winners.length) {
+        const updatedPrize = {
           ...prize,
-          winner: winners[index]
+          winner: winners[winnerIndex]
         };
+        winnerIndex++;
+        return updatedPrize;
       }
       return prize;
     });
