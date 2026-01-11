@@ -11,6 +11,7 @@ const Giveaways = ({ botId, onClose }) => {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [channelInput, setChannelInput] = useState('');
+  const [activeTab, setActiveTab] = useState('active'); // 'active' или 'archive'
 
   // Состояние для нового/редактируемого розыгрыша
   const [giveawayData, setGiveawayData] = useState({
@@ -48,6 +49,11 @@ const Giveaways = ({ botId, onClose }) => {
       setLoading(false);
     }
   };
+
+  // Фильтруем розыгрыши по статусу
+  const activeGiveaways = giveaways.filter(g => g.status === 'draft');
+  const archivedGiveaways = giveaways.filter(g => g.status === 'completed');
+  const displayedGiveaways = activeTab === 'active' ? activeGiveaways : archivedGiveaways;
 
   const handleAddChannel = () => {
     if (channelInput.trim() && !giveawayData.selectedChannels.includes(channelInput.trim())) {
@@ -326,13 +332,34 @@ const Giveaways = ({ botId, onClose }) => {
       setError('Выберите розыгрыш');
       return;
     }
+    
+    // Автоматически сохраняем изменения перед публикацией
+    try {
+      const saveUrl = `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`;
+      const saveResponse = await fetch(saveUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(giveawayData),
+      });
+      
+      if (saveResponse.ok) {
+        const saveData = await saveResponse.json();
+        if (saveData.giveaway) {
+          handleSelectGiveaway(saveData.giveaway);
+        }
+      }
+    } catch (saveError) {
+      console.error('Ошибка сохранения перед публикацией:', saveError);
+    }
 
     if (giveawayData.selectedChannels.length === 0) {
       setError('Выберите хотя бы один канал для отправки результатов');
       return;
     }
 
-    if (!window.confirm('Отправить результаты розыгрыша в выбранные каналы?')) {
+    if (!window.confirm('Отправить результаты розыгрыша в выбранные каналы? Розыгрыш будет перемещен в архив.')) {
       return;
     }
 
@@ -357,8 +384,28 @@ const Giveaways = ({ botId, onClose }) => {
       const data = await response.json();
 
       if (response.ok) {
-        alert('✅ Результаты розыгрыша отправлены в каналы!');
-        fetchGiveaways();
+        alert('✅ Результаты отправлены! Розыгрыш перемещен в архив.');
+        
+        // Обновляем список розыгрышей
+        await fetchGiveaways();
+        
+        // Переключаемся на архив
+        setActiveTab('archive');
+        
+        // Обновляем список и находим завершенный розыгрыш
+        const updatedResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}`);
+        if (updatedResponse.ok) {
+          const updatedData = await updatedResponse.json();
+          const updatedGiveaways = updatedData.giveaways || [];
+          const completedGiveaway = updatedGiveaways.find(g => g._id === selectedGiveaway._id);
+          if (completedGiveaway) {
+            handleSelectGiveaway(completedGiveaway);
+          } else {
+            setSelectedGiveaway(null);
+          }
+        } else {
+          setSelectedGiveaway(null);
+        }
       } else {
         setError(data.error || 'Ошибка при отправке результатов');
       }
@@ -386,6 +433,28 @@ const Giveaways = ({ botId, onClose }) => {
           <h2>🎲 Розыгрыши</h2>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
+        
+        {/* Вкладки Розыгрыши/Архив */}
+        <div className="giveaways-tabs">
+          <button
+            className={`tab-btn ${activeTab === 'active' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('active');
+              setSelectedGiveaway(null);
+            }}
+          >
+            Розыгрыши
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'archive' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('archive');
+              setSelectedGiveaway(null);
+            }}
+          >
+            Архив
+          </button>
+        </div>
 
         {error && (
           <div className="error-message">
@@ -397,13 +466,15 @@ const Giveaways = ({ botId, onClose }) => {
           {/* Список розыгрышей */}
           <div className="giveaways-list">
             <div className="giveaways-list-header">
-              <h3>Список розыгрышей</h3>
-              <button onClick={handleCreateNew} className="create-btn">
-                ➕ Создать новый
-              </button>
+              <h3>{activeTab === 'active' ? 'Активные розыгрыши' : 'Архив розыгрышей'}</h3>
+              {activeTab === 'active' && (
+                <button onClick={handleCreateNew} className="create-btn">
+                  ➕ Создать новый
+                </button>
+              )}
             </div>
             <div className="giveaways-items">
-              {giveaways.map((giveaway) => (
+              {displayedGiveaways.map((giveaway) => (
                 <div
                   key={giveaway._id}
                   className={`giveaway-item ${selectedGiveaway?._id === giveaway._id ? 'active' : ''}`}
@@ -412,22 +483,58 @@ const Giveaways = ({ botId, onClose }) => {
                   <div className="giveaway-item-name">{giveaway.name}</div>
                   <div className="giveaway-item-info">
                     Участников: {giveaway.participants?.length || 0} | 
-                    Призов: {giveaway.prizePlaces} | 
-                    Статус: {giveaway.status === 'completed' ? '✅ Завершен' : '📝 Черновик'}
+                    Призов: {giveaway.prizePlaces}
+                    {activeTab === 'archive' && ' | ✅ Завершен'}
                   </div>
                 </div>
               ))}
-              {giveaways.length === 0 && (
-                <div className="no-giveaways">Нет розыгрышей. Создайте новый!</div>
+              {displayedGiveaways.length === 0 && (
+                <div className="no-giveaways">
+                  {activeTab === 'active' 
+                    ? 'Нет активных розыгрышей. Создайте новый!' 
+                    : 'Архив пуст'}
+                </div>
               )}
             </div>
           </div>
 
           {/* Редактор розыгрыша */}
           <div className="giveaway-editor">
-            {selectedGiveaway || !giveaways.length ? (
+            {selectedGiveaway || (!displayedGiveaways.length && activeTab === 'active') ? (
               <>
-                <div className="editor-section">
+                {/* В архиве показываем только просмотр, без редактирования */}
+                {activeTab === 'archive' && selectedGiveaway ? (
+                  <div className="archive-view">
+                    <h3>Просмотр завершенного розыгрыша</h3>
+                    <div className="editor-section">
+                      <p><strong>Название:</strong> {selectedGiveaway.name}</p>
+                      <p><strong>Призовых мест:</strong> {selectedGiveaway.prizePlaces}</p>
+                      <p><strong>Участников:</strong> {selectedGiveaway.participants?.length || 0}</p>
+                      {selectedGiveaway.description && (
+                        <p><strong>Описание:</strong> {selectedGiveaway.description}</p>
+                      )}
+                      <div className="prizes-preview">
+                        <h4>Победители:</h4>
+                        {selectedGiveaway.prizes && selectedGiveaway.prizes.map((prize) => (
+                          <div key={prize.place} className="prize-preview">
+                            <strong>{prize.name}</strong> (место {prize.place}):
+                            {prize.winner ? (
+                              <div>
+                                {prize.winner.firstName || ''} {prize.winner.lastName || ''}
+                                {prize.winner.username && ` (@${prize.winner.username})`}
+                                {prize.winner.project && ` - ${prize.winner.project}`}
+                              </div>
+                            ) : (
+                              <div>Победитель не выбран</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="editor-section">
                   <h3>Основная информация</h3>
                   <div className="form-group">
                     <label>Название:</label>
@@ -570,9 +677,10 @@ const Giveaways = ({ botId, onClose }) => {
                   )}
                 </div>
 
-                {/* Настройки цветовой палитры */}
-                <div className="editor-section">
-                  <h3>🎨 Цветовая палитра</h3>
+                {/* Настройки цветовой палитры - только для активных розыгрышей */}
+                {activeTab === 'active' && (
+                  <div className="editor-section">
+                    <h3>🎨 Цветовая палитра</h3>
                   <div className="color-palette-grid">
                     <div className="color-input-group">
                       <label>Фон:</label>
@@ -651,9 +759,10 @@ const Giveaways = ({ botId, onClose }) => {
                     </div>
                   </div>
                 </div>
+                )}
 
-                {/* Выбор каналов */}
-                {selectedGiveaway && (
+                {/* Выбор каналов - только для активных розыгрышей */}
+                {selectedGiveaway && activeTab === 'active' && (
                   <div className="editor-section">
                     <h3>Каналы для отправки результатов</h3>
                     <div className="channels-input-section">
@@ -696,30 +805,39 @@ const Giveaways = ({ botId, onClose }) => {
 
                 {/* Кнопки действий */}
                 <div className="giveaway-actions">
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="save-btn"
-                  >
-                    {saving ? '💾 Сохранение...' : '💾 Сохранить'}
-                  </button>
-                  {selectedGiveaway && (
-                    <button
-                      onClick={handlePublish}
-                      disabled={saving || giveawayData.selectedChannels.length === 0}
-                      className="publish-btn"
-                    >
-                      📢 Отправить результаты в каналы
-                    </button>
+                  {activeTab === 'active' ? (
+                    <>
+                      {/* В активных розыгрышах только кнопка публикации, без сохранения */}
+                      {selectedGiveaway && (
+                        <button
+                          onClick={handlePublish}
+                          disabled={saving || giveawayData.selectedChannels.length === 0}
+                          className="publish-btn"
+                        >
+                          {saving ? '📢 Отправка...' : '🎲 Розыгрыш'}
+                        </button>
+                      )}
+                      <button className="cancel-btn" onClick={onClose}>
+                        Отмена
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {/* В архиве только просмотр, без редактирования */}
+                      <button className="cancel-btn" onClick={onClose}>
+                        Закрыть
+                      </button>
+                    </>
                   )}
-                  <button className="cancel-btn" onClick={onClose}>
-                    Отмена
-                  </button>
                 </div>
+                  </>
+                )}
               </>
             ) : (
               <div className="no-selection">
-                Выберите розыгрыш из списка или создайте новый
+                {activeTab === 'active' 
+                  ? 'Выберите розыгрыш из списка или создайте новый'
+                  : 'Выберите розыгрыш из архива для просмотра'}
               </div>
             )}
           </div>
