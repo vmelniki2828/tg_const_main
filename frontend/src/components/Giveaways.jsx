@@ -159,20 +159,46 @@ const Giveaways = ({ botId, onClose }) => {
       return;
     }
 
-    if (!selectedGiveaway) {
-      setError('Сначала создайте или выберите розыгрыш');
-      return;
-    }
-
     setUploading(true);
     setError('');
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
+      let giveawayId = selectedGiveaway?._id;
+      
+      // Если розыгрыш еще не создан, создаем его
+      if (!giveawayId) {
+        const createResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(giveawayData),
+        });
+
+        if (!createResponse.ok) {
+          const errorData = await createResponse.json();
+          setError(errorData.error || 'Ошибка при создании розыгрыша');
+          setUploading(false);
+          return;
+        }
+
+        const createData = await createResponse.json();
+        if (createData.giveaway) {
+          giveawayId = createData.giveaway._id;
+          handleSelectGiveaway(createData.giveaway);
+        } else {
+          setError('Не удалось создать розыгрыш');
+          setUploading(false);
+          return;
+        }
+      }
+
+      // Загружаем CSV файл
+      const formData = new FormData();
+      formData.append('file', file);
+
       const response = await fetch(
-        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/upload`,
+        `${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}/upload`,
         {
           method: 'POST',
           body: formData
@@ -292,7 +318,12 @@ const Giveaways = ({ botId, onClose }) => {
   };
 
   const handleRandomWinner = async (place) => {
-    if (!selectedGiveaway || !selectedGiveaway.participants || selectedGiveaway.participants.length === 0) {
+    if (!selectedGiveaway) {
+      setError('Сначала загрузите участников');
+      return;
+    }
+    
+    if (!selectedGiveaway.participants || selectedGiveaway.participants.length === 0) {
       setError('Сначала загрузите участников');
       return;
     }
@@ -348,30 +379,32 @@ const Giveaways = ({ botId, onClose }) => {
       prizes: updatedPrizes
     });
 
-    // Автосохранение
-    try {
-      const response = await fetch(
-        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            ...giveawayData,
-            prizes: updatedPrizes
-          }),
+    // Автосохранение (если розыгрыш уже создан)
+    if (selectedGiveaway && selectedGiveaway._id) {
+      try {
+        const response = await fetch(
+          `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...giveawayData,
+              prizes: updatedPrizes
+            }),
+          }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.giveaway) {
+            handleSelectGiveaway(data.giveaway);
+          }
         }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.giveaway) {
-          handleSelectGiveaway(data.giveaway);
-        }
+      } catch (error) {
+        console.error('Ошибка автосохранения:', error);
       }
-    } catch (error) {
-      console.error('Ошибка автосохранения:', error);
     }
   };
 
@@ -412,32 +445,6 @@ const Giveaways = ({ botId, onClose }) => {
   };
 
   const handlePublish = async () => {
-    if (!selectedGiveaway) {
-      setError('Выберите розыгрыш');
-      return;
-    }
-    
-    // Автоматически сохраняем изменения перед публикацией
-    try {
-      const saveUrl = `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`;
-      const saveResponse = await fetch(saveUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(giveawayData),
-      });
-      
-      if (saveResponse.ok) {
-        const saveData = await saveResponse.json();
-        if (saveData.giveaway) {
-          handleSelectGiveaway(saveData.giveaway);
-        }
-      }
-    } catch (saveError) {
-      console.error('Ошибка сохранения перед публикацией:', saveError);
-    }
-
     if (giveawayData.selectedChannels.length === 0) {
       setError('Выберите хотя бы один канал для отправки результатов');
       return;
@@ -451,8 +458,58 @@ const Giveaways = ({ botId, onClose }) => {
     setError(null);
 
     try {
+      let giveawayId = selectedGiveaway?._id;
+      
+      // Если розыгрыш еще не создан, создаем его
+      if (!giveawayId) {
+        const createResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(giveawayData),
+        });
+
+        if (!createResponse.ok) {
+          const errorData = await createResponse.json();
+          setError(errorData.error || 'Ошибка при создании розыгрыша');
+          setSaving(false);
+          return;
+        }
+
+        const createData = await createResponse.json();
+        if (createData.giveaway) {
+          giveawayId = createData.giveaway._id;
+          handleSelectGiveaway(createData.giveaway);
+        } else {
+          setError('Не удалось создать розыгрыш');
+          setSaving(false);
+          return;
+        }
+      } else {
+        // Если розыгрыш уже существует, обновляем его перед публикацией
+        const saveResponse = await fetch(
+          `${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(giveawayData),
+          }
+        );
+        
+        if (saveResponse.ok) {
+          const saveData = await saveResponse.json();
+          if (saveData.giveaway) {
+            handleSelectGiveaway(saveData.giveaway);
+          }
+        }
+      }
+
+      // Публикуем розыгрыш
       const response = await fetch(
-        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/publish`,
+        `${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}/publish`,
         {
           method: 'POST',
           headers: {
@@ -481,7 +538,7 @@ const Giveaways = ({ botId, onClose }) => {
         if (updatedResponse.ok) {
           const updatedData = await updatedResponse.json();
           const updatedGiveaways = updatedData.giveaways || [];
-          const completedGiveaway = updatedGiveaways.find(g => g._id === selectedGiveaway._id);
+          const completedGiveaway = updatedGiveaways.find(g => g._id === giveawayId);
           if (completedGiveaway) {
             handleSelectGiveaway(completedGiveaway);
           } else {
@@ -490,6 +547,24 @@ const Giveaways = ({ botId, onClose }) => {
         } else {
           setSelectedGiveaway(null);
         }
+        
+        // Сбрасываем форму для нового розыгрыша
+        setGiveawayData({
+          name: 'Розыгрыш',
+          prizePlaces: 1,
+          prizes: [{ place: 1, name: 'Приз 1', winner: null }],
+          description: '',
+          selectedChannels: [],
+          colorPalette: {
+            backgroundColor: '#1a1a2e',
+            winnerColor: '#ffd700',
+            winnerTextColor: '#000000',
+            participantColor: '#ffffff',
+            cardColor: '#667eea'
+          }
+        });
+        setFile(null);
+        setChannelInput('');
       } else {
         setError(data.error || 'Ошибка при отправке результатов');
       }
@@ -613,10 +688,9 @@ const Giveaways = ({ botId, onClose }) => {
                   </div>
                 </div>
 
-                {/* Загрузка CSV - показываем только если розыгрыш создан */}
-                {selectedGiveaway && (
-                  <div className="editor-section">
-                    <h3>Загрузка участников (CSV)</h3>
+                {/* Загрузка CSV */}
+                <div className="editor-section">
+                  <h3>Загрузка участников (CSV)</h3>
                     <div className="upload-section">
                       <p>Формат CSV: userId, project, weight</p>
                       <input
@@ -634,18 +708,16 @@ const Giveaways = ({ botId, onClose }) => {
                         {uploading ? '⏳ Загрузка...' : file ? `📁 Загрузить ${file.name}` : '📁 Выберите файл'}
                       </button>
                     </div>
-                    {selectedGiveaway.participants && selectedGiveaway.participants.length > 0 && (
+                    {selectedGiveaway && selectedGiveaway.participants && selectedGiveaway.participants.length > 0 && (
                       <div className="participants-info">
                         Загружено участников: {selectedGiveaway.participants.length}
                       </div>
                     )}
                   </div>
-                )}
 
-                {/* Призы - показываем только если розыгрыш создан */}
-                {selectedGiveaway && (
-                  <div className="editor-section">
-                    <h3>Призы</h3>
+                {/* Призы */}
+                <div className="editor-section">
+                  <h3>Призы</h3>
                     {giveawayData.prizes.map((prize) => (
                       <div key={prize.place} className="prize-item">
                         <div className="prize-header">
@@ -658,12 +730,24 @@ const Giveaways = ({ botId, onClose }) => {
                             placeholder={`Приз ${prize.place}`}
                           />
                         </div>
-                        {selectedGiveaway.participants && selectedGiveaway.participants.length > 0 && (
+                        {selectedGiveaway && selectedGiveaway.participants && selectedGiveaway.participants.length > 0 && (
                           <div className="prize-winner-select">
                             <label>Победитель:</label>
                             <select
                               value={prize.winner?.userId || ''}
-                              onChange={(e) => handleSelectWinner(prize.place, e.target.value)}
+                              onChange={(e) => {
+                                const userId = e.target.value;
+                                if (!userId) {
+                                  handleSelectWinner(prize.place, null);
+                                  return;
+                                }
+                                const participant = selectedGiveaway.participants.find(
+                                  p => String(p.userId) === userId
+                                );
+                                if (participant) {
+                                  handleSelectWinner(prize.place, participant);
+                                }
+                              }}
                               className="form-select"
                             >
                               <option value="">Выберите победителя...</option>
@@ -695,7 +779,7 @@ const Giveaways = ({ botId, onClose }) => {
                             )}
                           </div>
                         )}
-                        {selectedGiveaway.participants && selectedGiveaway.participants.length > 0 && (
+                        {selectedGiveaway && selectedGiveaway.participants && selectedGiveaway.participants.length > 0 && (
                           <button
                             onClick={() => handleRandomWinner(prize.place)}
                             className="random-winner-btn"
@@ -714,7 +798,6 @@ const Giveaways = ({ botId, onClose }) => {
                       </button>
                     )}
                   </div>
-                )}
 
                 {/* Настройки цветовой палитры - только для активных розыгрышей */}
                 {activeTab === 'active' && (
@@ -846,19 +929,13 @@ const Giveaways = ({ botId, onClose }) => {
 
                 {/* Кнопки действий */}
                 <div className="giveaway-actions">
-                  {!selectedGiveaway ? (
-                    <button onClick={handleCreateNew} className="create-giveaway-btn">
-                      ➕ Создать розыгрыш
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handlePublish}
-                      disabled={saving || giveawayData.selectedChannels.length === 0}
-                      className="publish-btn"
-                    >
-                      {saving ? '📢 Отправка...' : '🎲 Провести розыгрыш'}
-                    </button>
-                  )}
+                  <button
+                    onClick={handlePublish}
+                    disabled={saving || giveawayData.selectedChannels.length === 0}
+                    className="publish-btn"
+                  >
+                    {saving ? '📢 Отправка...' : '🎲 Провести розыгрыш'}
+                  </button>
                   <button className="cancel-btn" onClick={onClose}>
                     Отмена
                   </button>
