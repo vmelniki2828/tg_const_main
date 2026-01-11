@@ -5713,6 +5713,7 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
     
     // Генерируем видео рулетки
     let videoPath = null;
+    let videoError = null;
     try {
       const { generateRouletteVideo } = require('./generateRouletteVideo');
       const uploadsDir = path.join(__dirname, 'uploads');
@@ -5722,15 +5723,31 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       
       videoPath = path.join(uploadsDir, `roulette_${giveawayId}_${Date.now()}.mp4`);
       console.log('🎬 Начинаем генерацию видео рулетки...');
+      console.log('📊 Параметры:', {
+        winnersCount: winnersWithPrizes.length,
+        participantsCount: (giveaway.participants || []).length,
+        videoPath
+      });
       
       // Передаем всех участников для прокрутки и настройки цветов
       const allParticipants = giveaway.participants || [];
       const colorPalette = giveaway.colorPalette || {};
       
       await generateRouletteVideo(winnersWithPrizes, videoPath, allParticipants, colorPalette);
-      console.log('✅ Видео рулетки создано:', videoPath);
-    } catch (videoError) {
-      console.error('❌ Ошибка генерации видео:', videoError);
+      
+      // Проверяем, что файл действительно создан
+      if (fs.existsSync(videoPath)) {
+        const stats = fs.statSync(videoPath);
+        console.log(`✅ Видео рулетки создано: ${videoPath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+      } else {
+        console.error('❌ Видео файл не был создан, хотя ошибок не было');
+        videoPath = null;
+      }
+    } catch (error) {
+      videoError = error;
+      console.error('❌ Ошибка генерации видео:', error);
+      console.error('❌ Стек ошибки:', error.stack);
+      videoPath = null;
       // Продолжаем без видео, отправляем только текст
     }
     
@@ -5833,8 +5850,16 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
     
     for (const channelId of selectedChannels) {
       try {
+        // Проверяем наличие видео перед отправкой
+        const videoExists = videoPath && fs.existsSync(videoPath);
+        console.log(`📹 [GIVEAWAY] Отправка в канал ${channelId}:`, {
+          videoPath,
+          videoExists,
+          videoError: videoError ? videoError.message : null
+        });
+        
         // Если есть видео, отправляем его с подписью
-        if (videoPath && fs.existsSync(videoPath)) {
+        if (videoExists) {
           const form = new FormData();
           form.append('chat_id', channelId);
           form.append('caption', message);
@@ -5952,7 +5977,9 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       results,
       sent: results.filter(r => r.success).length,
       failed: results.filter(r => !r.success).length,
-      videoGenerated: videoWasGenerated
+      videoGenerated: videoWasGenerated,
+      videoError: videoError ? videoError.message : null,
+      videoPath: videoWasGenerated ? videoPath : null
     });
   } catch (error) {
     console.error('❌ Ошибка при отправке результатов:', error);

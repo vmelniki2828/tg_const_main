@@ -31,7 +31,12 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
   // Генерируем кадры
   const frameFiles = [];
   
+  console.log(`🎬 [ROULETTE] Генерация ${totalFrames} кадров...`);
+  
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
+    if (frameIndex % 30 === 0) {
+      console.log(`📹 [ROULETTE] Прогресс: ${((frameIndex / totalFrames) * 100).toFixed(1)}%`);
+    }
     const time = frameIndex * frameDuration;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
@@ -82,12 +87,22 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     frameFiles.push(framePath);
   }
   
+  // Проверяем, что кадры созданы
+  if (frameFiles.length === 0) {
+    throw new Error('Не удалось создать кадры для видео');
+  }
+  
+  console.log(`✅ [ROULETTE] Создано ${frameFiles.length} кадров. Начинаем сборку видео...`);
+  
   // Собираем видео из кадров с помощью ffmpeg
   return new Promise((resolve, reject) => {
     const tempVideoPath = outputPath.replace('.mp4', '_temp.mp4');
     
+    const inputPattern = path.join(framesDir, 'frame_%06d.png');
+    console.log(`🎬 [ROULETTE] Используем паттерн кадров: ${inputPattern}`);
+    
     ffmpeg()
-      .input(path.join(framesDir, 'frame_%06d.png'))
+      .input(inputPattern)
       .inputFPS(fps)
       .outputOptions([
         '-c:v libx264',
@@ -97,29 +112,79 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
         '-r ' + fps
       ])
       .output(tempVideoPath)
+      .on('start', (commandLine) => {
+        console.log('🎬 [ROULETTE] FFmpeg команда:', commandLine);
+      })
+      .on('progress', (progress) => {
+        if (progress.percent) {
+          console.log(`📹 [ROULETTE] Прогресс сборки: ${Math.floor(progress.percent)}%`);
+        }
+      })
       .on('end', () => {
+        console.log('✅ [ROULETTE] FFmpeg завершил обработку');
+        
         // Переименовываем временный файл
         if (fs.existsSync(tempVideoPath)) {
-          fs.renameSync(tempVideoPath, outputPath);
+          try {
+            fs.renameSync(tempVideoPath, outputPath);
+            console.log(`✅ [ROULETTE] Видео переименовано: ${outputPath}`);
+          } catch (renameError) {
+            console.error('❌ [ROULETTE] Ошибка переименования:', renameError);
+            // Пробуем скопировать
+            try {
+              fs.copyFileSync(tempVideoPath, outputPath);
+              fs.unlinkSync(tempVideoPath);
+            } catch (copyError) {
+              console.error('❌ [ROULETTE] Ошибка копирования:', copyError);
+              reject(new Error('Не удалось сохранить видео файл'));
+              return;
+            }
+          }
+        } else {
+          console.error('❌ [ROULETTE] Временный видео файл не найден:', tempVideoPath);
+          reject(new Error('Временный видео файл не был создан'));
+          return;
         }
+        
+        // Проверяем финальный файл
+        if (!fs.existsSync(outputPath)) {
+          console.error('❌ [ROULETTE] Финальный видео файл не найден:', outputPath);
+          reject(new Error('Финальный видео файл не был создан'));
+          return;
+        }
+        
+        const stats = fs.statSync(outputPath);
+        console.log(`✅ [ROULETTE] Видео создано: ${outputPath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         
         // Удаляем временные кадры
         frameFiles.forEach(file => {
-          if (fs.existsSync(file)) {
-            fs.unlinkSync(file);
+          try {
+            if (fs.existsSync(file)) {
+              fs.unlinkSync(file);
+            }
+          } catch (err) {
+            console.warn(`⚠️ [ROULETTE] Не удалось удалить кадр ${file}:`, err.message);
           }
         });
         
         // Удаляем директорию кадров
-        if (fs.existsSync(framesDir)) {
-          fs.rmSync(framesDir, { recursive: true, force: true });
+        try {
+          if (fs.existsSync(framesDir)) {
+            fs.rmSync(framesDir, { recursive: true, force: true });
+          }
+        } catch (err) {
+          console.warn(`⚠️ [ROULETTE] Не удалось удалить директорию кадров:`, err.message);
         }
         
-        console.log(`✅ Видео рулетки создано: ${outputPath}`);
         resolve(outputPath);
       })
       .on('error', (err) => {
-        console.error('❌ Ошибка создания видео:', err);
+        console.error('❌ [ROULETTE] Ошибка FFmpeg:', err);
+        console.error('❌ [ROULETTE] Детали ошибки:', {
+          message: err.message,
+          stack: err.stack,
+          code: err.code
+        });
         reject(err);
       })
       .run();
@@ -435,11 +500,23 @@ function drawRoundedRect(ctx, x, y, width, height, radius) {
  * Затемняет цвет на указанный процент
  */
 function darkenColor(color, percent) {
-  const num = parseInt(color.replace('#', ''), 16);
-  const r = Math.max(0, Math.floor((num >> 16) * (1 - percent)));
-  const g = Math.max(0, Math.floor(((num >> 8) & 0x00FF) * (1 - percent)));
-  const b = Math.max(0, Math.floor((num & 0x0000FF) * (1 - percent)));
-  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+  try {
+    if (!color || !color.startsWith('#')) {
+      return color || '#1a1a2e';
+    }
+    const num = parseInt(color.replace('#', ''), 16);
+    if (isNaN(num)) {
+      return color;
+    }
+    const r = Math.max(0, Math.floor((num >> 16) * (1 - percent)));
+    const g = Math.max(0, Math.floor(((num >> 8) & 0x00FF) * (1 - percent)));
+    const b = Math.max(0, Math.floor((num & 0x0000FF) * (1 - percent)));
+    const result = '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+    return result;
+  } catch (error) {
+    console.error('❌ Ошибка затемнения цвета:', error, color);
+    return color || '#1a1a2e';
+  }
 }
 
 module.exports = { generateRouletteVideo };
