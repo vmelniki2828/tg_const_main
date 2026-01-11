@@ -510,6 +510,22 @@
   background: #0b7dda;
 }
 
+.create-giveaway-btn {
+  background: #4caf50;
+  color: white;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.create-giveaway-btn:hover {
+  background: #45a049;
+}
+
 .publish-btn:disabled {
   background: #ccc;
   cursor: not-allowed;

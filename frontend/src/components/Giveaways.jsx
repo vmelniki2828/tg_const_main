@@ -463,78 +463,39 @@ const Giveaways = ({ botId, onClose }) => {
         )}
 
         <div className="giveaways-content">
-          {/* Список розыгрышей */}
-          <div className="giveaways-list">
-            <div className="giveaways-list-header">
-              <h3>{activeTab === 'active' ? 'Активные розыгрыши' : 'Архив розыгрышей'}</h3>
-              {activeTab === 'active' && (
-                <button onClick={handleCreateNew} className="create-btn">
-                  ➕ Создать новый
-                </button>
-              )}
-            </div>
-            <div className="giveaways-items">
-              {displayedGiveaways.map((giveaway) => (
-                <div
-                  key={giveaway._id}
-                  className={`giveaway-item ${selectedGiveaway?._id === giveaway._id ? 'active' : ''}`}
-                  onClick={() => handleSelectGiveaway(giveaway)}
-                >
-                  <div className="giveaway-item-name">{giveaway.name}</div>
-                  <div className="giveaway-item-info">
-                    Участников: {giveaway.participants?.length || 0} | 
-                    Призов: {giveaway.prizePlaces}
-                    {activeTab === 'archive' && ' | ✅ Завершен'}
-                  </div>
-                </div>
-              ))}
-              {displayedGiveaways.length === 0 && (
-                <div className="no-giveaways">
-                  {activeTab === 'active' 
-                    ? 'Нет активных розыгрышей. Создайте новый!' 
-                    : 'Архив пуст'}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Редактор розыгрыша */}
-          <div className="giveaway-editor">
-            {selectedGiveaway || (!displayedGiveaways.length && activeTab === 'active') ? (
-              <>
-                {/* В архиве показываем только просмотр, без редактирования */}
-                {activeTab === 'archive' && selectedGiveaway ? (
-                  <div className="archive-view">
-                    <h3>Просмотр завершенного розыгрыша</h3>
-                    <div className="editor-section">
-                      <p><strong>Название:</strong> {selectedGiveaway.name}</p>
-                      <p><strong>Призовых мест:</strong> {selectedGiveaway.prizePlaces}</p>
-                      <p><strong>Участников:</strong> {selectedGiveaway.participants?.length || 0}</p>
-                      {selectedGiveaway.description && (
-                        <p><strong>Описание:</strong> {selectedGiveaway.description}</p>
-                      )}
-                      <div className="prizes-preview">
-                        <h4>Победители:</h4>
-                        {selectedGiveaway.prizes && selectedGiveaway.prizes.map((prize) => (
-                          <div key={prize.place} className="prize-preview">
-                            <strong>{prize.name}</strong> (место {prize.place}):
-                            {prize.winner ? (
-                              <div>
-                                {prize.winner.firstName || ''} {prize.winner.lastName || ''}
-                                {prize.winner.username && ` (@${prize.winner.username})`}
-                                {prize.winner.project && ` - ${prize.winner.project}`}
-                              </div>
-                            ) : (
-                              <div>Победитель не выбран</div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+          {/* Список розыгрышей - только для архива */}
+          {activeTab === 'archive' && (
+            <div className="giveaways-list">
+              <div className="giveaways-list-header">
+                <h3>Архив розыгрышей</h3>
+              </div>
+              <div className="giveaways-items">
+                {displayedGiveaways.map((giveaway) => (
+                  <div
+                    key={giveaway._id}
+                    className={`giveaway-item ${selectedGiveaway?._id === giveaway._id ? 'active' : ''}`}
+                    onClick={() => handleSelectGiveaway(giveaway)}
+                  >
+                    <div className="giveaway-item-name">{giveaway.name}</div>
+                    <div className="giveaway-item-info">
+                      Участников: {giveaway.participants?.length || 0} | 
+                      Призов: {giveaway.prizePlaces} | ✅ Завершен
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <div className="editor-section">
+                ))}
+                {displayedGiveaways.length === 0 && (
+                  <div className="no-giveaways">Архив пуст</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Редактор розыгрыша */}
+          <div className={`giveaway-editor ${activeTab === 'active' ? 'full-width' : ''}`}>
+            {activeTab === 'active' ? (
+              <>
+                {/* На вкладке "Розыгрыши" всегда показываем форму настройки */}
+                <div className="editor-section">
                   <h3>Основная информация</h3>
                   <div className="form-group">
                     <label>Название:</label>
@@ -568,7 +529,7 @@ const Giveaways = ({ botId, onClose }) => {
                   </div>
                 </div>
 
-                {/* Загрузка CSV */}
+                {/* Загрузка CSV - показываем только если розыгрыш создан */}
                 {selectedGiveaway && (
                   <div className="editor-section">
                     <h3>Загрузка участников (CSV)</h3>
@@ -597,50 +558,29 @@ const Giveaways = ({ botId, onClose }) => {
                   </div>
                 )}
 
-                {/* Призы */}
-                <div className="editor-section">
-                  <h3>Призы</h3>
-                  {giveawayData.prizes.map((prize) => (
-                    <div key={prize.place} className="prize-item">
-                      <div className="prize-header">
-                        <label>Приз {prize.place}:</label>
-                        <input
-                          type="text"
-                          value={prize.name}
-                          onChange={(e) => handlePrizeNameChange(prize.place, e.target.value)}
-                          className="form-input prize-name-input"
-                          placeholder={`Приз ${prize.place}`}
-                        />
-                      </div>
-                      {selectedGiveaway && selectedGiveaway.participants && selectedGiveaway.participants.length > 0 && (
-                        <div className="prize-winner">
-                          <label>Победитель:</label>
-                          {prize.winner ? (
-                            <div className="winner-selected">
-                              <span>
-                                {prize.winner.firstName || ''} {prize.winner.lastName || ''} 
-                                (@{prize.winner.username || prize.winner.userId})
-                                {prize.winner.project && ` - ${prize.winner.project}`}
-                              </span>
-                              <button
-                                onClick={() => handleSelectWinner(prize.place, null)}
-                                className="clear-winner-btn"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          ) : (
+                {/* Призы - показываем только если розыгрыш создан */}
+                {selectedGiveaway && (
+                  <div className="editor-section">
+                    <h3>Призы</h3>
+                    {giveawayData.prizes.map((prize) => (
+                      <div key={prize.place} className="prize-item">
+                        <div className="prize-header">
+                          <label>Приз {prize.place}:</label>
+                          <input
+                            type="text"
+                            value={prize.name}
+                            onChange={(e) => handlePrizeNameChange(prize.place, e.target.value)}
+                            className="form-input prize-name-input"
+                            placeholder={`Приз ${prize.place}`}
+                          />
+                        </div>
+                        {selectedGiveaway.participants && selectedGiveaway.participants.length > 0 && (
+                          <div className="prize-winner-select">
+                            <label>Победитель:</label>
                             <select
-                              onChange={(e) => {
-                                const participant = selectedGiveaway.participants.find(
-                                  p => String(p.userId) === e.target.value
-                                );
-                                if (participant) {
-                                  handleSelectWinner(prize.place, participant);
-                                }
-                              }}
+                              value={prize.winner?.userId || ''}
+                              onChange={(e) => handleSelectWinner(prize.place, e.target.value)}
                               className="form-select"
-                              value=""
                             >
                               <option value="">Выберите победителя...</option>
                               {selectedGiveaway.participants.map((participant) => {
@@ -662,103 +602,118 @@ const Giveaways = ({ botId, onClose }) => {
                                 );
                               })}
                             </select>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {selectedGiveaway && selectedGiveaway.participants && selectedGiveaway.participants.length > 0 && (
-                    <button
-                      onClick={handleRandomWinners}
-                      className="random-winners-btn"
-                    >
-                      🎲 Выбрать победителей случайно
-                    </button>
-                  )}
-                </div>
+                            {prize.winner && (
+                              <div className="selected-winner">
+                                Выбран: {prize.winner.firstName || ''} {prize.winner.lastName || ''}
+                                {prize.winner.username && ` (@${prize.winner.username})`}
+                                {prize.winner.project && ` - ${prize.winner.project}`}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {selectedGiveaway.participants && selectedGiveaway.participants.length > 0 && (
+                          <button
+                            onClick={() => handleRandomWinner(prize.place)}
+                            className="random-winner-btn"
+                          >
+                            🎲 Случайный выбор
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {selectedGiveaway && selectedGiveaway.participants && selectedGiveaway.participants.length > 0 && (
+                      <button
+                        onClick={handleRandomWinners}
+                        className="random-all-btn"
+                      >
+                        🎲 Выбрать всех победителей случайно
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Настройки цветовой палитры - только для активных розыгрышей */}
                 {activeTab === 'active' && (
                   <div className="editor-section">
                     <h3>🎨 Цветовая палитра</h3>
-                  <div className="color-palette-grid">
-                    <div className="color-input-group">
-                      <label>Фон:</label>
-                      <input
-                        type="color"
-                        value={giveawayData.colorPalette.backgroundColor}
-                        onChange={(e) => setGiveawayData({
-                          ...giveawayData,
-                          colorPalette: {
-                            ...giveawayData.colorPalette,
-                            backgroundColor: e.target.value
-                          }
-                        })}
-                        className="color-input"
-                      />
-                    </div>
-                    <div className="color-input-group">
-                      <label>Цвет победителя:</label>
-                      <input
-                        type="color"
-                        value={giveawayData.colorPalette.winnerColor}
-                        onChange={(e) => setGiveawayData({
-                          ...giveawayData,
-                          colorPalette: {
-                            ...giveawayData.colorPalette,
-                            winnerColor: e.target.value
-                          }
-                        })}
-                        className="color-input"
-                      />
-                    </div>
-                    <div className="color-input-group">
-                      <label>Текст победителя:</label>
-                      <input
-                        type="color"
-                        value={giveawayData.colorPalette.winnerTextColor}
-                        onChange={(e) => setGiveawayData({
-                          ...giveawayData,
-                          colorPalette: {
-                            ...giveawayData.colorPalette,
-                            winnerTextColor: e.target.value
-                          }
-                        })}
-                        className="color-input"
-                      />
-                    </div>
-                    <div className="color-input-group">
-                      <label>Текст участников:</label>
-                      <input
-                        type="color"
-                        value={giveawayData.colorPalette.participantColor}
-                        onChange={(e) => setGiveawayData({
-                          ...giveawayData,
-                          colorPalette: {
-                            ...giveawayData.colorPalette,
-                            participantColor: e.target.value
-                          }
-                        })}
-                        className="color-input"
-                      />
-                    </div>
-                    <div className="color-input-group">
-                      <label>Цвет карточки:</label>
-                      <input
-                        type="color"
-                        value={giveawayData.colorPalette.cardColor}
-                        onChange={(e) => setGiveawayData({
-                          ...giveawayData,
-                          colorPalette: {
-                            ...giveawayData.colorPalette,
-                            cardColor: e.target.value
-                          }
-                        })}
-                        className="color-input"
-                      />
+                    <div className="color-palette-grid">
+                      <div className="color-input-group">
+                        <label>Фон:</label>
+                        <input
+                          type="color"
+                          value={giveawayData.colorPalette.backgroundColor}
+                          onChange={(e) => setGiveawayData({
+                            ...giveawayData,
+                            colorPalette: {
+                              ...giveawayData.colorPalette,
+                              backgroundColor: e.target.value
+                            }
+                          })}
+                          className="color-input"
+                        />
+                      </div>
+                      <div className="color-input-group">
+                        <label>Цвет победителя:</label>
+                        <input
+                          type="color"
+                          value={giveawayData.colorPalette.winnerColor}
+                          onChange={(e) => setGiveawayData({
+                            ...giveawayData,
+                            colorPalette: {
+                              ...giveawayData.colorPalette,
+                              winnerColor: e.target.value
+                            }
+                          })}
+                          className="color-input"
+                        />
+                      </div>
+                      <div className="color-input-group">
+                        <label>Текст победителя:</label>
+                        <input
+                          type="color"
+                          value={giveawayData.colorPalette.winnerTextColor}
+                          onChange={(e) => setGiveawayData({
+                            ...giveawayData,
+                            colorPalette: {
+                              ...giveawayData.colorPalette,
+                              winnerTextColor: e.target.value
+                            }
+                          })}
+                          className="color-input"
+                        />
+                      </div>
+                      <div className="color-input-group">
+                        <label>Текст участников:</label>
+                        <input
+                          type="color"
+                          value={giveawayData.colorPalette.participantColor}
+                          onChange={(e) => setGiveawayData({
+                            ...giveawayData,
+                            colorPalette: {
+                              ...giveawayData.colorPalette,
+                              participantColor: e.target.value
+                            }
+                          })}
+                          className="color-input"
+                        />
+                      </div>
+                      <div className="color-input-group">
+                        <label>Цвет карточки:</label>
+                        <input
+                          type="color"
+                          value={giveawayData.colorPalette.cardColor}
+                          onChange={(e) => setGiveawayData({
+                            ...giveawayData,
+                            colorPalette: {
+                              ...giveawayData.colorPalette,
+                              cardColor: e.target.value
+                            }
+                          })}
+                          className="color-input"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
                 )}
 
                 {/* Выбор каналов - только для активных розыгрышей */}
@@ -766,37 +721,39 @@ const Giveaways = ({ botId, onClose }) => {
                   <div className="editor-section">
                     <h3>Каналы для отправки результатов</h3>
                     <div className="channels-input-section">
-                      <p>Введите ID канала (например: @channel_username или -1001234567890)</p>
                       <div className="channel-input-group">
                         <input
                           type="text"
                           value={channelInput}
                           onChange={(e) => setChannelInput(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && handleAddChannel()}
-                          placeholder="@channel_username или -1001234567890"
+                          placeholder="Введите ID канала (например: @channel или -1001234567890)"
                           className="form-input"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              handleAddChannel();
+                            }
+                          }}
                         />
-                        <button
-                          onClick={handleAddChannel}
-                          className="add-channel-btn"
-                          disabled={!channelInput.trim()}
-                        >
+                        <button onClick={handleAddChannel} className="add-channel-btn">
                           ➕ Добавить
                         </button>
                       </div>
                       {giveawayData.selectedChannels.length > 0 && (
-                        <div className="channels-list">
-                          {giveawayData.selectedChannels.map((channelId) => (
-                            <div key={channelId} className="channel-item">
-                              <span>{channelId}</span>
-                              <button
-                                onClick={() => handleRemoveChannel(channelId)}
-                                className="remove-channel-btn"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          ))}
+                        <div className="selected-channels">
+                          <h4>Выбранные каналы:</h4>
+                          <div className="channels-list">
+                            {giveawayData.selectedChannels.map((channelId) => (
+                              <div key={channelId} className="channel-tag">
+                                {channelId}
+                                <button
+                                  onClick={() => handleRemoveChannel(channelId)}
+                                  className="remove-channel-btn"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -805,40 +762,69 @@ const Giveaways = ({ botId, onClose }) => {
 
                 {/* Кнопки действий */}
                 <div className="giveaway-actions">
-                  {activeTab === 'active' ? (
-                    <>
-                      {/* В активных розыгрышах только кнопка публикации, без сохранения */}
-                      {selectedGiveaway && (
-                        <button
-                          onClick={handlePublish}
-                          disabled={saving || giveawayData.selectedChannels.length === 0}
-                          className="publish-btn"
-                        >
-                          {saving ? '📢 Отправка...' : '🎲 Розыгрыш'}
-                        </button>
-                      )}
-                      <button className="cancel-btn" onClick={onClose}>
-                        Отмена
-                      </button>
-                    </>
+                  {!selectedGiveaway ? (
+                    <button onClick={handleCreateNew} className="create-giveaway-btn">
+                      ➕ Создать розыгрыш
+                    </button>
                   ) : (
-                    <>
-                      {/* В архиве только просмотр, без редактирования */}
-                      <button className="cancel-btn" onClick={onClose}>
-                        Закрыть
-                      </button>
-                    </>
+                    <button
+                      onClick={handlePublish}
+                      disabled={saving || giveawayData.selectedChannels.length === 0}
+                      className="publish-btn"
+                    >
+                      {saving ? '📢 Отправка...' : '🎲 Провести розыгрыш'}
+                    </button>
                   )}
+                  <button className="cancel-btn" onClick={onClose}>
+                    Отмена
+                  </button>
                 </div>
-                  </>
-                )}
               </>
             ) : (
-              <div className="no-selection">
-                {activeTab === 'active' 
-                  ? 'Выберите розыгрыш из списка или создайте новый'
-                  : 'Выберите розыгрыш из архива для просмотра'}
-              </div>
+              <>
+                {/* В архиве показываем только просмотр, без редактирования */}
+                {activeTab === 'archive' && selectedGiveaway ? (
+                  <div className="archive-view">
+                    <h3>Просмотр завершенного розыгрыша</h3>
+                    <div className="editor-section">
+                      <p><strong>Название:</strong> {selectedGiveaway.name}</p>
+                      <p><strong>Призовых мест:</strong> {selectedGiveaway.prizePlaces}</p>
+                      <p><strong>Участников:</strong> {selectedGiveaway.participants?.length || 0}</p>
+                      {selectedGiveaway.description && (
+                        <p><strong>Описание:</strong> {selectedGiveaway.description}</p>
+                      )}
+                      <div className="prizes-preview">
+                        <h4>Победители:</h4>
+                        {selectedGiveaway.prizes && selectedGiveaway.prizes.map((prize) => (
+                          <div key={prize.place} className="prize-preview">
+                            <strong>{prize.name}</strong> (место {prize.place}):
+                            {prize.winner ? (
+                              <div>
+                                {prize.winner.firstName || ''} {prize.winner.lastName || ''}
+                                {prize.winner.username && ` (@${prize.winner.username})`}
+                                {prize.winner.project && ` - ${prize.winner.project}`}
+                              </div>
+                            ) : (
+                              <div>Победитель не выбран</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="no-selection">
+                    Выберите розыгрыш из архива для просмотра
+                  </div>
+                )}
+                
+                {/* Кнопки действий для архива */}
+                <div className="giveaway-actions">
+                  <button className="cancel-btn" onClick={onClose}>
+                    Закрыть
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
