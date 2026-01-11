@@ -61,9 +61,9 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     if (currentSegment < winners.length) {
       const currentWinner = winners[currentSegment];
       
-      // Логируем для отладки (только в начале каждого сегмента)
-      if (frameIndex % fps === 0) {
-        console.log(`🎬 [ROULETTE] Сегмент ${currentSegment + 1}/${winners.length}: Победитель userId=${currentWinner.userId}, prizeName=${currentWinner.prizeName || 'N/A'}`);
+      // Логируем для отладки
+      if (frameIndex % 30 === 0) { // Каждую секунду
+        console.log(`🎬 [VIDEO] Кадр ${frameIndex}: сегмент ${currentSegment}, победитель userId=${currentWinner.userId}, prizeName=${currentWinner.prizeName}`);
       }
       
       if (localTime < spinDuration) {
@@ -77,7 +77,7 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     } else {
       // Показываем последнего победителя в конце
       const lastWinner = winners[winners.length - 1];
-      drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (time - (winners.length - 1) * segmentDuration) / revealDuration), revealDuration);
+      drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (time - (winners.length - 1) * segmentDuration) / revealDuration), revealDuration, colorPalette);
     }
     
     // Сохраняем кадр
@@ -140,7 +140,6 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
   const slotHeight = 200; // Высота одного слота
   const slotWidth = width * 0.8; // Ширина слота
   const visibleSlots = 3; // Количество видимых слотов
-  const centerSlotIndex = Math.floor(visibleSlots / 2); // Индекс центрального слота (1 для 3 слотов)
   
   // Ускорение и замедление прокрутки
   const progress = time / duration;
@@ -149,6 +148,10 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
   // Используем всех участников для прокрутки (не только победителей)
   const participantsForSpin = allParticipants && allParticipants.length > 0 ? allParticipants : [targetWinner];
   
+  // Логируем для отладки
+  console.log(`🎯 [ROULETTE] Целевой победитель: userId=${targetWinner.userId}, prizeName=${targetWinner.prizeName}`);
+  console.log(`🎯 [ROULETTE] Всего участников для прокрутки: ${participantsForSpin.length}`);
+  
   // Создаем список всех участников для прокрутки (повторяем несколько раз для эффекта)
   const allParticipantsList = [];
   const repeatCount = 25; // Количество повторений списка
@@ -156,32 +159,46 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
     allParticipantsList.push(...participantsForSpin);
   }
   
-  // Находим позицию целевого победителя в списке (ищем только по userId)
-  let targetPosition = allParticipantsList.findIndex(p => p && p.userId === targetWinner.userId);
+  // Находим позицию целевого победителя в списке
+  // Сравниваем только по userId, так как prizeName может быть только у победителей
+  let targetPosition = -1;
   
-  // Если не нашли по userId, добавляем победителя в список
-  if (targetPosition === -1) {
-    console.log(`⚠️ [ROULETTE] Победитель userId=${targetWinner.userId} не найден в списке участников (всего ${allParticipantsList.length}), добавляем его`);
-    // Добавляем победителя в середину списка для гарантированной остановки
-    const insertPosition = Math.floor(allParticipantsList.length / 2);
-    allParticipantsList.splice(insertPosition, 0, targetWinner);
-    targetPosition = insertPosition;
-    console.log(`✅ [ROULETTE] Победитель добавлен на позицию ${targetPosition}`);
+  // Ищем первое вхождение целевого победителя в исходном списке
+  const originalIndex = participantsForSpin.findIndex(p => p.userId === targetWinner.userId);
+  
+  if (originalIndex !== -1) {
+    // Вычисляем позицию в повторенном списке (примерно в середине для эффекта)
+    const middleRepeat = Math.floor(repeatCount / 2);
+    targetPosition = middleRepeat * participantsForSpin.length + originalIndex;
+    console.log(`✅ [ROULETTE] Найден целевой победитель на позиции ${targetPosition} (оригинальный индекс: ${originalIndex})`);
   } else {
-    console.log(`✅ [ROULETTE] Победитель userId=${targetWinner.userId} найден на позиции ${targetPosition} из ${allParticipantsList.length}`);
+    // Если не нашли, используем позицию в середине списка
+    targetPosition = Math.floor(allParticipantsList.length / 2);
+    console.log(`⚠️ [ROULETTE] Целевой победитель не найден в списке участников, используем среднюю позицию: ${targetPosition}`);
   }
   
   // Вычисляем смещение так, чтобы в конце остановиться на целевом победителе
-  const totalDistance = allParticipantsList.length * slotHeight;
-  const centerSlotIndex = Math.floor(visibleSlots / 2); // Индекс центрального слота (1 для 3 слотов)
+  const centerSlotIndex = Math.floor(visibleSlots / 2); // Индекс центрального слота (обычно 1 для 3 слотов)
   
-  // Вычисляем, сколько нужно прокрутить, чтобы целевой победитель оказался в центре
-  // targetPosition должен оказаться на позиции centerSlotIndex от начала видимой области
-  const targetOffset = (targetPosition - centerSlotIndex) * slotHeight;
+  // В конце прокрутки (progress = 1) центральный слот должен показывать целевого победителя
+  // startIndex + centerSlotIndex должен быть равен targetPosition
+  // Отсюда: startIndex = targetPosition - centerSlotIndex
+  const finalStartIndex = targetPosition - centerSlotIndex;
+  const finalScrollOffset = finalStartIndex * slotHeight;
   
-  // Прокручиваем: базовый прокрут + смещение до цели
-  const baseScroll = totalDistance * 0.5; // Базовый прокрут (50% списка)
-  const scrollOffset = baseScroll + easeOut * (targetOffset + totalDistance * 0.3); // Добавляем смещение с анимацией
+  // Начальная прокрутка для эффекта (прокручиваем немного вперед)
+  const initialScrollOffset = allParticipantsList.length * slotHeight * 0.2; // 20% списка
+  
+  // Применяем easing: от начальной позиции к финальной
+  const scrollOffset = initialScrollOffset + easeOut * (finalScrollOffset - initialScrollOffset);
+  
+  // Проверяем, что в конце прокрутки правильный участник в центре
+  if (progress > 0.99) {
+    const finalStartIdx = Math.floor(scrollOffset / slotHeight);
+    const centerParticipant = allParticipantsList[(finalStartIdx + centerSlotIndex) % allParticipantsList.length];
+    const isCorrect = centerParticipant && centerParticipant.userId === targetWinner.userId;
+    console.log(`✅ [ROULETTE] Финальная проверка: centerParticipant.userId=${centerParticipant?.userId}, target=${targetWinner.userId}, правильный=${isCorrect ? '✅' : '❌'}`);
+  }
   
   // Рисуем рамку для рулетки
   const rouletteY = centerY - (visibleSlots * slotHeight) / 2;
@@ -206,18 +223,25 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
     const slotY = i * slotHeight - (scrollOffset % slotHeight);
     
     if (slotY > -slotHeight && slotY < visibleSlots * slotHeight + slotHeight) {
-      // Безопасный доступ к участнику с проверкой границ
-      const safeIndex = ((slotIndex % allParticipantsList.length) + allParticipantsList.length) % allParticipantsList.length;
-      const participant = allParticipantsList[safeIndex];
+      const participant = allParticipantsList[slotIndex % allParticipantsList.length];
       
-      // Проверяем, находится ли этот слот в центре
-      const isCenterSlot = Math.abs(i - centerSlotIndex) < 0.1;
-      
-      // Определяем, является ли это целевым победителем (сравниваем только по userId)
+      // Определяем, является ли это целевым победителем
+      // Сравниваем только по userId, так как prizeName может отсутствовать у участников
+      const centerSlot = Math.floor(visibleSlots / 2);
+      const isInCenter = i === centerSlot;
       const isTargetWinner = participant && targetWinner && 
                            participant.userId === targetWinner.userId &&
-                           isCenterSlot &&
-                           progress > 0.95; // Только в конце прокрутки
+                           isInCenter &&
+                           progress > 0.85; // Только в конце прокрутки
+      
+      // Логируем для отладки в последних кадрах (только один раз)
+      if (progress > 0.95 && isInCenter && participant && Math.abs(progress - 0.95) < 0.01) {
+        const matches = participant.userId === targetWinner.userId;
+        console.log(`🎯 [ROULETTE] Финальный центральный слот: userId=${participant.userId}, target=${targetWinner.userId}, совпадение=${matches ? '✅' : '❌'}`);
+        if (!matches) {
+          console.error(`❌ [ROULETTE] ОШИБКА: В центре не тот победитель! Ожидался ${targetWinner.userId}, получен ${participant.userId}`);
+        }
+      }
       
       // Цвета из палитры
       const winnerColor = colorPalette.winnerColor || '#ffd700';

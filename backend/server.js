@@ -5727,6 +5727,14 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       const allParticipants = giveaway.participants || [];
       const colorPalette = giveaway.colorPalette || {};
       
+      // Логируем для отладки
+      console.log('📋 [GIVEAWAY] Победители для видео:', winnersWithPrizes.map(w => ({
+        userId: w.userId,
+        prizeName: w.prizeName,
+        place: w.place
+      })));
+      console.log('📋 [GIVEAWAY] Всего участников:', allParticipants.length);
+      
       await generateRouletteVideo(winnersWithPrizes, videoPath, allParticipants, colorPalette);
       console.log('✅ Видео рулетки создано:', videoPath);
     } catch (videoError) {
