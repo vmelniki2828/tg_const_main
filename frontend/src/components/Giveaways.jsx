@@ -291,6 +291,90 @@ const Giveaways = ({ botId, onClose }) => {
     }
   };
 
+  const handleRandomWinner = async (place) => {
+    if (!selectedGiveaway || !selectedGiveaway.participants || selectedGiveaway.participants.length === 0) {
+      setError('Сначала загрузите участников');
+      return;
+    }
+
+    // Получаем доступных участников (исключаем уже выбранных для других призов)
+    const availableParticipants = selectedGiveaway.participants.filter(participant => {
+      const isAlreadyWinner = giveawayData.prizes.some(
+        p => p.winner && p.winner.userId === participant.userId && p.place !== place
+      );
+      return !isAlreadyWinner;
+    });
+
+    if (availableParticipants.length === 0) {
+      setError('Нет доступных участников для этого приза');
+      return;
+    }
+
+    // Выбираем случайного участника с учетом веса
+    const totalWeight = availableParticipants.reduce((sum, p) => sum + (p.weight || 1), 0);
+    let random = Math.random() * totalWeight;
+    let selectedParticipant = null;
+
+    for (const participant of availableParticipants) {
+      random -= (participant.weight || 1);
+      if (random <= 0) {
+        selectedParticipant = participant;
+        break;
+      }
+    }
+
+    if (!selectedParticipant) {
+      selectedParticipant = availableParticipants[0];
+    }
+
+    // Обновляем приз с выбранным победителем
+    const updatedPrizes = giveawayData.prizes.map(p => 
+      p.place === place 
+        ? { 
+            ...p, 
+            winner: {
+              userId: selectedParticipant.userId,
+              project: selectedParticipant.project,
+              username: selectedParticipant.username,
+              firstName: selectedParticipant.firstName,
+              lastName: selectedParticipant.lastName
+            }
+          }
+        : p
+    );
+
+    setGiveawayData({
+      ...giveawayData,
+      prizes: updatedPrizes
+    });
+
+    // Автосохранение
+    try {
+      const response = await fetch(
+        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...giveawayData,
+            prizes: updatedPrizes
+          }),
+        }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.giveaway) {
+          handleSelectGiveaway(data.giveaway);
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка автосохранения:', error);
+    }
+  };
+
   const handleRandomWinners = async () => {
     if (!selectedGiveaway || !selectedGiveaway.participants || selectedGiveaway.participants.length === 0) {
       setError('Сначала загрузите участников');
