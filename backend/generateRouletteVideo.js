@@ -91,17 +91,26 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
   return new Promise((resolve, reject) => {
     const tempVideoPath = outputPath.replace('.mp4', '_temp.mp4');
     
-    ffmpeg()
+    const ffmpegProcess = ffmpeg()
       .input(path.join(framesDir, 'frame_%06d.png'))
       .inputFPS(fps)
       .outputOptions([
         '-c:v libx264',
         '-pix_fmt yuv420p',
-        '-preset medium',
+        '-preset fast', // Изменено с medium на fast для меньшего использования памяти
         '-crf 23',
-        '-r ' + fps
+        '-r ' + fps,
+        '-threads 2' // Ограничиваем количество потоков для экономии памяти
       ])
       .output(tempVideoPath)
+      .on('start', (commandLine) => {
+        console.log('🎬 [FFMPEG] Команда:', commandLine);
+      })
+      .on('progress', (progress) => {
+        if (progress.percent) {
+          console.log(`🎬 [FFMPEG] Прогресс: ${Math.round(progress.percent)}%`);
+        }
+      })
       .on('end', () => {
         // Переименовываем временный файл
         if (fs.existsSync(tempVideoPath)) {
@@ -111,13 +120,21 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
         // Удаляем временные кадры
         frameFiles.forEach(file => {
           if (fs.existsSync(file)) {
-            fs.unlinkSync(file);
+            try {
+              fs.unlinkSync(file);
+            } catch (err) {
+              console.error('⚠️ Ошибка удаления кадра:', err);
+            }
           }
         });
         
         // Удаляем директорию кадров
         if (fs.existsSync(framesDir)) {
-          fs.rmSync(framesDir, { recursive: true, force: true });
+          try {
+            fs.rmSync(framesDir, { recursive: true, force: true });
+          } catch (err) {
+            console.error('⚠️ Ошибка удаления директории кадров:', err);
+          }
         }
         
         console.log(`✅ Видео рулетки создано: ${outputPath}`);
@@ -125,9 +142,51 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
       })
       .on('error', (err) => {
         console.error('❌ Ошибка создания видео:', err);
+        console.error('❌ Детали ошибки ffmpeg:', {
+          message: err.message,
+          signal: err.signal,
+          code: err.code
+        });
+        
+        // Очищаем временные файлы при ошибке
+        try {
+          if (fs.existsSync(tempVideoPath)) {
+            fs.unlinkSync(tempVideoPath);
+          }
+          frameFiles.forEach(file => {
+            if (fs.existsSync(file)) {
+              try {
+                fs.unlinkSync(file);
+              } catch (e) {}
+            }
+          });
+          if (fs.existsSync(framesDir)) {
+            fs.rmSync(framesDir, { recursive: true, force: true });
+          }
+        } catch (cleanupErr) {
+          console.error('⚠️ Ошибка очистки при ошибке ffmpeg:', cleanupErr);
+        }
+        
         reject(err);
-      })
-      .run();
+      });
+    
+    // Добавляем таймаут для процесса (5 минут)
+    const timeout = setTimeout(() => {
+      try {
+        if (ffmpegProcess.ffmpegProc && !ffmpegProcess.ffmpegProc.killed) {
+          console.error('⏱️ [FFMPEG] Таймаут генерации видео, завершаем процесс');
+          ffmpegProcess.ffmpegProc.kill('SIGTERM');
+        }
+      } catch (err) {
+        console.error('⚠️ Ошибка при завершении процесса по таймауту:', err);
+      }
+      reject(new Error('Таймаут генерации видео (превышено 5 минут)'));
+    }, 5 * 60 * 1000);
+    
+    ffmpegProcess.on('end', () => clearTimeout(timeout));
+    ffmpegProcess.on('error', () => clearTimeout(timeout));
+    
+    ffmpegProcess.run();
   });
 }
 

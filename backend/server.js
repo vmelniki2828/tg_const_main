@@ -5814,7 +5814,29 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       console.log('✅ Видео рулетки создано:', videoPath);
     } catch (videoError) {
       console.error('❌ Ошибка генерации видео:', videoError);
+      console.error('❌ Детали ошибки:', {
+        message: videoError.message,
+        stack: videoError.stack,
+        signal: videoError.signal || 'N/A'
+      });
+      
+      // Очищаем временные файлы при ошибке
+      try {
+        if (videoPath && fs.existsSync(videoPath)) {
+          fs.unlinkSync(videoPath);
+        }
+        // Очищаем директорию кадров, если она существует
+        const framesDir = path.join(path.dirname(videoPath || ''), 'roulette_frames');
+        if (fs.existsSync(framesDir)) {
+          fs.rmSync(framesDir, { recursive: true, force: true });
+        }
+      } catch (cleanupError) {
+        console.error('⚠️ Ошибка очистки временных файлов:', cleanupError);
+      }
+      
       // Продолжаем без видео, отправляем только текст
+      videoPath = null;
+      console.log('⚠️ [GIVEAWAY] Продолжаем публикацию без видео (только текстовое сообщение)');
     }
     
     // Формируем сообщение с результатами
