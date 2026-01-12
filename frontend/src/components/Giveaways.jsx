@@ -231,6 +231,93 @@ const Giveaways = ({ botId, onClose }) => {
     }
   };
 
+  const handleUploadBackgroundImage = async () => {
+    if (!backgroundImageFile) {
+      setError('Пожалуйста, выберите изображение');
+      return;
+    }
+
+    if (!selectedGiveaway) {
+      setError('Сначала создайте розыгрыш');
+      return;
+    }
+
+    setUploadingBackground(true);
+    setError('');
+
+    const formData = new FormData();
+    formData.append('image', backgroundImageFile);
+
+    try {
+      const response = await fetch(
+        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/upload-background`,
+        {
+          method: 'POST',
+          body: formData
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert('✅ Фоновое изображение успешно загружено!');
+        setBackgroundImageFile(null);
+        const input = document.getElementById('background-image-input');
+        if (input) input.value = '';
+        fetchGiveaways();
+        if (data.giveaway) {
+          handleSelectGiveaway(data.giveaway);
+        }
+      } else {
+        setError(data.error || 'Ошибка загрузки изображения');
+      }
+    } catch (err) {
+      setError('Ошибка соединения с сервером');
+      console.error('Upload error:', err);
+    } finally {
+      setUploadingBackground(false);
+    }
+  };
+
+  const handleDeleteBackgroundImage = async () => {
+    if (!selectedGiveaway) {
+      return;
+    }
+
+    if (!window.confirm('Удалить фоновое изображение?')) {
+      return;
+    }
+
+    setUploadingBackground(true);
+    setError('');
+
+    try {
+      const response = await fetch(
+        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/background-image`,
+        {
+          method: 'DELETE'
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert('✅ Фоновое изображение удалено!');
+        fetchGiveaways();
+        if (data.giveaway) {
+          handleSelectGiveaway(data.giveaway);
+        }
+      } else {
+        setError(data.error || 'Ошибка удаления изображения');
+      }
+    } catch (err) {
+      setError('Ошибка соединения с сервером');
+      console.error('Delete error:', err);
+    } finally {
+      setUploadingBackground(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
