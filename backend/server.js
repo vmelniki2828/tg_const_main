@@ -5407,7 +5407,7 @@ app.get('/api/giveaways/:botId', async (req, res) => {
 app.post('/api/giveaways/:botId', async (req, res) => {
   try {
     const { botId } = req.params;
-    const { name, prizePlaces, prizes, description, selectedChannels, colorPalette } = req.body;
+    const { name, prizePlaces, prizes, description, selectedChannels, colorPalette, backgroundImage } = req.body;
     
     // Создаем массив призов если его нет
     const prizesArray = prizes || [];
@@ -5435,7 +5435,7 @@ app.post('/api/giveaways/:botId', async (req, res) => {
         participantColor: '#ffffff',
         cardColor: '#667eea'
       },
-      backgroundImage: backgroundImage || null,
+      backgroundImage: backgroundImage !== undefined ? backgroundImage : null,
       status: 'draft'
     });
     
