@@ -28,8 +28,7 @@ const Giveaways = ({ botId, onClose }) => {
       winnerTextColor: '#000000',
       participantColor: '#ffffff',
       cardColor: '#667eea'
-    },
-    backgroundImage: null
+    }
   });
 
   useEffect(() => {
@@ -102,14 +101,14 @@ const Giveaways = ({ botId, onClose }) => {
       prizes: giveaway.prizes || [],
       description: giveaway.description || '',
       selectedChannels: giveaway.selectedChannels || [],
+      backgroundImage: giveaway.backgroundImage || null,
       colorPalette: giveaway.colorPalette || {
         backgroundColor: '#1a1a2e',
         winnerColor: '#ffd700',
         winnerTextColor: '#000000',
         participantColor: '#ffffff',
         cardColor: '#667eea'
-      },
-      backgroundImage: giveaway.backgroundImage || null
+      }
     });
     setBackgroundImageFile(null);
   };
@@ -158,6 +157,67 @@ const Giveaways = ({ botId, onClose }) => {
     }
   };
 
+  const handleBackgroundImageChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile) {
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (allowedTypes.includes(selectedFile.type)) {
+        setBackgroundImageFile(selectedFile);
+        setError('');
+      } else {
+        setError('Пожалуйста, выберите изображение (JPEG, PNG, GIF, WebP)');
+        setBackgroundImageFile(null);
+      }
+    }
+  };
+
+  const handleUploadBackgroundImage = async () => {
+    if (!backgroundImageFile) {
+      setError('Пожалуйста, выберите изображение');
+      return;
+    }
+
+    if (!selectedGiveaway) {
+      setError('Сначала создайте розыгрыш');
+      return;
+    }
+
+    setUploadingBackground(true);
+    setError('');
+
+    const formData = new FormData();
+    formData.append('backgroundImage', backgroundImageFile);
+
+    try {
+      const response = await fetch(
+        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/upload-background`,
+        {
+          method: 'POST',
+          body: formData
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert('✅ Фоновое изображение успешно загружено!');
+        setBackgroundImageFile(null);
+        document.getElementById('background-image-input').value = '';
+        fetchGiveaways();
+        if (data.giveaway) {
+          handleSelectGiveaway(data.giveaway);
+        }
+      } else {
+        setError(data.error || 'Ошибка загрузки изображения');
+      }
+    } catch (err) {
+      setError('Ошибка соединения с сервером');
+      console.error('Upload background error:', err);
+    } finally {
+      setUploadingBackground(false);
+    }
+  };
+
   const handleUploadCSV = async () => {
     if (!file) {
       setError('Пожалуйста, выберите файл');
@@ -172,22 +232,12 @@ const Giveaways = ({ botId, onClose }) => {
       
       // Если розыгрыш еще не создан, создаем его
       if (!giveawayId) {
-        // При создании не передаем backgroundImage - он загружается отдельно
-        const createData = {
-          name: giveawayData.name,
-          prizePlaces: giveawayData.prizePlaces,
-          prizes: giveawayData.prizes,
-          description: giveawayData.description,
-          selectedChannels: giveawayData.selectedChannels,
-          colorPalette: giveawayData.colorPalette
-        };
-        
         const createResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(createData),
+          body: JSON.stringify(giveawayData),
         });
 
         if (!createResponse.ok) {
@@ -197,10 +247,10 @@ const Giveaways = ({ botId, onClose }) => {
           return;
         }
 
-        const createDataResponse = await createResponse.json();
-        if (createDataResponse.giveaway) {
-          giveawayId = createDataResponse.giveaway._id;
-          handleSelectGiveaway(createDataResponse.giveaway);
+        const createData = await createResponse.json();
+        if (createData.giveaway) {
+          giveawayId = createData.giveaway._id;
+          handleSelectGiveaway(createData.giveaway);
         } else {
           setError('Не удалось создать розыгрыш');
           setUploading(false);
@@ -238,93 +288,6 @@ const Giveaways = ({ botId, onClose }) => {
       console.error('Upload error:', err);
     } finally {
       setUploading(false);
-    }
-  };
-
-  const handleUploadBackgroundImage = async () => {
-    if (!backgroundImageFile) {
-      setError('Пожалуйста, выберите изображение');
-      return;
-    }
-
-    if (!selectedGiveaway) {
-      setError('Сначала создайте розыгрыш');
-      return;
-    }
-
-    setUploadingBackground(true);
-    setError('');
-
-    const formData = new FormData();
-    formData.append('image', backgroundImageFile);
-
-    try {
-      const response = await fetch(
-        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/upload-background`,
-        {
-          method: 'POST',
-          body: formData
-        }
-      );
-
-      const data = await response.json();
-
-      if (response.ok) {
-        alert('✅ Фоновое изображение успешно загружено!');
-        setBackgroundImageFile(null);
-        const input = document.getElementById('background-image-input');
-        if (input) input.value = '';
-        fetchGiveaways();
-        if (data.giveaway) {
-          handleSelectGiveaway(data.giveaway);
-        }
-      } else {
-        setError(data.error || 'Ошибка загрузки изображения');
-      }
-    } catch (err) {
-      setError('Ошибка соединения с сервером');
-      console.error('Upload error:', err);
-    } finally {
-      setUploadingBackground(false);
-    }
-  };
-
-  const handleDeleteBackgroundImage = async () => {
-    if (!selectedGiveaway) {
-      return;
-    }
-
-    if (!window.confirm('Удалить фоновое изображение?')) {
-      return;
-    }
-
-    setUploadingBackground(true);
-    setError('');
-
-    try {
-      const response = await fetch(
-        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/background-image`,
-        {
-          method: 'DELETE'
-        }
-      );
-
-      const data = await response.json();
-
-      if (response.ok) {
-        alert('✅ Фоновое изображение удалено!');
-        fetchGiveaways();
-        if (data.giveaway) {
-          handleSelectGiveaway(data.giveaway);
-        }
-      } else {
-        setError(data.error || 'Ошибка удаления изображения');
-      }
-    } catch (err) {
-      setError('Ошибка соединения с сервером');
-      console.error('Delete error:', err);
-    } finally {
-      setUploadingBackground(false);
     }
   };
 
@@ -366,59 +329,9 @@ const Giveaways = ({ botId, onClose }) => {
   };
 
   const handleSelectWinner = async (place, participant) => {
-    if (!participant) {
-      // Убираем победителя
-      const updatedPrizes = giveawayData.prizes.map(p => 
-        p.place === place ? { ...p, winner: null } : p
-      );
-      
-      setGiveawayData({
-        ...giveawayData,
-        prizes: updatedPrizes
-      });
-      
-      // Автоматически сохраняем, если это существующий розыгрыш
-      if (selectedGiveaway && selectedGiveaway._id) {
-        try {
-          const response = await fetch(
-            `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
-            {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                ...giveawayData,
-                prizes: updatedPrizes
-              }),
-            }
-          );
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data.giveaway) {
-              handleSelectGiveaway(data.giveaway);
-            }
-          }
-        } catch (error) {
-          console.error('❌ [GIVEAWAY] Ошибка автосохранения:', error);
-        }
-      }
-      return;
-    }
-    
-    // Убеждаемся, что participant - это объект с нужными полями
-    const winnerData = {
-      userId: participant.userId ? (typeof participant.userId === 'string' ? parseInt(participant.userId) : participant.userId) : null,
-      username: participant.username || '',
-      firstName: participant.firstName || '',
-      lastName: participant.lastName || '',
-      project: participant.project || ''
-    };
-    
     // Обновляем локальное состояние
     const updatedPrizes = giveawayData.prizes.map(p => 
-      p.place === place ? { ...p, winner: winnerData } : p
+      p.place === place ? { ...p, winner: participant } : p
     );
     
     setGiveawayData({
@@ -426,14 +339,19 @@ const Giveaways = ({ botId, onClose }) => {
       prizes: updatedPrizes
     });
     
-    console.log('💾 [GIVEAWAY] Выбран победитель:', {
-      place,
-      winner: winnerData
-    });
-    
     // Автоматически сохраняем, если это существующий розыгрыш
     if (selectedGiveaway && selectedGiveaway._id) {
       try {
+        console.log('💾 [GIVEAWAY] Автосохранение при выборе победителя:', {
+          place,
+          participant: {
+            userId: participant?.userId,
+            username: participant?.username,
+            firstName: participant?.firstName,
+            lastName: participant?.lastName
+          }
+        });
+        
         const response = await fetch(
           `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
           {
@@ -453,11 +371,10 @@ const Giveaways = ({ botId, onClose }) => {
           // Обновляем данные розыгрыша
           if (data.giveaway) {
             handleSelectGiveaway(data.giveaway);
-            console.log('✅ [GIVEAWAY] Победитель сохранен автоматически');
           }
+          console.log('✅ [GIVEAWAY] Победитель сохранен автоматически');
         } else {
-          const errorData = await response.json();
-          console.error('❌ [GIVEAWAY] Ошибка автосохранения:', errorData);
+          console.error('❌ [GIVEAWAY] Ошибка автосохранения:', await response.json());
         }
       } catch (error) {
         console.error('❌ [GIVEAWAY] Ошибка автосохранения:', error);
@@ -610,22 +527,12 @@ const Giveaways = ({ botId, onClose }) => {
       
       // Если розыгрыш еще не создан, создаем его
       if (!giveawayId) {
-        // При создании не передаем backgroundImage - он загружается отдельно
-        const createData = {
-          name: giveawayData.name,
-          prizePlaces: giveawayData.prizePlaces,
-          prizes: giveawayData.prizes,
-          description: giveawayData.description,
-          selectedChannels: giveawayData.selectedChannels,
-          colorPalette: giveawayData.colorPalette
-        };
-        
         const createResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(createData),
+          body: JSON.stringify(giveawayData),
         });
 
         if (!createResponse.ok) {
@@ -635,10 +542,10 @@ const Giveaways = ({ botId, onClose }) => {
           return;
         }
 
-        const createDataResponse = await createResponse.json();
-        if (createDataResponse.giveaway) {
-          giveawayId = createDataResponse.giveaway._id;
-          handleSelectGiveaway(createDataResponse.giveaway);
+        const createData = await createResponse.json();
+        if (createData.giveaway) {
+          giveawayId = createData.giveaway._id;
+          handleSelectGiveaway(createData.giveaway);
         } else {
           setError('Не удалось создать розыгрыш');
           setSaving(false);
@@ -1033,51 +940,33 @@ const Giveaways = ({ botId, onClose }) => {
                   </div>
 
                 {/* Загрузка фонового изображения */}
-                {activeTab === 'active' && (
+                {selectedGiveaway && (
                   <div className="editor-section">
-                    <h3>🖼️ Фоновое изображение для видео</h3>
+                    <h3>🖼️ Фоновое изображение</h3>
                     <div className="upload-section">
-                      <p>Загрузите изображение, которое будет использоваться как фон в видео рулетки</p>
+                      <p>Загрузите изображение для фона видео (JPEG, PNG, GIF, WebP, до 10MB)</p>
                       <input
                         id="background-image-input"
                         type="file"
-                        accept="image/jpeg,image/png,image/gif,image/webp"
-                        onChange={(e) => {
-                          const selectedFile = e.target.files[0];
-                          if (selectedFile) {
-                            if (selectedFile.type.startsWith('image/')) {
-                              setBackgroundImageFile(selectedFile);
-                              setError('');
-                            } else {
-                              setError('Пожалуйста, выберите изображение');
-                            }
-                          }
-                        }}
+                        accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                        onChange={handleBackgroundImageChange}
                         className="file-input"
                       />
                       <button
                         onClick={handleUploadBackgroundImage}
-                        disabled={!backgroundImageFile || uploadingBackground || !selectedGiveaway}
+                        disabled={!backgroundImageFile || uploadingBackground}
                         className="upload-btn"
                       >
                         {uploadingBackground ? '⏳ Загрузка...' : backgroundImageFile ? `📁 Загрузить ${backgroundImageFile.name}` : '📁 Выберите изображение'}
                       </button>
-                      {selectedGiveaway && selectedGiveaway.backgroundImage && (
+                      {selectedGiveaway.backgroundImage && (
                         <div className="background-image-preview">
-                          <p>Текущее изображение:</p>
+                          <p>✅ Фоновое изображение загружено</p>
                           <img 
-                            src={`${config.API_BASE_URL}${selectedGiveaway.backgroundImage.replace(/^.*\/uploads/, '/uploads')}`} 
-                            alt="Фоновое изображение"
-                            style={{ maxWidth: '300px', maxHeight: '200px', marginTop: '10px', borderRadius: '8px' }}
+                            src={`${config.API_BASE_URL}/${selectedGiveaway.backgroundImage}`} 
+                            alt="Фоновое изображение" 
+                            style={{ maxWidth: '200px', maxHeight: '200px', marginTop: '10px', borderRadius: '8px' }}
                           />
-                          <button
-                            onClick={handleDeleteBackgroundImage}
-                            disabled={uploadingBackground || !selectedGiveaway}
-                            className="delete-background-btn"
-                            style={{ marginTop: '10px' }}
-                          >
-                            🗑️ Удалить изображение
-                          </button>
                         </div>
                       )}
                     </div>

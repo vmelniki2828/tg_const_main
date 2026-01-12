@@ -1,4 +1,4 @@
-const { createCanvas, loadImage } = require('canvas');
+const { createCanvas } = require('canvas');
 const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
@@ -30,34 +30,56 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     fs.mkdirSync(framesDir, { recursive: true });
   }
   
+  // Генерируем кадры
+  const frameFiles = [];
+  
   // Загружаем фоновое изображение, если указано
   let backgroundImage = null;
   if (backgroundImagePath && fs.existsSync(backgroundImagePath)) {
     try {
+      const { loadImage } = require('canvas');
       backgroundImage = await loadImage(backgroundImagePath);
       console.log('✅ [VIDEO] Фоновое изображение загружено:', backgroundImagePath);
     } catch (err) {
       console.error('⚠️ [VIDEO] Ошибка загрузки фонового изображения:', err);
+      backgroundImage = null;
     }
   }
   
-  // Генерируем кадры
-  const frameFiles = [];
-  
-for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
+  for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
     const time = frameIndex * frameDuration;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
     
-    // Фон - сначала рисуем изображение, если есть
+    // Рисуем фон
     if (backgroundImage) {
-      // Растягиваем изображение на весь экран
-      ctx.drawImage(backgroundImage, 0, 0, width, height);
-      // Добавляем полупрозрачный оверлей для лучшей читаемости текста
+      // Рисуем фоновое изображение с масштабированием и обрезкой по центру
+      const imgAspect = backgroundImage.width / backgroundImage.height;
+      const canvasAspect = width / height;
+      
+      let drawWidth, drawHeight, drawX, drawY;
+      
+      if (imgAspect > canvasAspect) {
+        // Изображение шире - подгоняем по высоте
+        drawHeight = height;
+        drawWidth = height * imgAspect;
+        drawX = (width - drawWidth) / 2;
+        drawY = 0;
+      } else {
+        // Изображение выше - подгоняем по ширине
+        drawWidth = width;
+        drawHeight = width / imgAspect;
+        drawX = 0;
+        drawY = (height - drawHeight) / 2;
+      }
+      
+      ctx.drawImage(backgroundImage, drawX, drawY, drawWidth, drawHeight);
+      
+      // Добавляем затемнение для лучшей читаемости текста
       ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
       ctx.fillRect(0, 0, width, height);
     } else {
-      // Если нет изображения, используем градиент
+      // Фон с настройками цветов (если нет изображения)
       const bgColor = colorPalette.backgroundColor || '#1a1a2e';
       // Создаем градиент на основе основного цвета (немного темнее внизу)
       const gradient = ctx.createLinearGradient(0, 0, 0, height);

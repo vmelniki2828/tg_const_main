@@ -5407,7 +5407,7 @@ app.get('/api/giveaways/:botId', async (req, res) => {
 app.post('/api/giveaways/:botId', async (req, res) => {
   try {
     const { botId } = req.params;
-    const { name, prizePlaces, prizes, description, selectedChannels, colorPalette, backgroundImage } = req.body;
+    const { name, prizePlaces, prizes, description, selectedChannels, colorPalette } = req.body;
     
     // Создаем массив призов если его нет
     const prizesArray = prizes || [];
@@ -5435,7 +5435,6 @@ app.post('/api/giveaways/:botId', async (req, res) => {
         participantColor: '#ffffff',
         cardColor: '#667eea'
       },
-      backgroundImage: backgroundImage !== undefined ? backgroundImage : null,
       status: 'draft'
     });
     
@@ -5466,7 +5465,6 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
     if (description !== undefined) updateData.description = description;
     if (selectedChannels !== undefined) updateData.selectedChannels = selectedChannels;
     if (colorPalette !== undefined) updateData.colorPalette = colorPalette;
-    if (backgroundImage !== undefined) updateData.backgroundImage = backgroundImage;
     
     // Обновляем призы и количество призовых мест
     if (prizePlaces !== undefined) {
@@ -5501,7 +5499,7 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
         };
         
         // Обрабатываем победителя
-        if (prize.winner && (prize.winner.userId || prize.winner.username || prize.winner.firstName || prize.winner.lastName)) {
+        if (prize.winner && (prize.winner.userId || prize.winner.username)) {
           // Если есть userId, пытаемся получить полные данные из базы
           if (prize.winner.userId) {
             User.findOne({ botId, userId: prize.winner.userId }).lean().then(user => {
@@ -5513,21 +5511,15 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
             });
           }
           
-          // Сохраняем userId как число, если он есть
-          const userId = prize.winner.userId ? (typeof prize.winner.userId === 'string' ? parseInt(prize.winner.userId) : prize.winner.userId) : null;
-          
           normalizedPrize.winner = {
-            userId: userId,
+            userId: prize.winner.userId || null,
             username: (prize.winner.username || '').trim() || '',
             firstName: (prize.winner.firstName || '').trim() || '',
             lastName: (prize.winner.lastName || '').trim() || '',
             project: (prize.winner.project || '').trim() || ''
           };
-          
-          console.log(`💾 [GIVEAWAY] Сохранение победителя для приза ${prize.place}:`, JSON.stringify(normalizedPrize.winner));
         } else {
           normalizedPrize.winner = null;
-          console.log(`⚠️ [GIVEAWAY] Приз ${prize.place} не имеет валидного победителя`);
         }
         
         return normalizedPrize;
@@ -5553,34 +5545,28 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
 // Загрузка CSV файла с участниками для розыгрышей
 const giveawayUpload = multer({ storage: multer.memoryStorage() });
 
-// Загрузка фонового изображения для розыгрышей
-const giveawayImageStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadsDir = path.join(__dirname, 'uploads', 'giveaway-backgrounds');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-    cb(null, uploadsDir);
-  },
-  filename: function (req, file, cb) {
-    const { botId, giveawayId } = req.params;
-    const ext = path.extname(file.originalname);
-    const filename = `bg_${botId}_${giveawayId}_${Date.now()}${ext}`;
-    cb(null, filename);
-  }
-});
-
+// Загрузка фонового изображения для розыгрыша
 const giveawayImageUpload = multer({
-  storage: giveawayImageStorage,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB лимит для изображений
-  },
-  fileFilter: function (req, file, cb) {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (allowedTypes.includes(file.mimetype)) {
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadsDir = path.join(__dirname, 'uploads', 'giveaway_backgrounds');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, `bg_${uniqueSuffix}${path.extname(file.originalname)}`);
+    }
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedMimes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Разрешены только изображения (JPEG, PNG, GIF, WebP)'), false);
+      cb(new Error('Разрешены только изображения (JPEG, PNG, GIF, WebP)'));
     }
   }
 });
@@ -5634,89 +5620,6 @@ app.post('/api/giveaways/:botId/:giveawayId/upload', giveawayUpload.single('file
   } catch (error) {
     console.error('❌ Ошибка при загрузке CSV:', error);
     res.status(500).json({ error: 'Failed to upload CSV', details: error.message });
-  }
-});
-
-// Загрузка фонового изображения для розыгрыша
-app.post('/api/giveaways/:botId/:giveawayId/upload-background', giveawayImageUpload.single('image'), async (req, res) => {
-  try {
-    const { botId, giveawayId } = req.params;
-    
-    if (!req.file) {
-      return res.status(400).json({ error: 'No image uploaded' });
-    }
-    
-    const giveaway = await Giveaway.findOne({ _id: giveawayId, botId });
-    if (!giveaway) {
-      // Удаляем загруженный файл, если розыгрыш не найден
-      if (req.file.path && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-      return res.status(404).json({ error: 'Giveaway not found' });
-    }
-    
-    // Удаляем старое изображение, если оно есть
-    if (giveaway.backgroundImage && fs.existsSync(giveaway.backgroundImage)) {
-      try {
-        fs.unlinkSync(giveaway.backgroundImage);
-      } catch (err) {
-        console.error('⚠️ Ошибка удаления старого изображения:', err);
-      }
-    }
-    
-    // Сохраняем путь к новому изображению (относительный путь для статики)
-    const relativePath = `/uploads/giveaway-backgrounds/${req.file.filename}`;
-    const absolutePath = req.file.path;
-    
-    giveaway.backgroundImage = absolutePath;
-    await giveaway.save();
-    
-    res.json({ 
-      success: true, 
-      giveaway,
-      imageUrl: relativePath,
-      imagePath: absolutePath
-    });
-  } catch (error) {
-    console.error('❌ Ошибка при загрузке фонового изображения:', error);
-    // Удаляем загруженный файл при ошибке
-    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch (err) {
-        console.error('⚠️ Ошибка удаления файла при ошибке:', err);
-      }
-    }
-    res.status(500).json({ error: 'Failed to upload background image', details: error.message });
-  }
-});
-
-// Удаление фонового изображения
-app.delete('/api/giveaways/:botId/:giveawayId/background-image', async (req, res) => {
-  try {
-    const { botId, giveawayId } = req.params;
-    
-    const giveaway = await Giveaway.findOne({ _id: giveawayId, botId });
-    if (!giveaway) {
-      return res.status(404).json({ error: 'Giveaway not found' });
-    }
-    
-    // Удаляем файл изображения
-    if (giveaway.backgroundImage && fs.existsSync(giveaway.backgroundImage)) {
-      try {
-        fs.unlinkSync(giveaway.backgroundImage);
-      } catch (err) {
-        console.error('⚠️ Ошибка удаления изображения:', err);
-      }
-    }
-    
-    giveaway.backgroundImage = null;
-    await giveaway.save();
-    
-    res.json({ success: true, giveaway });
-  } catch (error) {
-    console.error('❌ Ошибка при удалении фонового изображения:', error);
-    res.status(500).json({ error: 'Failed to delete background image', details: error.message });
   }
 });
 
@@ -5885,82 +5788,23 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
         
         await giveaway.save();
         console.log('✅ [GIVEAWAY] Победители выбраны автоматически');
-        
-        // Перезагружаем розыгрыш из БД, чтобы убедиться, что данные актуальны
-        const refreshedGiveaway = await Giveaway.findOne({ _id: giveawayId, botId });
-        if (refreshedGiveaway) {
-          giveaway = refreshedGiveaway;
-          console.log('🔄 [GIVEAWAY] Розыгрыш перезагружен из БД после автоматического выбора');
-        }
       }
     }
     
     // Проверяем, что есть победители
-    // Логируем все призы для отладки
-    console.log('🔍 [GIVEAWAY] Все призы перед проверкой:', JSON.stringify(giveaway.prizes.map(p => ({
-      place: p.place,
-      name: p.name,
-      hasWinner: !!p.winner,
-      winner: p.winner ? {
-        userId: p.winner.userId,
-        userIdType: typeof p.winner.userId,
-        username: p.winner.username,
-        firstName: p.winner.firstName,
-        lastName: p.winner.lastName,
-        project: p.winner.project
-      } : null
-    })), null, 2));
-    
     const winnersWithPrizes = giveaway.prizes
-      .filter(p => {
-        // Проверяем наличие победителя более тщательно
-        if (!p.winner) {
-          console.log(`⚠️ [GIVEAWAY] Приз ${p.place} (${p.name}) не имеет объекта winner`);
-          return false;
-        }
-        
-        // Проверяем наличие userId (может быть числом или строкой) или username
-        const userId = p.winner.userId;
-        const hasUserId = userId !== null && userId !== undefined && userId !== '';
-        const hasUsername = p.winner.username && String(p.winner.username).trim().length > 0;
-        const hasName = (p.winner.firstName && String(p.winner.firstName).trim().length > 0) || 
-                       (p.winner.lastName && String(p.winner.lastName).trim().length > 0);
-        
-        if (!hasUserId && !hasUsername && !hasName) {
-          console.log(`⚠️ [GIVEAWAY] Приз ${p.place} (${p.name}) имеет winner, но нет userId, username и имени:`, JSON.stringify(p.winner));
-          return false;
-        }
-        
-        return true;
-      })
-      .map(p => {
-        // Нормализуем userId - конвертируем строку в число, если нужно
-        const winner = { ...p.winner };
-        if (winner.userId && typeof winner.userId === 'string') {
-          winner.userId = parseInt(winner.userId) || winner.userId;
-        }
-        
-        return {
-          ...winner,
-          prizeName: p.name,
-          place: p.place
-        };
-      });
+      .filter(p => p.winner && (p.winner.userId || p.winner.username))
+      .map(p => ({
+        ...p.winner,
+        prizeName: p.name,
+        place: p.place
+      }));
     
     console.log('🔍 [GIVEAWAY] Найдено победителей:', winnersWithPrizes.length);
     console.log('🔍 [GIVEAWAY] Победители:', JSON.stringify(winnersWithPrizes, null, 2));
     
     if (winnersWithPrizes.length === 0) {
-      return res.status(400).json({ 
-        error: 'No winners selected. Please select winners first.',
-        details: `Всего призов: ${giveaway.prizes.length}, призов с winner: ${giveaway.prizes.filter(p => p.winner).length}`,
-        prizes: giveaway.prizes.map(p => ({
-          place: p.place,
-          name: p.name,
-          hasWinner: !!p.winner,
-          winnerData: p.winner
-        }))
-      });
+      return res.status(400).json({ error: 'No winners selected. Please select winners first.' });
     }
     
     const bot = await Bot.findOne({ id: botId });
@@ -5983,7 +5827,7 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       // Передаем всех участников для прокрутки и настройки цветов
       const allParticipants = giveaway.participants || [];
       const colorPalette = giveaway.colorPalette || {};
-      const backgroundImagePath = giveaway.backgroundImage || null;
+      const backgroundImagePath = giveaway.backgroundImage ? path.join(__dirname, giveaway.backgroundImage) : null;
       
       // Логируем для отладки
       console.log('📋 [GIVEAWAY] Победители для видео:', winnersWithPrizes.map(w => ({
@@ -5992,9 +5836,7 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
         place: w.place
       })));
       console.log('📋 [GIVEAWAY] Всего участников:', allParticipants.length);
-      if (backgroundImagePath) {
-        console.log('📋 [GIVEAWAY] Фоновое изображение:', backgroundImagePath);
-      }
+      console.log('📋 [GIVEAWAY] Фоновое изображение:', backgroundImagePath || 'не указано');
       
       await generateRouletteVideo(winnersWithPrizes, videoPath, allParticipants, colorPalette, backgroundImagePath);
       console.log('✅ Видео рулетки создано:', videoPath);
