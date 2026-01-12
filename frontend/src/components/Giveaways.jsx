@@ -172,12 +172,22 @@ const Giveaways = ({ botId, onClose }) => {
       
       // Если розыгрыш еще не создан, создаем его
       if (!giveawayId) {
+        // При создании не передаем backgroundImage - он загружается отдельно
+        const createData = {
+          name: giveawayData.name,
+          prizePlaces: giveawayData.prizePlaces,
+          prizes: giveawayData.prizes,
+          description: giveawayData.description,
+          selectedChannels: giveawayData.selectedChannels,
+          colorPalette: giveawayData.colorPalette
+        };
+        
         const createResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(giveawayData),
+          body: JSON.stringify(createData),
         });
 
         if (!createResponse.ok) {
@@ -187,10 +197,10 @@ const Giveaways = ({ botId, onClose }) => {
           return;
         }
 
-        const createData = await createResponse.json();
-        if (createData.giveaway) {
-          giveawayId = createData.giveaway._id;
-          handleSelectGiveaway(createData.giveaway);
+        const createDataResponse = await createResponse.json();
+        if (createDataResponse.giveaway) {
+          giveawayId = createDataResponse.giveaway._id;
+          handleSelectGiveaway(createDataResponse.giveaway);
         } else {
           setError('Не удалось создать розыгрыш');
           setUploading(false);
@@ -554,12 +564,22 @@ const Giveaways = ({ botId, onClose }) => {
       
       // Если розыгрыш еще не создан, создаем его
       if (!giveawayId) {
+        // При создании не передаем backgroundImage - он загружается отдельно
+        const createData = {
+          name: giveawayData.name,
+          prizePlaces: giveawayData.prizePlaces,
+          prizes: giveawayData.prizes,
+          description: giveawayData.description,
+          selectedChannels: giveawayData.selectedChannels,
+          colorPalette: giveawayData.colorPalette
+        };
+        
         const createResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(giveawayData),
+          body: JSON.stringify(createData),
         });
 
         if (!createResponse.ok) {
@@ -569,10 +589,10 @@ const Giveaways = ({ botId, onClose }) => {
           return;
         }
 
-        const createData = await createResponse.json();
-        if (createData.giveaway) {
-          giveawayId = createData.giveaway._id;
-          handleSelectGiveaway(createData.giveaway);
+        const createDataResponse = await createResponse.json();
+        if (createDataResponse.giveaway) {
+          giveawayId = createDataResponse.giveaway._id;
+          handleSelectGiveaway(createDataResponse.giveaway);
         } else {
           setError('Не удалось создать розыгрыш');
           setSaving(false);
