@@ -10,6 +10,8 @@ const Giveaways = ({ botId, onClose }) => {
   const [error, setError] = useState(null);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [backgroundImageFile, setBackgroundImageFile] = useState(null);
+  const [uploadingBackground, setUploadingBackground] = useState(false);
   const [channelInput, setChannelInput] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // 'active' или 'archive'
 
@@ -26,7 +28,8 @@ const Giveaways = ({ botId, onClose }) => {
       winnerTextColor: '#000000',
       participantColor: '#ffffff',
       cardColor: '#667eea'
-    }
+    },
+    backgroundImage: null
   });
 
   useEffect(() => {
@@ -105,8 +108,10 @@ const Giveaways = ({ botId, onClose }) => {
         winnerTextColor: '#000000',
         participantColor: '#ffffff',
         cardColor: '#667eea'
-      }
+      },
+      backgroundImage: giveaway.backgroundImage || null
     });
+    setBackgroundImageFile(null);
   };
 
   const handlePrizePlacesChange = (value) => {
@@ -873,6 +878,58 @@ const Giveaways = ({ botId, onClose }) => {
                       </button>
                     )}
                   </div>
+
+                {/* Загрузка фонового изображения */}
+                {activeTab === 'active' && (
+                  <div className="editor-section">
+                    <h3>🖼️ Фоновое изображение для видео</h3>
+                    <div className="upload-section">
+                      <p>Загрузите изображение, которое будет использоваться как фон в видео рулетки</p>
+                      <input
+                        id="background-image-input"
+                        type="file"
+                        accept="image/jpeg,image/png,image/gif,image/webp"
+                        onChange={(e) => {
+                          const selectedFile = e.target.files[0];
+                          if (selectedFile) {
+                            if (selectedFile.type.startsWith('image/')) {
+                              setBackgroundImageFile(selectedFile);
+                              setError('');
+                            } else {
+                              setError('Пожалуйста, выберите изображение');
+                            }
+                          }
+                        }}
+                        className="file-input"
+                      />
+                      <button
+                        onClick={handleUploadBackgroundImage}
+                        disabled={!backgroundImageFile || uploadingBackground || !selectedGiveaway}
+                        className="upload-btn"
+                      >
+                        {uploadingBackground ? '⏳ Загрузка...' : backgroundImageFile ? `📁 Загрузить ${backgroundImageFile.name}` : '📁 Выберите изображение'}
+                      </button>
+                      {selectedGiveaway && selectedGiveaway.backgroundImage && (
+                        <div className="background-image-preview">
+                          <p>Текущее изображение:</p>
+                          <img 
+                            src={`${config.API_BASE_URL}${selectedGiveaway.backgroundImage.replace(/^.*\/uploads/, '/uploads')}`} 
+                            alt="Фоновое изображение"
+                            style={{ maxWidth: '300px', maxHeight: '200px', marginTop: '10px', borderRadius: '8px' }}
+                          />
+                          <button
+                            onClick={handleDeleteBackgroundImage}
+                            disabled={uploadingBackground || !selectedGiveaway}
+                            className="delete-background-btn"
+                            style={{ marginTop: '10px' }}
+                          >
+                            🗑️ Удалить изображение
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Настройки цветовой палитры - только для активных розыгрышей */}
                 {activeTab === 'active' && (

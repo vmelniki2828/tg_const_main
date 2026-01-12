@@ -277,6 +277,7 @@ const GiveawaySchema = new mongoose.Schema({
     participantColor: { type: String, default: '#ffffff' }, // Цвет текста участников
     cardColor: { type: String, default: '#667eea' } // Цвет карточки победителя
   },
+  backgroundImage: { type: String, default: null }, // Путь к фоновому изображению для видео
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

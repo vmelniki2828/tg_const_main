@@ -596,3 +596,36 @@
   display: block;
   margin-bottom: 5px;
 }
+
+.background-image-preview {
+  margin-top: 15px;
+  padding: 15px;
+  background: #f9f9f9;
+  border-radius: 8px;
+}
+
+.background-image-preview p {
+  margin: 0 0 10px 0;
+  color: #555;
+  font-weight: 500;
+}
+
+.delete-background-btn {
+  background: #f44336;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.3s;
+}
+
+.delete-background-btn:hover:not(:disabled) {
+  background: #d32f2f;
+}
+
+.delete-background-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}

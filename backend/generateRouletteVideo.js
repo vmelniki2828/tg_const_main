@@ -1,4 +1,4 @@
-const { createCanvas } = require('canvas');
+const { createCanvas, loadImage } = require('canvas');
 const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
@@ -9,9 +9,10 @@ const ffmpeg = require('fluent-ffmpeg');
  * @param {String} outputPath - Путь для сохранения видео
  * @param {Array} allParticipants - Все участники для прокрутки
  * @param {Object} colorPalette - Настройки цветовой палитры
+ * @param {String} backgroundImagePath - Путь к фоновому изображению (опционально)
  * @returns {Promise<String>} Путь к созданному видео файлу
  */
-async function generateRouletteVideo(winners, outputPath, allParticipants = null, colorPalette = {}) {
+async function generateRouletteVideo(winners, outputPath, allParticipants = null, colorPalette = {}, backgroundImagePath = null) {
   const width = 1080;
   const height = 1920; // Вертикальное видео для Telegram
   const fps = 30;
@@ -29,24 +30,44 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     fs.mkdirSync(framesDir, { recursive: true });
   }
   
+  // Загружаем фоновое изображение, если указано
+  let backgroundImage = null;
+  if (backgroundImagePath && fs.existsSync(backgroundImagePath)) {
+    try {
+      backgroundImage = await loadImage(backgroundImagePath);
+      console.log('✅ [VIDEO] Фоновое изображение загружено:', backgroundImagePath);
+    } catch (err) {
+      console.error('⚠️ [VIDEO] Ошибка загрузки фонового изображения:', err);
+    }
+  }
+  
   // Генерируем кадры
   const frameFiles = [];
   
-  for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
+for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
     const time = frameIndex * frameDuration;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
     
-    // Фон с настройками цветов
-    const bgColor = colorPalette.backgroundColor || '#1a1a2e';
-    // Создаем градиент на основе основного цвета (немного темнее внизу)
-    const gradient = ctx.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, bgColor);
-    // Немного затемняем цвет для нижней части
-    const darkerColor = darkenColor(bgColor, 0.1);
-    gradient.addColorStop(1, darkerColor);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
+    // Фон - сначала рисуем изображение, если есть
+    if (backgroundImage) {
+      // Растягиваем изображение на весь экран
+      ctx.drawImage(backgroundImage, 0, 0, width, height);
+      // Добавляем полупрозрачный оверлей для лучшей читаемости текста
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(0, 0, width, height);
+    } else {
+      // Если нет изображения, используем градиент
+      const bgColor = colorPalette.backgroundColor || '#1a1a2e';
+      // Создаем градиент на основе основного цвета (немного темнее внизу)
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, bgColor);
+      // Немного затемняем цвет для нижней части
+      const darkerColor = darkenColor(bgColor, 0.1);
+      gradient.addColorStop(1, darkerColor);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+    }
     
     // Заголовок убран по запросу пользователя
     
