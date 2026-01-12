@@ -5623,6 +5623,57 @@ app.post('/api/giveaways/:botId/:giveawayId/upload', giveawayUpload.single('file
   }
 });
 
+// Загрузка фонового изображения для розыгрыша
+app.post('/api/giveaways/:botId/:giveawayId/upload-background', giveawayImageUpload.single('backgroundImage'), async (req, res) => {
+  try {
+    const { botId, giveawayId } = req.params;
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image uploaded' });
+    }
+    
+    const giveaway = await Giveaway.findOne({ _id: giveawayId, botId });
+    if (!giveaway) {
+      // Удаляем загруженный файл, если розыгрыш не найден
+      if (req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(404).json({ error: 'Giveaway not found' });
+    }
+    
+    // Удаляем старое изображение, если оно было
+    if (giveaway.backgroundImage && fs.existsSync(path.join(__dirname, giveaway.backgroundImage))) {
+      try {
+        fs.unlinkSync(path.join(__dirname, giveaway.backgroundImage));
+      } catch (err) {
+        console.error('⚠️ Ошибка удаления старого изображения:', err);
+      }
+    }
+    
+    // Сохраняем относительный путь к изображению
+    const relativePath = path.relative(__dirname, req.file.path);
+    giveaway.backgroundImage = relativePath;
+    await giveaway.save();
+    
+    res.json({ 
+      success: true, 
+      backgroundImage: relativePath,
+      giveaway 
+    });
+  } catch (error) {
+    console.error('❌ Ошибка при загрузке фонового изображения:', error);
+    // Удаляем загруженный файл при ошибке
+    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (err) {
+        console.error('⚠️ Ошибка удаления файла при ошибке:', err);
+      }
+    }
+    res.status(500).json({ error: 'Failed to upload background image', details: error.message });
+  }
+});
+
 // Функция для случайного выбора с учетом весов
 function weightedRandomSelect(items, count) {
   if (items.length === 0 || count === 0) return [];
