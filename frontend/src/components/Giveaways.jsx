@@ -366,9 +366,59 @@ const Giveaways = ({ botId, onClose }) => {
   };
 
   const handleSelectWinner = async (place, participant) => {
+    if (!participant) {
+      // Убираем победителя
+      const updatedPrizes = giveawayData.prizes.map(p => 
+        p.place === place ? { ...p, winner: null } : p
+      );
+      
+      setGiveawayData({
+        ...giveawayData,
+        prizes: updatedPrizes
+      });
+      
+      // Автоматически сохраняем, если это существующий розыгрыш
+      if (selectedGiveaway && selectedGiveaway._id) {
+        try {
+          const response = await fetch(
+            `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
+            {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                ...giveawayData,
+                prizes: updatedPrizes
+              }),
+            }
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.giveaway) {
+              handleSelectGiveaway(data.giveaway);
+            }
+          }
+        } catch (error) {
+          console.error('❌ [GIVEAWAY] Ошибка автосохранения:', error);
+        }
+      }
+      return;
+    }
+    
+    // Убеждаемся, что participant - это объект с нужными полями
+    const winnerData = {
+      userId: participant.userId ? (typeof participant.userId === 'string' ? parseInt(participant.userId) : participant.userId) : null,
+      username: participant.username || '',
+      firstName: participant.firstName || '',
+      lastName: participant.lastName || '',
+      project: participant.project || ''
+    };
+    
     // Обновляем локальное состояние
     const updatedPrizes = giveawayData.prizes.map(p => 
-      p.place === place ? { ...p, winner: participant } : p
+      p.place === place ? { ...p, winner: winnerData } : p
     );
     
     setGiveawayData({
@@ -376,19 +426,14 @@ const Giveaways = ({ botId, onClose }) => {
       prizes: updatedPrizes
     });
     
+    console.log('💾 [GIVEAWAY] Выбран победитель:', {
+      place,
+      winner: winnerData
+    });
+    
     // Автоматически сохраняем, если это существующий розыгрыш
     if (selectedGiveaway && selectedGiveaway._id) {
       try {
-        console.log('💾 [GIVEAWAY] Автосохранение при выборе победителя:', {
-          place,
-          participant: {
-            userId: participant?.userId,
-            username: participant?.username,
-            firstName: participant?.firstName,
-            lastName: participant?.lastName
-          }
-        });
-        
         const response = await fetch(
           `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
           {
@@ -408,10 +453,11 @@ const Giveaways = ({ botId, onClose }) => {
           // Обновляем данные розыгрыша
           if (data.giveaway) {
             handleSelectGiveaway(data.giveaway);
+            console.log('✅ [GIVEAWAY] Победитель сохранен автоматически');
           }
-          console.log('✅ [GIVEAWAY] Победитель сохранен автоматически');
         } else {
-          console.error('❌ [GIVEAWAY] Ошибка автосохранения:', await response.json());
+          const errorData = await response.json();
+          console.error('❌ [GIVEAWAY] Ошибка автосохранения:', errorData);
         }
       } catch (error) {
         console.error('❌ [GIVEAWAY] Ошибка автосохранения:', error);

@@ -5501,7 +5501,7 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
         };
         
         // Обрабатываем победителя
-        if (prize.winner && (prize.winner.userId || prize.winner.username)) {
+        if (prize.winner && (prize.winner.userId || prize.winner.username || prize.winner.firstName || prize.winner.lastName)) {
           // Если есть userId, пытаемся получить полные данные из базы
           if (prize.winner.userId) {
             User.findOne({ botId, userId: prize.winner.userId }).lean().then(user => {
@@ -5513,15 +5513,21 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
             });
           }
           
+          // Сохраняем userId как число, если он есть
+          const userId = prize.winner.userId ? (typeof prize.winner.userId === 'string' ? parseInt(prize.winner.userId) : prize.winner.userId) : null;
+          
           normalizedPrize.winner = {
-            userId: prize.winner.userId || null,
+            userId: userId,
             username: (prize.winner.username || '').trim() || '',
             firstName: (prize.winner.firstName || '').trim() || '',
             lastName: (prize.winner.lastName || '').trim() || '',
             project: (prize.winner.project || '').trim() || ''
           };
+          
+          console.log(`💾 [GIVEAWAY] Сохранение победителя для приза ${prize.place}:`, JSON.stringify(normalizedPrize.winner));
         } else {
           normalizedPrize.winner = null;
+          console.log(`⚠️ [GIVEAWAY] Приз ${prize.place} не имеет валидного победителя`);
         }
         
         return normalizedPrize;
@@ -5879,23 +5885,82 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
         
         await giveaway.save();
         console.log('✅ [GIVEAWAY] Победители выбраны автоматически');
+        
+        // Перезагружаем розыгрыш из БД, чтобы убедиться, что данные актуальны
+        const refreshedGiveaway = await Giveaway.findOne({ _id: giveawayId, botId });
+        if (refreshedGiveaway) {
+          giveaway = refreshedGiveaway;
+          console.log('🔄 [GIVEAWAY] Розыгрыш перезагружен из БД после автоматического выбора');
+        }
       }
     }
     
     // Проверяем, что есть победители
+    // Логируем все призы для отладки
+    console.log('🔍 [GIVEAWAY] Все призы перед проверкой:', JSON.stringify(giveaway.prizes.map(p => ({
+      place: p.place,
+      name: p.name,
+      hasWinner: !!p.winner,
+      winner: p.winner ? {
+        userId: p.winner.userId,
+        userIdType: typeof p.winner.userId,
+        username: p.winner.username,
+        firstName: p.winner.firstName,
+        lastName: p.winner.lastName,
+        project: p.winner.project
+      } : null
+    })), null, 2));
+    
     const winnersWithPrizes = giveaway.prizes
-      .filter(p => p.winner && (p.winner.userId || p.winner.username))
-      .map(p => ({
-        ...p.winner,
-        prizeName: p.name,
-        place: p.place
-      }));
+      .filter(p => {
+        // Проверяем наличие победителя более тщательно
+        if (!p.winner) {
+          console.log(`⚠️ [GIVEAWAY] Приз ${p.place} (${p.name}) не имеет объекта winner`);
+          return false;
+        }
+        
+        // Проверяем наличие userId (может быть числом или строкой) или username
+        const userId = p.winner.userId;
+        const hasUserId = userId !== null && userId !== undefined && userId !== '';
+        const hasUsername = p.winner.username && String(p.winner.username).trim().length > 0;
+        const hasName = (p.winner.firstName && String(p.winner.firstName).trim().length > 0) || 
+                       (p.winner.lastName && String(p.winner.lastName).trim().length > 0);
+        
+        if (!hasUserId && !hasUsername && !hasName) {
+          console.log(`⚠️ [GIVEAWAY] Приз ${p.place} (${p.name}) имеет winner, но нет userId, username и имени:`, JSON.stringify(p.winner));
+          return false;
+        }
+        
+        return true;
+      })
+      .map(p => {
+        // Нормализуем userId - конвертируем строку в число, если нужно
+        const winner = { ...p.winner };
+        if (winner.userId && typeof winner.userId === 'string') {
+          winner.userId = parseInt(winner.userId) || winner.userId;
+        }
+        
+        return {
+          ...winner,
+          prizeName: p.name,
+          place: p.place
+        };
+      });
     
     console.log('🔍 [GIVEAWAY] Найдено победителей:', winnersWithPrizes.length);
     console.log('🔍 [GIVEAWAY] Победители:', JSON.stringify(winnersWithPrizes, null, 2));
     
     if (winnersWithPrizes.length === 0) {
-      return res.status(400).json({ error: 'No winners selected. Please select winners first.' });
+      return res.status(400).json({ 
+        error: 'No winners selected. Please select winners first.',
+        details: `Всего призов: ${giveaway.prizes.length}, призов с winner: ${giveaway.prizes.filter(p => p.winner).length}`,
+        prizes: giveaway.prizes.map(p => ({
+          place: p.place,
+          name: p.name,
+          hasWinner: !!p.winner,
+          winnerData: p.winner
+        }))
+      });
     }
     
     const bot = await Bot.findOne({ id: botId });
