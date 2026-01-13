@@ -5990,18 +5990,27 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
         }
       } else {
         // Диапазон - массив победителей
-        if (prize.winners && Array.isArray(prize.winners)) {
+        if (prize.winners && Array.isArray(prize.winners) && prize.winners.length > 0) {
           prize.winners.forEach((winner, index) => {
-            if (winner && (winner.userId || winner.username)) {
+            // Проверяем, что winner существует и имеет userId
+            if (winner && winner.userId) {
               winnersWithPrizes.push({
-                ...winner,
+                userId: winner.userId,
+                username: winner.username || '',
+                firstName: winner.firstName || '',
+                lastName: winner.lastName || '',
+                project: winner.project || '',
                 prizeName: prize.name,
                 place: placeStart + index,
                 placeStart,
                 placeEnd
               });
+            } else {
+              console.warn(`⚠️ [GIVEAWAY] Пропущен победитель без userId в диапазоне ${placeStart}-${placeEnd}, индекс ${index}:`, winner);
             }
           });
+        } else {
+          console.warn(`⚠️ [GIVEAWAY] Диапазон ${placeStart}-${placeEnd} не имеет победителей или массив пуст`);
         }
       }
     });

@@ -101,9 +101,22 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     if (currentSegment < winners.length) {
       const currentWinner = winners[currentSegment];
       
+      // Проверяем, что currentWinner существует и имеет необходимые данные
+      if (!currentWinner || !currentWinner.userId) {
+        console.error(`❌ [VIDEO] Ошибка: currentWinner undefined или без userId на сегменте ${currentSegment}`);
+        console.error(`❌ [VIDEO] winners[${currentSegment}]:`, currentWinner);
+        console.error(`❌ [VIDEO] Всего победителей: ${winners.length}`);
+        // Пропускаем этот кадр или используем последнего валидного победителя
+        if (winners.length > 0 && winners[winners.length - 1]) {
+          const lastValidWinner = winners[winners.length - 1];
+          drawWinnerReveal(ctx, width, height, lastValidWinner, 0, revealDuration, colorPalette);
+        }
+        continue;
+      }
+      
       // Логируем для отладки
       if (frameIndex % 30 === 0) { // Каждую секунду
-        console.log(`🎬 [VIDEO] Кадр ${frameIndex}: сегмент ${currentSegment}, победитель userId=${currentWinner.userId}, prizeName=${currentWinner.prizeName}`);
+        console.log(`🎬 [VIDEO] Кадр ${frameIndex}: сегмент ${currentSegment}/${winners.length}, победитель userId=${currentWinner.userId}, place=${currentWinner.place}, prizeName=${currentWinner.prizeName}`);
       }
       
       if (localTime < spinDuration) {
@@ -119,8 +132,10 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
       }
     } else {
       // Показываем последнего победителя в конце
-      const lastWinner = winners[winners.length - 1];
-      drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (time - (winners.length - 1) * segmentDuration) / revealDuration), revealDuration, colorPalette);
+      if (winners.length > 0 && winners[winners.length - 1]) {
+        const lastWinner = winners[winners.length - 1];
+        drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (time - (winners.length - 1) * segmentDuration) / revealDuration), revealDuration, colorPalette);
+      }
     }
     
     // Сохраняем кадр
@@ -492,7 +507,9 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 50px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText(winner.prizeName || 'Победитель', 0, -cardHeight/2 + 150);
+  const prizeText = winner.prizeName || 'Победитель';
+  const placeText = winner.place ? ` (${winner.place} место)` : '';
+  ctx.fillText(prizeText + placeText, 0, -cardHeight/2 + 150);
   
   // Имя победителя
   const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim() || `ID: ${winner.userId}`;
