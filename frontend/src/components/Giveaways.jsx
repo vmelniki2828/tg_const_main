@@ -1063,7 +1063,7 @@ const Giveaways = ({ botId, onClose }) => {
                                       {prize.winners.map((winner, wIndex) => (
                                         <div key={wIndex} style={{ marginTop: '5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                           <span>
-                                            {placeStart + wIndex} место: {winner.firstName || ''} {winner.lastName || ''}
+                                            {prize.placeStart + wIndex} место: {winner.firstName || ''} {winner.lastName || ''}
                                             {winner.username && ` (@${winner.username})`}
                                             {winner.project && ` - ${winner.project}`}
                                           </span>
@@ -1444,7 +1444,7 @@ const Giveaways = ({ botId, onClose }) => {
                                   <div style={{ marginTop: '10px' }}>
                                     {prize.winners.map((winner, wIndex) => (
                                       <div key={wIndex} style={{ marginTop: '5px', paddingLeft: '15px' }}>
-                                        {placeStart + wIndex} место: ID: {winner.userId}
+                                        {prize.placeStart + wIndex} место: ID: {winner.userId}
                                         {winner.firstName || winner.lastName ? (
                                           <span> | {winner.firstName || ''} {winner.lastName || ''}</span>
                                         ) : null}
