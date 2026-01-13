@@ -376,8 +376,17 @@ const Giveaways = ({ botId, onClose }) => {
           prize.winner = participant;
           prize.winners = [];
         } else {
-          // Диапазон - не обрабатываем вручную, будет автоматически при публикации
-          return prize;
+          // Диапазон - добавляем победителя в массив
+          if (!prize.winners) {
+            prize.winners = [];
+          }
+          if (participant) {
+            // Проверяем, не выбран ли уже этот участник
+            const isAlreadySelected = prize.winners.some(w => w.userId === participant.userId);
+            if (!isAlreadySelected) {
+              prize.winners = [...prize.winners, participant];
+            }
+          }
         }
         return prize;
       }
@@ -1044,26 +1053,168 @@ const Giveaways = ({ botId, onClose }) => {
                                 </button>
                               </div>
                             ) : (
-                              // Для диапазона - показываем количество выбранных победителей
+                              // Для диапазона - возможность выбора победителей
                               <div>
                                 <label>Победители ({placesCount} мест):</label>
-                                {prize.winners && prize.winners.length > 0 ? (
+                                {prize.winners && prize.winners.length > 0 && (
                                   <div style={{ marginTop: '10px', padding: '10px', background: '#e8f5e9', borderRadius: '6px' }}>
                                     <strong>Выбрано: {prize.winners.length} из {placesCount}</strong>
                                     <div style={{ marginTop: '5px', fontSize: '12px' }}>
                                       {prize.winners.map((winner, wIndex) => (
-                                        <div key={wIndex} style={{ marginTop: '5px' }}>
-                                          {winner.firstName || ''} {winner.lastName || ''}
-                                          {winner.username && ` (@${winner.username})`}
-                                          {winner.project && ` - ${winner.project}`}
+                                        <div key={wIndex} style={{ marginTop: '5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                          <span>
+                                            {placeStart + wIndex} место: {winner.firstName || ''} {winner.lastName || ''}
+                                            {winner.username && ` (@${winner.username})`}
+                                            {winner.project && ` - ${winner.project}`}
+                                          </span>
+                                          <button
+                                            onClick={() => {
+                                              const updatedPrizes = giveawayData.prizes.map((p, i) => {
+                                                if (i === index) {
+                                                  return {
+                                                    ...p,
+                                                    winners: p.winners.filter((_, idx) => idx !== wIndex)
+                                                  };
+                                                }
+                                                return p;
+                                              });
+                                              setGiveawayData({ ...giveawayData, prizes: updatedPrizes });
+                                              // Автосохранение
+                                              if (selectedGiveaway && selectedGiveaway._id) {
+                                                fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`, {
+                                                  method: 'PUT',
+                                                  headers: { 'Content-Type': 'application/json' },
+                                                  body: JSON.stringify({ ...giveawayData, prizes: updatedPrizes })
+                                                }).then(r => r.json()).then(d => {
+                                                  if (d.giveaway) handleSelectGiveaway(d.giveaway);
+                                                });
+                                              }
+                                            }}
+                                            style={{ padding: '2px 8px', fontSize: '11px', marginLeft: '10px' }}
+                                            className="cancel-btn"
+                                          >
+                                            ✕
+                                          </button>
                                         </div>
                                       ))}
                                     </div>
                                   </div>
-                                ) : (
-                                  <div style={{ marginTop: '10px', padding: '10px', background: '#fff3cd', borderRadius: '6px' }}>
-                                    Победители будут выбраны автоматически при публикации
+                                )}
+                                {(!prize.winners || prize.winners.length < placesCount) && (
+                                  <div style={{ marginTop: '10px' }}>
+                                    <select
+                                      value=""
+                                      onChange={(e) => {
+                                        const userId = e.target.value;
+                                        if (!userId) return;
+                                        const participant = selectedGiveaway.participants.find(
+                                          p => String(p.userId) === userId
+                                        );
+                                        if (participant) {
+                                          handleSelectWinner(index, participant);
+                                        }
+                                        e.target.value = '';
+                                      }}
+                                      className="form-select"
+                                      style={{ marginTop: '5px' }}
+                                    >
+                                      <option value="">Добавить победителя...</option>
+                                      {selectedGiveaway.participants.map((participant) => {
+                                        // Проверяем, не выбран ли уже этот участник
+                                        const isAlreadyWinner = giveawayData.prizes.some((p, i) => {
+                                          if (i === index) {
+                                            return p.winners && p.winners.some(w => w.userId === participant.userId);
+                                          }
+                                          if (p.placeStart === p.placeEnd && p.winner && p.winner.userId === participant.userId) return true;
+                                          if (p.placeStart !== p.placeEnd && p.winners && p.winners.some(w => w.userId === participant.userId)) return true;
+                                          return false;
+                                        });
+                                        return (
+                                          <option
+                                            key={participant.userId}
+                                            value={participant.userId}
+                                            disabled={isAlreadyWinner}
+                                          >
+                                            {participant.firstName || ''} {participant.lastName || ''} 
+                                            (@{participant.username || participant.userId})
+                                            {participant.project && ` - ${participant.project}`}
+                                            {isAlreadyWinner && ' (уже выбран)'}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
                                   </div>
+                                )}
+                                {prize.winners && prize.winners.length < placesCount && (
+                                  <button
+                                    onClick={async () => {
+                                      // Автоматически выбираем недостающих победителей для диапазона
+                                      const needed = placesCount - (prize.winners?.length || 0);
+                                      if (needed > 0 && selectedGiveaway && selectedGiveaway.participants) {
+                                        // Получаем доступных участников
+                                        const availableParticipants = selectedGiveaway.participants.filter(p => {
+                                          const isAlreadyWinner = giveawayData.prizes.some((prizeItem, i) => {
+                                            if (i === index) {
+                                              return prizeItem.winners && prizeItem.winners.some(w => w.userId === p.userId);
+                                            }
+                                            if (prizeItem.placeStart === prizeItem.placeEnd && prizeItem.winner && prizeItem.winner.userId === p.userId) return true;
+                                            if (prizeItem.placeStart !== prizeItem.placeEnd && prizeItem.winners && prizeItem.winners.some(w => w.userId === p.userId)) return true;
+                                            return false;
+                                          });
+                                          return !isAlreadyWinner;
+                                        });
+                                        
+                                        if (availableParticipants.length >= needed) {
+                                          // Выбираем случайных с учетом веса
+                                          const totalWeight = availableParticipants.reduce((sum, p) => sum + (p.weight || 1), 0);
+                                          const selected = [];
+                                          const available = [...availableParticipants];
+                                          
+                                          for (let i = 0; i < needed && available.length > 0; i++) {
+                                            let random = Math.random() * totalWeight;
+                                            let currentWeight = 0;
+                                            for (let j = 0; j < available.length; j++) {
+                                              currentWeight += available[j].weight || 1;
+                                              if (random <= currentWeight) {
+                                                selected.push(available[j]);
+                                                available.splice(j, 1);
+                                                break;
+                                              }
+                                            }
+                                          }
+                                          
+                                          const updatedPrizes = giveawayData.prizes.map((p, i) => {
+                                            if (i === index) {
+                                              return {
+                                                ...p,
+                                                winners: [...(p.winners || []), ...selected]
+                                              };
+                                            }
+                                            return p;
+                                          });
+                                          
+                                          setGiveawayData({ ...giveawayData, prizes: updatedPrizes });
+                                          
+                                          // Автосохранение
+                                          if (selectedGiveaway && selectedGiveaway._id) {
+                                            const response = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`, {
+                                              method: 'PUT',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ ...giveawayData, prizes: updatedPrizes })
+                                            });
+                                            if (response.ok) {
+                                              const data = await response.json();
+                                              if (data.giveaway) handleSelectGiveaway(data.giveaway);
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }}
+                                    className="random-winner-btn"
+                                    style={{ marginTop: '10px' }}
+                                  >
+                                    🎲 Выбрать оставшихся случайно
+                                  </button>
                                 )}
                               </div>
                             )}

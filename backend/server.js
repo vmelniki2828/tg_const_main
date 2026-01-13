@@ -5924,7 +5924,7 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
         let winnerIndex = 0;
         
         // Обновляем только призы без победителей
-        giveaway.prizes = giveaway.prizes.map((prize, index) => {
+        const updatedPrizesForPublish = giveaway.prizes.map((prize, index) => {
           const needWinners = prizesNeedingWinners.find(p => p.index === index);
           if (!needWinners) {
             return prize;
@@ -5963,6 +5963,8 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
           return prize;
         });
         
+        // Присваиваем обновленный массив призов
+        giveaway.prizes = updatedPrizesForPublish;
         await giveaway.save();
         console.log('✅ [GIVEAWAY] Победители выбраны автоматически');
       }
