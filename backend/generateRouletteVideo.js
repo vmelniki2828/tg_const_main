@@ -13,6 +13,28 @@ const ffmpeg = require('fluent-ffmpeg');
  * @returns {Promise<String>} Путь к созданному видео файлу
  */
 async function generateRouletteVideo(winners, outputPath, allParticipants = null, colorPalette = {}, backgroundImagePath = null) {
+  // Конвертируем winners в плоский список для видео (если пришли призы с диапазонами)
+  const flatWinners = [];
+  winners.forEach(winner => {
+    // Если это приз с диапазоном и массивом winners
+    if (winner.placeFrom && winner.placeTo && winner.winners) {
+      winner.winners.forEach((w, index) => {
+        flatWinners.push({
+          ...w,
+          prizeName: winner.prizeName || winner.name,
+          place: winner.placeFrom + index,
+          placeFrom: winner.placeFrom,
+          placeTo: winner.placeTo
+        });
+      });
+    } else {
+      // Старая структура или уже плоская
+      flatWinners.push(winner);
+    }
+  });
+  
+  // Используем плоский список для генерации видео
+  const winnersToUse = flatWinners.length > 0 ? flatWinners : winners;
   const width = 1080;
   const height = 1920; // Вертикальное видео для Telegram
   const fps = 30;
@@ -22,7 +44,7 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
   const spinDuration = 3.5; // Длительность прокрутки рулетки для каждого победителя (секунды)
   const pauseDuration = 1.5; // Пауза после прокрутки, чтобы увидеть выпавший ID (секунды)
   const revealDuration = 2.5; // Длительность показа каждого победителя (секунды)
-  const totalFrames = Math.ceil((spinDuration + pauseDuration + revealDuration) * winners.length * fps);
+  const totalFrames = Math.ceil((spinDuration + pauseDuration + revealDuration) * winnersToUse.length * fps);
   
   // Создаем директорию для временных кадров
   const framesDir = path.join(path.dirname(outputPath), 'roulette_frames');
@@ -98,8 +120,8 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     const currentSegment = Math.floor(time / segmentDuration);
     const localTime = time % segmentDuration;
     
-    if (currentSegment < winners.length) {
-      const currentWinner = winners[currentSegment];
+    if (currentSegment < winnersToUse.length) {
+      const currentWinner = winnersToUse[currentSegment];
       
       // Логируем для отладки
       if (frameIndex % 30 === 0) { // Каждую секунду
@@ -108,10 +130,10 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
       
       if (localTime < spinDuration) {
         // Фаза горизонтальной прокрутки рулетки для текущего победителя
-        drawHorizontalRoulette(ctx, width, height, localTime, spinDuration, allParticipants || winners, currentWinner, colorPalette);
+        drawHorizontalRoulette(ctx, width, height, localTime, spinDuration, allParticipants || winnersToUse, currentWinner, colorPalette);
       } else if (localTime < spinDuration + pauseDuration) {
         // Фаза паузы - показываем рулетку с выделенным победителем
-        drawHorizontalRoulette(ctx, width, height, spinDuration, spinDuration, allParticipants || winners, currentWinner, colorPalette, true);
+        drawHorizontalRoulette(ctx, width, height, spinDuration, spinDuration, allParticipants || winnersToUse, currentWinner, colorPalette, true);
       } else {
         // Фаза показа победителя
         const revealTime = localTime - spinDuration - pauseDuration;
@@ -119,8 +141,8 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
       }
     } else {
       // Показываем последнего победителя в конце
-      const lastWinner = winners[winners.length - 1];
-      drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (time - (winners.length - 1) * segmentDuration) / revealDuration), revealDuration, colorPalette);
+      const lastWinner = winnersToUse[winnersToUse.length - 1];
+      drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (time - (winnersToUse.length - 1) * segmentDuration) / revealDuration), revealDuration, colorPalette);
     }
     
     // Сохраняем кадр

@@ -5409,16 +5409,37 @@ app.post('/api/giveaways/:botId', async (req, res) => {
     const { botId } = req.params;
     const { name, prizePlaces, prizes, description, selectedChannels, colorPalette } = req.body;
     
-    // Создаем массив призов если его нет
-    const prizesArray = prizes || [];
-    for (let i = 1; i <= (prizePlaces || 1); i++) {
-      if (!prizesArray.find(p => p.place === i)) {
-        prizesArray.push({
-          place: i,
-          name: `Приз ${i}`,
-          winner: null
-        });
+    // Создаем массив призов если его нет (новая структура с диапазонами)
+    let prizesArray = prizes || [];
+    
+    // Конвертируем старую структуру в новую (для обратной совместимости)
+    prizesArray = prizesArray.map(prize => {
+      if (prize.place && !prize.placeFrom) {
+        // Старая структура
+        return {
+          placeFrom: prize.place,
+          placeTo: prize.place,
+          name: prize.name || `Приз ${prize.place}`,
+          winners: prize.winner ? [prize.winner] : []
+        };
       }
+      // Новая структура
+      return {
+        placeFrom: prize.placeFrom || 1,
+        placeTo: prize.placeTo || 1,
+        name: prize.name || 'Приз',
+        winners: prize.winners || []
+      };
+    });
+    
+    // Если призов нет, создаем один по умолчанию
+    if (prizesArray.length === 0) {
+      prizesArray.push({
+        placeFrom: 1,
+        placeTo: 1,
+        name: 'Приз 1',
+        winners: []
+      });
     }
     
     const giveaway = new Giveaway({
@@ -5491,35 +5512,48 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
       
       updateData.prizes = filteredPrizes;
     } else if (prizes !== undefined) {
-      // Убеждаемся, что данные победителя сохраняются полностью
+      // Убеждаемся, что данные победителей сохраняются полностью (новая структура)
       const normalizedPrizes = prizes.map(prize => {
-        const normalizedPrize = {
-          place: prize.place,
-          name: prize.name
-        };
-        
-        // Обрабатываем победителя
-        if (prize.winner && (prize.winner.userId || prize.winner.username)) {
-          // Если есть userId, пытаемся получить полные данные из базы
-          if (prize.winner.userId) {
-            User.findOne({ botId, userId: prize.winner.userId }).lean().then(user => {
-              if (user) {
-                console.log(`✅ [GIVEAWAY] Найден пользователь ${prize.winner.userId} в БД при сохранении`);
-              }
-            }).catch(err => {
-              console.error(`❌ [GIVEAWAY] Ошибка поиска пользователя при сохранении:`, err);
-            });
-          }
-          
-          normalizedPrize.winner = {
-            userId: prize.winner.userId || null,
-            username: (prize.winner.username || '').trim() || '',
-            firstName: (prize.winner.firstName || '').trim() || '',
-            lastName: (prize.winner.lastName || '').trim() || '',
-            project: (prize.winner.project || '').trim() || ''
+        // Конвертируем старую структуру в новую
+        let normalizedPrize;
+        if (prize.place && !prize.placeFrom) {
+          // Старая структура
+          normalizedPrize = {
+            placeFrom: prize.place,
+            placeTo: prize.place,
+            name: prize.name || `Приз ${prize.place}`,
+            winners: []
           };
+          if (prize.winner && (prize.winner.userId || prize.winner.username)) {
+            normalizedPrize.winners = [{
+              userId: prize.winner.userId || null,
+              username: (prize.winner.username || '').trim() || '',
+              firstName: (prize.winner.firstName || '').trim() || '',
+              lastName: (prize.winner.lastName || '').trim() || '',
+              project: (prize.winner.project || '').trim() || ''
+            }];
+          }
         } else {
-          normalizedPrize.winner = null;
+          // Новая структура
+          normalizedPrize = {
+            placeFrom: prize.placeFrom || 1,
+            placeTo: prize.placeTo || 1,
+            name: prize.name || 'Приз',
+            winners: []
+          };
+          
+          // Обрабатываем массив победителей
+          if (prize.winners && Array.isArray(prize.winners)) {
+            normalizedPrize.winners = prize.winners
+              .filter(w => w && (w.userId || w.username))
+              .map(winner => ({
+                userId: winner.userId || null,
+                username: (winner.username || '').trim() || '',
+                firstName: (winner.firstName || '').trim() || '',
+                lastName: (winner.lastName || '').trim() || '',
+                project: (winner.project || '').trim() || ''
+              }));
+          }
         }
         
         return normalizedPrize;
@@ -5721,51 +5755,82 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
       return res.status(400).json({ error: 'No participants loaded' });
     }
     
-    // Определяем, для каких призов нужно выбрать победителей
-    const prizesNeedingWinners = giveaway.prizes.filter(prize => !prize.winner);
-    const numberOfWinnersNeeded = prizesNeedingWinners.length;
+    // Определяем, для каких призов нужно выбрать победителей (новая структура с диапазонами)
+    const prizesNeedingWinners = giveaway.prizes.map(prize => {
+      // Конвертируем старую структуру в новую для обработки
+      let placeFrom = prize.placeFrom || prize.place || 1;
+      let placeTo = prize.placeTo || prize.place || 1;
+      const placesCount = placeTo - placeFrom + 1;
+      const currentWinners = prize.winners || (prize.winner ? [prize.winner] : []);
+      const needed = placesCount - currentWinners.length;
+      
+      return {
+        prize,
+        placeFrom,
+        placeTo,
+        placesCount,
+        currentWinners,
+        needed: Math.max(0, needed)
+      };
+    }).filter(p => p.needed > 0);
     
-    if (numberOfWinnersNeeded === 0) {
+    const totalWinnersNeeded = prizesNeedingWinners.reduce((sum, p) => sum + p.needed, 0);
+    
+    if (totalWinnersNeeded === 0) {
       // Все победители уже выбраны
       return res.json({ success: true, prizes: giveaway.prizes });
     }
     
     // Получаем уже выбранных победителей, чтобы исключить их из выборки
-    const alreadySelectedUserIds = giveaway.prizes
-      .filter(p => p.winner && p.winner.userId)
-      .map(p => String(p.winner.userId));
+    const alreadySelectedUserIds = new Set();
+    giveaway.prizes.forEach(prize => {
+      if (prize.winners && Array.isArray(prize.winners)) {
+        prize.winners.forEach(w => {
+          if (w && w.userId) alreadySelectedUserIds.add(String(w.userId));
+        });
+      } else if (prize.winner && prize.winner.userId) {
+        alreadySelectedUserIds.add(String(prize.winner.userId));
+      }
+    });
     
     // Фильтруем участников, исключая уже выбранных
     const availableParticipants = giveaway.participants.filter(
-      p => !alreadySelectedUserIds.includes(String(p.userId))
+      p => !alreadySelectedUserIds.has(String(p.userId))
     );
     
-    if (availableParticipants.length < numberOfWinnersNeeded) {
+    if (availableParticipants.length < totalWinnersNeeded) {
       return res.status(400).json({ 
-        error: `Недостаточно доступных участников. Нужно: ${numberOfWinnersNeeded}, доступно: ${availableParticipants.length}` 
+        error: `Недостаточно доступных участников. Нужно: ${totalWinnersNeeded}, доступно: ${availableParticipants.length}` 
       });
     }
     
-    // Выбираем случайных победителей с учетом весов только из доступных участников
-    const winners = weightedRandomSelect(availableParticipants, numberOfWinnersNeeded);
-    
-    // Обновляем только призы без победителей
-    let winnerIndex = 0;
+    // Обновляем призы, выбирая победителей для каждого
+    let availablePool = [...availableParticipants];
     const updatedPrizes = giveaway.prizes.map((prize) => {
-      // Если победитель уже выбран, оставляем его
-      if (prize.winner) {
-        return prize;
+      // Конвертируем старую структуру
+      let placeFrom = prize.placeFrom || prize.place || 1;
+      let placeTo = prize.placeTo || prize.place || 1;
+      const placesCount = placeTo - placeFrom + 1;
+      let currentWinners = prize.winners || (prize.winner ? [prize.winner] : []);
+      const needed = Math.max(0, placesCount - currentWinners.length);
+      
+      // Если нужно выбрать победителей
+      if (needed > 0 && availablePool.length >= needed) {
+        const selected = weightedRandomSelect(availablePool, needed);
+        currentWinners = [...currentWinners, ...selected];
+        // Убираем выбранных из доступного пула
+        selected.forEach(winner => {
+          availablePool = availablePool.filter(p => p.userId !== winner.userId);
+        });
       }
-      // Иначе назначаем случайного победителя
-      if (winnerIndex < winners.length) {
-        const updatedPrize = {
-          ...prize,
-          winner: winners[winnerIndex]
-        };
-        winnerIndex++;
-        return updatedPrize;
-      }
-      return prize;
+      
+      // Возвращаем приз в новой структуре
+      return {
+        placeFrom,
+        placeTo,
+        name: prize.name || 'Приз',
+        winners: currentWinners
+      };
     });
     
     giveaway.prizes = updatedPrizes;
@@ -5800,41 +5865,74 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       prizesCount: giveaway.prizes?.length
     }, null, 2));
     
-    // Проверяем, есть ли невыбранные победители, и выбираем их автоматически
-    const prizesNeedingWinners = giveaway.prizes.filter(prize => !prize.winner);
+    // Проверяем, есть ли невыбранные победители, и выбираем их автоматически (новая структура)
+    const prizesNeedingWinners = giveaway.prizes.map(prize => {
+      // Конвертируем старую структуру в новую для обработки
+      let placeFrom = prize.placeFrom || prize.place || 1;
+      let placeTo = prize.placeTo || prize.place || 1;
+      const placesCount = placeTo - placeFrom + 1;
+      const currentWinners = prize.winners || (prize.winner ? [prize.winner] : []);
+      const needed = Math.max(0, placesCount - currentWinners.length);
+      
+      return {
+        prize,
+        placeFrom,
+        placeTo,
+        placesCount,
+        currentWinners,
+        needed
+      };
+    }).filter(p => p.needed > 0);
     
-    if (prizesNeedingWinners.length > 0 && giveaway.participants && giveaway.participants.length > 0) {
+    const totalWinnersNeeded = prizesNeedingWinners.reduce((sum, p) => sum + p.needed, 0);
+    
+    if (totalWinnersNeeded > 0 && giveaway.participants && giveaway.participants.length > 0) {
       console.log('🎲 [GIVEAWAY] Автоматически выбираем победителей для невыбранных призов...');
       
       // Получаем уже выбранных победителей
-      const alreadySelectedUserIds = giveaway.prizes
-        .filter(p => p.winner && p.winner.userId)
-        .map(p => String(p.winner.userId));
+      const alreadySelectedUserIds = new Set();
+      giveaway.prizes.forEach(prize => {
+        if (prize.winners && Array.isArray(prize.winners)) {
+          prize.winners.forEach(w => {
+            if (w && w.userId) alreadySelectedUserIds.add(String(w.userId));
+          });
+        } else if (prize.winner && prize.winner.userId) {
+          alreadySelectedUserIds.add(String(prize.winner.userId));
+        }
+      });
       
       // Фильтруем участников, исключая уже выбранных
       const availableParticipants = giveaway.participants.filter(
-        p => !alreadySelectedUserIds.includes(String(p.userId))
+        p => !alreadySelectedUserIds.has(String(p.userId))
       );
       
-      if (availableParticipants.length >= prizesNeedingWinners.length) {
-        // Выбираем случайных победителей с учетом весов
-        const winners = weightedRandomSelect(availableParticipants, prizesNeedingWinners.length);
-        
-        // Обновляем только призы без победителей
-        let winnerIndex = 0;
+      if (availableParticipants.length >= totalWinnersNeeded) {
+        // Обновляем призы, выбирая победителей для каждого
+        let availablePool = [...availableParticipants];
         giveaway.prizes = giveaway.prizes.map((prize) => {
-          if (prize.winner) {
-            return prize;
+          let placeFrom = prize.placeFrom || prize.place || 1;
+          let placeTo = prize.placeTo || prize.place || 1;
+          const placesCount = placeTo - placeFrom + 1;
+          let currentWinners = prize.winners || (prize.winner ? [prize.winner] : []);
+          const needed = Math.max(0, placesCount - currentWinners.length);
+          
+          // Если нужно выбрать победителей
+          if (needed > 0 && availablePool.length >= needed) {
+            const selected = weightedRandomSelect(availablePool, needed);
+            currentWinners = [...currentWinners, ...selected];
+            // Убираем выбранных из доступного пула
+            selected.forEach(winner => {
+              availablePool = availablePool.filter(p => p.userId !== winner.userId);
+            });
           }
-          if (winnerIndex < winners.length) {
-            const updatedPrize = {
-              ...prize,
-              winner: winners[winnerIndex]
-            };
-            winnerIndex++;
-            return updatedPrize;
-          }
-          return prize;
+          
+          // Возвращаем приз в новой структуре
+          return {
+            placeFrom,
+            placeTo,
+            name: prize.name || 'Приз',
+            winners: currentWinners
+          };
         });
         
         await giveaway.save();
@@ -5842,14 +5940,25 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       }
     }
     
-    // Проверяем, что есть победители
-    const winnersWithPrizes = giveaway.prizes
-      .filter(p => p.winner && (p.winner.userId || p.winner.username))
-      .map(p => ({
-        ...p.winner,
-        prizeName: p.name,
-        place: p.place
-      }));
+    // Проверяем, что есть победители (новая структура с диапазонами)
+    const winnersWithPrizes = [];
+    giveaway.prizes.forEach(prize => {
+      const placeFrom = prize.placeFrom || prize.place || 1;
+      const placeTo = prize.placeTo || prize.place || 1;
+      const winners = prize.winners || (prize.winner ? [prize.winner] : []);
+      
+      winners.forEach((winner, index) => {
+        if (winner && (winner.userId || winner.username)) {
+          winnersWithPrizes.push({
+            ...winner,
+            prizeName: prize.name,
+            place: placeFrom + index, // Место в диапазоне
+            placeFrom,
+            placeTo
+          });
+        }
+      });
+    });
     
     console.log('🔍 [GIVEAWAY] Найдено победителей:', winnersWithPrizes.length);
     console.log('🔍 [GIVEAWAY] Победители:', JSON.stringify(winnersWithPrizes, null, 2));
@@ -5924,13 +6033,21 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
     
     message += '🎉 **РЕЗУЛЬТАТЫ РОЗЫГРЫША** 🎉\n\n';
     
-    // Сортируем призы по месту
-    const sortedPrizes = [...giveaway.prizes].sort((a, b) => a.place - b.place);
+    // Сортируем призы по началу диапазона (новая структура)
+    const sortedPrizes = [...giveaway.prizes].sort((a, b) => {
+      const aFrom = a.placeFrom || a.place || 1;
+      const bFrom = b.placeFrom || b.place || 1;
+      return aFrom - bFrom;
+    });
     
     // Сначала получаем данные пользователей из базы для всех победителей
-    const winnerUserIds = sortedPrizes
-      .filter(p => p.winner && p.winner.userId)
-      .map(p => p.winner.userId);
+    const winnerUserIds = [];
+    sortedPrizes.forEach(prize => {
+      const winners = prize.winners || (prize.winner ? [prize.winner] : []);
+      winners.forEach(w => {
+        if (w && w.userId) winnerUserIds.push(w.userId);
+      });
+    });
     
     const usersFromDb = {};
     if (winnerUserIds.length > 0) {
@@ -5942,67 +6059,83 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
     }
     
     for (const prize of sortedPrizes) {
-      // Проверяем наличие победителя (может быть объект, но пустой)
-      const hasWinner = prize.winner && (
-        prize.winner.userId || 
-        prize.winner.username || 
-        (prize.winner.firstName && prize.winner.firstName.trim()) ||
-        (prize.winner.lastName && prize.winner.lastName.trim())
-      );
+      const placeFrom = prize.placeFrom || prize.place || 1;
+      const placeTo = prize.placeTo || prize.place || 1;
+      const winners = prize.winners || (prize.winner ? [prize.winner] : []);
       
-      if (hasWinner) {
-        // Логируем данные победителя для отладки
-        console.log(`🔍 [GIVEAWAY] Приз ${prize.place}:`, JSON.stringify(prize.winner, null, 2));
-        
-        message += `🏆 **${prize.name}** (${prize.place} место):\n`;
-        
-        // Формируем имя победителя
-        let firstName = (prize.winner.firstName || '').trim();
-        let lastName = (prize.winner.lastName || '').trim();
-        let username = (prize.winner.username || '').trim();
-        const userId = prize.winner.userId;
-        
-        // Если данных нет в объекте победителя, пытаемся получить из базы
-        if (userId && usersFromDb[userId]) {
-          const dbUser = usersFromDb[userId];
-          if (!firstName && dbUser.firstName) firstName = dbUser.firstName.trim();
-          if (!lastName && dbUser.lastName) lastName = dbUser.lastName.trim();
-          if (!username && dbUser.username) username = dbUser.username.trim();
-          console.log(`✅ [GIVEAWAY] Данные пользователя ${userId} дополнены из БД`);
-        }
-        
-        const fullName = `${firstName} ${lastName}`.trim();
-        
-        // Формируем отображаемое имя
-        let displayName = '';
-        if (fullName) {
-          displayName = fullName;
-        } else if (username) {
-          displayName = `@${username}`;
-        } else if (userId) {
-          displayName = `ID: ${userId}`;
-        } else {
-          displayName = 'Победитель не указан';
-        }
-        
-        message += `👤 ${displayName}`;
-        
-        // Добавляем username, если есть и не совпадает с именем
-        if (username && fullName) {
-          message += ` (@${username})`;
-        }
-        
-        // Добавляем проект
-        if (prize.winner.project) {
-          message += `\n📁 Проект: ${prize.winner.project}`;
-        }
-        
-        message += '\n\n';
+      // Формируем строку диапазона мест
+      let placeRange = '';
+      if (placeFrom === placeTo) {
+        placeRange = `${placeFrom} место`;
       } else {
-        // Если победитель не выбран, показываем приз без победителя
-        console.log(`⚠️ [GIVEAWAY] Приз ${prize.place} не имеет победителя. Данные:`, JSON.stringify(prize.winner, null, 2));
-        message += `🏆 **${prize.name}** (${prize.place} место):\n`;
-        message += `❌ Победитель не выбран\n\n`;
+        placeRange = `места ${placeFrom}-${placeTo}`;
+      }
+      
+      if (winners.length > 0) {
+        message += `🏆 **${prize.name}** (${placeRange}):\n`;
+        
+        // Выводим всех победителей для этого приза
+        winners.forEach((winner, index) => {
+          if (winner && (winner.userId || winner.username)) {
+            // Логируем данные победителя для отладки
+            console.log(`🔍 [GIVEAWAY] Приз ${placeRange}, победитель ${index + 1}:`, JSON.stringify(winner, null, 2));
+            
+            // Формируем имя победителя
+            let firstName = (winner.firstName || '').trim();
+            let lastName = (winner.lastName || '').trim();
+            let username = (winner.username || '').trim();
+            const userId = winner.userId;
+            
+            // Если данных нет в объекте победителя, пытаемся получить из базы
+            if (userId && usersFromDb[userId]) {
+              const dbUser = usersFromDb[userId];
+              if (!firstName && dbUser.firstName) firstName = dbUser.firstName.trim();
+              if (!lastName && dbUser.lastName) lastName = dbUser.lastName.trim();
+              if (!username && dbUser.username) username = dbUser.username.trim();
+              console.log(`✅ [GIVEAWAY] Данные пользователя ${userId} дополнены из БД`);
+            }
+            
+            const fullName = `${firstName} ${lastName}`.trim();
+            
+            // Формируем отображаемое имя
+            let displayName = '';
+            if (fullName) {
+              displayName = fullName;
+            } else if (username) {
+              displayName = `@${username}`;
+            } else if (userId) {
+              displayName = `ID: ${userId}`;
+            } else {
+              displayName = 'Победитель не указан';
+            }
+            
+            message += `👤 ${displayName}`;
+            
+            // Добавляем username, если есть и не совпадает с именем
+            if (username && fullName) {
+              message += ` (@${username})`;
+            }
+            
+            // Добавляем ID
+            if (userId) {
+              message += `\n   ID: ${userId}`;
+            }
+            
+            // Добавляем проект
+            if (winner.project) {
+              message += `\n   📁 Проект: ${winner.project}`;
+            }
+            
+            message += '\n';
+          }
+        });
+        
+        message += '\n';
+      } else {
+        // Если победители не выбраны
+        console.log(`⚠️ [GIVEAWAY] Приз ${placeRange} не имеет победителей`);
+        message += `🏆 **${prize.name}** (${placeRange}):\n`;
+        message += `❌ Победители не выбраны\n\n`;
       }
     }
     
