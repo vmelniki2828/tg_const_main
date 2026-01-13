@@ -229,10 +229,22 @@ const Giveaways = ({ botId, onClose }) => {
         alert('✅ Фоновое изображение успешно загружено!');
         setBackgroundImageFile(null);
         document.getElementById('background-image-input').value = '';
-        fetchGiveaways();
-        if (data.giveaway) {
-          handleSelectGiveaway(data.giveaway);
+        
+        // Получаем полные данные розыгрыша из БД, чтобы сохранить участников
+        const fullGiveawayResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`);
+        if (fullGiveawayResponse.ok) {
+          const fullData = await fullGiveawayResponse.json();
+          if (fullData.giveaway) {
+            handleSelectGiveaway(fullData.giveaway);
+          }
+        } else {
+          // Fallback на данные из ответа загрузки
+          if (data.giveaway) {
+            handleSelectGiveaway(data.giveaway);
+          }
         }
+        
+        fetchGiveaways();
       } else {
         setError(data.error || 'Ошибка загрузки изображения');
       }
@@ -630,8 +642,21 @@ const Giveaways = ({ botId, onClose }) => {
 
       // Проверяем, есть ли невыбранные победители
       const currentPrizes = currentGiveaway?.prizes || giveawayData.prizes;
-      const hasUnselectedWinners = currentPrizes.some(prize => !prize.winner);
-      const hasParticipants = currentGiveaway?.participants && currentGiveaway.participants.length > 0;
+      // Проверяем победителей для диапазонов тоже
+      const hasUnselectedWinners = currentPrizes.some(prize => {
+        const placeStart = prize.placeStart || (prize.place || 1);
+        const placeEnd = prize.placeEnd || placeStart;
+        if (placeStart === placeEnd) {
+          return !prize.winner || !prize.winner.userId;
+        } else {
+          const placesCount = placeEnd - placeStart + 1;
+          const currentWinners = prize.winners || [];
+          return currentWinners.length < placesCount;
+        }
+      });
+      // Проверяем участников из разных источников
+      const hasParticipants = (currentGiveaway?.participants && currentGiveaway.participants.length > 0) ||
+                              (selectedGiveaway?.participants && selectedGiveaway.participants.length > 0);
       
       // Если есть невыбранные победители и есть участники, выбираем их автоматически
       if (hasUnselectedWinners && hasParticipants) {
@@ -646,7 +671,7 @@ const Giveaways = ({ botId, onClose }) => {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                prizePlaces: giveawayData.prizePlaces
+                prizes: currentPrizes
               })
             }
           );

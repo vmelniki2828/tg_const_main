@@ -5644,13 +5644,19 @@ app.post('/api/giveaways/:botId/:giveawayId/upload-background', giveawayImageUpl
     
     // Сохраняем относительный путь к изображению
     const relativePath = path.relative(__dirname, req.file.path);
-    giveaway.backgroundImage = relativePath;
-    await giveaway.save();
+    // Используем updateOne для сохранения только backgroundImage, чтобы не потерять другие данные
+    await Giveaway.updateOne(
+      { _id: giveawayId, botId },
+      { $set: { backgroundImage: relativePath, updatedAt: new Date() } }
+    );
+    
+    // Получаем обновленный розыгрыш для ответа
+    const updatedGiveaway = await Giveaway.findOne({ _id: giveawayId, botId });
     
     res.json({ 
       success: true, 
       backgroundImage: relativePath,
-      giveaway 
+      giveaway: updatedGiveaway
     });
   } catch (error) {
     console.error('❌ Ошибка при загрузке фонового изображения:', error);
@@ -5846,6 +5852,11 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
     
     if (!selectedChannels || selectedChannels.length === 0) {
       return res.status(400).json({ error: 'No channels selected' });
+    }
+    
+    // Проверяем наличие участников
+    if (!giveaway.participants || giveaway.participants.length === 0) {
+      return res.status(400).json({ error: 'Необходимо загрузить участников перед публикацией' });
     }
     
     // Логируем данные розыгрыша для отладки
