@@ -5407,45 +5407,38 @@ app.get('/api/giveaways/:botId', async (req, res) => {
 app.post('/api/giveaways/:botId', async (req, res) => {
   try {
     const { botId } = req.params;
-    const { name, prizePlaces, prizes, description, selectedChannels, colorPalette } = req.body;
+    const { name, prizes, description, selectedChannels, colorPalette } = req.body;
     
-    // Создаем массив призов если его нет (новая структура с диапазонами)
+    // Конвертируем старый формат (place) в новый (placeStart/placeEnd) для обратной совместимости
     let prizesArray = prizes || [];
-    
-    // Конвертируем старую структуру в новую (для обратной совместимости)
-    prizesArray = prizesArray.map(prize => {
-      if (prize.place && !prize.placeFrom) {
-        // Старая структура
-        return {
-          placeFrom: prize.place,
-          placeTo: prize.place,
-          name: prize.name || `Приз ${prize.place}`,
-          winners: prize.winner ? [prize.winner] : []
-        };
-      }
-      // Новая структура
-      return {
-        placeFrom: prize.placeFrom || 1,
-        placeTo: prize.placeTo || 1,
-        name: prize.name || 'Приз',
-        winners: prize.winners || []
-      };
-    });
-    
-    // Если призов нет, создаем один по умолчанию
     if (prizesArray.length === 0) {
-      prizesArray.push({
-        placeFrom: 1,
-        placeTo: 1,
-        name: 'Приз 1',
-        winners: []
+      prizesArray = [{ placeStart: 1, placeEnd: 1, name: 'Приз 1', winner: null, winners: [] }];
+    } else {
+      prizesArray = prizesArray.map(prize => {
+        if (prize.place !== undefined) {
+          // Старый формат - конвертируем
+          return {
+            placeStart: prize.place,
+            placeEnd: prize.place,
+            name: prize.name || `Приз ${prize.place}`,
+            winner: prize.winner || null,
+            winners: []
+          };
+        }
+        // Новый формат - нормализуем
+        return {
+          placeStart: prize.placeStart || 1,
+          placeEnd: prize.placeEnd || prize.placeStart || 1,
+          name: prize.name || 'Приз',
+          winner: prize.winner || null,
+          winners: prize.winners || []
+        };
       });
     }
     
     const giveaway = new Giveaway({
       botId,
       name: name || 'Розыгрыш',
-      prizePlaces: prizePlaces || 1,
       prizes: prizesArray,
       description: description || '',
       selectedChannels: selectedChannels || [],
@@ -5471,7 +5464,7 @@ app.post('/api/giveaways/:botId', async (req, res) => {
 app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
   try {
     const { botId, giveawayId } = req.params;
-    const { name, prizePlaces, prizes, description, selectedChannels, colorPalette } = req.body;
+    const { name, prizes, description, selectedChannels, colorPalette } = req.body;
     
     const giveaway = await Giveaway.findOne({ _id: giveawayId, botId });
     if (!giveaway) {
@@ -5487,80 +5480,45 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
     if (selectedChannels !== undefined) updateData.selectedChannels = selectedChannels;
     if (colorPalette !== undefined) updateData.colorPalette = colorPalette;
     
-    // Обновляем призы и количество призовых мест
-    if (prizePlaces !== undefined) {
-      updateData.prizePlaces = Math.min(Math.max(1, prizePlaces), 5); // Ограничиваем 1-5
-      
-      // Обновляем массив призов
-      const newPrizes = prizes || [];
-      const currentPlaces = updateData.prizePlaces;
-      
-      // Удаляем лишние призы, если количество уменьшилось
-      const filteredPrizes = newPrizes.filter(p => p.place <= currentPlaces);
-      
-      // Добавляем недостающие призы
-      for (let i = 1; i <= currentPlaces; i++) {
-        if (!filteredPrizes.find(p => p.place === i)) {
-          const existingPrize = giveaway.prizes.find(p => p.place === i);
-          filteredPrizes.push({
-            place: i,
-            name: existingPrize?.name || `Приз ${i}`,
-            winner: existingPrize?.winner || null
-          });
-        }
-      }
-      
-      updateData.prizes = filteredPrizes;
-    } else if (prizes !== undefined) {
-      // Убеждаемся, что данные победителей сохраняются полностью (новая структура)
-      const normalizedPrizes = prizes.map(prize => {
-        // Конвертируем старую структуру в новую
-        let normalizedPrize;
-        if (prize.place && !prize.placeFrom) {
-          // Старая структура
-          normalizedPrize = {
-            placeFrom: prize.place,
-            placeTo: prize.place,
-            name: prize.name || `Приз ${prize.place}`,
-            winners: []
-          };
-          if (prize.winner && (prize.winner.userId || prize.winner.username)) {
-            normalizedPrize.winners = [{
-              userId: prize.winner.userId || null,
-              username: (prize.winner.username || '').trim() || '',
-              firstName: (prize.winner.firstName || '').trim() || '',
-              lastName: (prize.winner.lastName || '').trim() || '',
-              project: (prize.winner.project || '').trim() || ''
-            }];
-          }
+    // Обновляем призы
+    if (prizes !== undefined) {
+      // Конвертируем и нормализуем данные призов
+      updateData.prizes = prizes.map(prize => {
+        // Конвертируем старый формат
+        const placeStart = prize.placeStart !== undefined ? prize.placeStart : (prize.place || 1);
+        const placeEnd = prize.placeEnd !== undefined ? prize.placeEnd : (prize.place || 1);
+        
+        const normalizedPrize = {
+          placeStart,
+          placeEnd,
+          name: prize.name || 'Приз',
+          winner: null,
+          winners: []
+        };
+        
+        // Нормализуем данные победителей
+        if (placeStart === placeEnd) {
+          // Одно место - один победитель
+          normalizedPrize.winner = prize.winner && prize.winner.userId ? {
+            userId: Number(prize.winner.userId),
+            username: String(prize.winner.username || ''),
+            firstName: String(prize.winner.firstName || ''),
+            lastName: String(prize.winner.lastName || ''),
+            project: String(prize.winner.project || '')
+          } : null;
         } else {
-          // Новая структура
-          normalizedPrize = {
-            placeFrom: prize.placeFrom || 1,
-            placeTo: prize.placeTo || 1,
-            name: prize.name || 'Приз',
-            winners: []
-          };
-          
-          // Обрабатываем массив победителей
-          if (prize.winners && Array.isArray(prize.winners)) {
-            normalizedPrize.winners = prize.winners
-              .filter(w => w && (w.userId || w.username))
-              .map(winner => ({
-                userId: winner.userId || null,
-                username: (winner.username || '').trim() || '',
-                firstName: (winner.firstName || '').trim() || '',
-                lastName: (winner.lastName || '').trim() || '',
-                project: (winner.project || '').trim() || ''
-              }));
-          }
+          // Диапазон - массив победителей
+          normalizedPrize.winners = (prize.winners || []).map(w => ({
+            userId: Number(w.userId),
+            username: String(w.username || ''),
+            firstName: String(w.firstName || ''),
+            lastName: String(w.lastName || ''),
+            project: String(w.project || '')
+          }));
         }
         
         return normalizedPrize;
       });
-      
-      updateData.prizes = normalizedPrizes;
-      console.log('💾 [GIVEAWAY] Сохранение призов:', JSON.stringify(normalizedPrizes, null, 2));
     }
     
     const updatedGiveaway = await Giveaway.findOneAndUpdate(
@@ -5744,7 +5702,7 @@ function weightedRandomSelect(items, count) {
 app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) => {
   try {
     const { botId, giveawayId } = req.params;
-    const { prizePlaces } = req.body;
+    const { prizes: requestedPrizes } = req.body;
     
     const giveaway = await Giveaway.findOne({ _id: giveawayId, botId });
     if (!giveaway) {
@@ -5755,41 +5713,55 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
       return res.status(400).json({ error: 'No participants loaded' });
     }
     
-    // Определяем, для каких призов нужно выбрать победителей (новая структура с диапазонами)
-    const prizesNeedingWinners = giveaway.prizes.map(prize => {
-      // Конвертируем старую структуру в новую для обработки
-      let placeFrom = prize.placeFrom || prize.place || 1;
-      let placeTo = prize.placeTo || prize.place || 1;
-      const placesCount = placeTo - placeFrom + 1;
-      const currentWinners = prize.winners || (prize.winner ? [prize.winner] : []);
-      const needed = placesCount - currentWinners.length;
-      
-      return {
-        prize,
-        placeFrom,
-        placeTo,
-        placesCount,
-        currentWinners,
-        needed: Math.max(0, needed)
-      };
-    }).filter(p => p.needed > 0);
+    // Используем призы из запроса или из БД
+    const prizesToProcess = requestedPrizes || giveaway.prizes;
     
-    const totalWinnersNeeded = prizesNeedingWinners.reduce((sum, p) => sum + p.needed, 0);
+    // Определяем, для каких призов нужно выбрать победителей и сколько нужно
+    let totalWinnersNeeded = 0;
+    const prizesNeedingWinners = [];
+    
+    prizesToProcess.forEach((prize, index) => {
+      const placeStart = prize.placeStart || (prize.place || 1);
+      const placeEnd = prize.placeEnd || placeStart;
+      const placesCount = placeEnd - placeStart + 1;
+      
+      if (placeStart === placeEnd) {
+        // Одно место - нужен один победитель
+        if (!prize.winner || !prize.winner.userId) {
+          prizesNeedingWinners.push({ index, prize, placesCount: 1, isRange: false });
+          totalWinnersNeeded += 1;
+        }
+      } else {
+        // Диапазон - нужно несколько победителей
+        const currentWinners = prize.winners || [];
+        const needed = placesCount - currentWinners.length;
+        if (needed > 0) {
+          prizesNeedingWinners.push({ index, prize, placesCount: needed, isRange: true, currentWinners });
+          totalWinnersNeeded += needed;
+        }
+      }
+    });
     
     if (totalWinnersNeeded === 0) {
       // Все победители уже выбраны
-      return res.json({ success: true, prizes: giveaway.prizes });
+      return res.json({ success: true, prizes: prizesToProcess });
     }
     
     // Получаем уже выбранных победителей, чтобы исключить их из выборки
     const alreadySelectedUserIds = new Set();
-    giveaway.prizes.forEach(prize => {
-      if (prize.winners && Array.isArray(prize.winners)) {
-        prize.winners.forEach(w => {
-          if (w && w.userId) alreadySelectedUserIds.add(String(w.userId));
-        });
-      } else if (prize.winner && prize.winner.userId) {
-        alreadySelectedUserIds.add(String(prize.winner.userId));
+    prizesToProcess.forEach(prize => {
+      if (prize.placeStart === prize.placeEnd || (prize.placeStart === undefined && prize.place === prize.place)) {
+        // Одно место
+        if (prize.winner && prize.winner.userId) {
+          alreadySelectedUserIds.add(String(prize.winner.userId));
+        }
+      } else {
+        // Диапазон
+        if (prize.winners && Array.isArray(prize.winners)) {
+          prize.winners.forEach(w => {
+            if (w.userId) alreadySelectedUserIds.add(String(w.userId));
+          });
+        }
       }
     });
     
@@ -5804,35 +5776,52 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
       });
     }
     
-    // Обновляем призы, выбирая победителей для каждого
-    let availablePool = [...availableParticipants];
-    const updatedPrizes = giveaway.prizes.map((prize) => {
-      // Конвертируем старую структуру
-      let placeFrom = prize.placeFrom || prize.place || 1;
-      let placeTo = prize.placeTo || prize.place || 1;
-      const placesCount = placeTo - placeFrom + 1;
-      let currentWinners = prize.winners || (prize.winner ? [prize.winner] : []);
-      const needed = Math.max(0, placesCount - currentWinners.length);
-      
-      // Если нужно выбрать победителей
-      if (needed > 0 && availablePool.length >= needed) {
-        const selected = weightedRandomSelect(availablePool, needed);
-        currentWinners = [...currentWinners, ...selected];
-        // Убираем выбранных из доступного пула
-        selected.forEach(winner => {
-          availablePool = availablePool.filter(p => p.userId !== winner.userId);
-        });
+    // Выбираем случайных победителей с учетом весов
+    const allWinners = weightedRandomSelect(availableParticipants, totalWinnersNeeded);
+    let winnerIndex = 0;
+    
+    // Обновляем призы
+    const updatedPrizes = prizesToProcess.map((prize, index) => {
+      const needWinners = prizesNeedingWinners.find(p => p.index === index);
+      if (!needWinners) {
+        // Победители уже выбраны - оставляем как есть
+        return prize;
       }
       
-      // Возвращаем приз в новой структуре
-      return {
-        placeFrom,
-        placeTo,
-        name: prize.name || 'Приз',
-        winners: currentWinners
-      };
+      const placeStart = prize.placeStart || (prize.place || 1);
+      const placeEnd = prize.placeEnd || placeStart;
+      
+      if (placeStart === placeEnd) {
+        // Одно место - один победитель
+        if (winnerIndex < allWinners.length) {
+          return {
+            ...prize,
+            placeStart,
+            placeEnd,
+            winner: allWinners[winnerIndex++],
+            winners: []
+          };
+        }
+      } else {
+        // Диапазон - массив победителей
+        const existingWinners = prize.winners || [];
+        const newWinners = [];
+        for (let i = 0; i < needWinners.placesCount && winnerIndex < allWinners.length; i++) {
+          newWinners.push(allWinners[winnerIndex++]);
+        }
+        return {
+          ...prize,
+          placeStart,
+          placeEnd,
+          winner: null,
+          winners: [...existingWinners, ...newWinners]
+        };
+      }
+      
+      return prize;
     });
     
+    // Обновляем розыгрыш
     giveaway.prizes = updatedPrizes;
     await giveaway.save();
     
@@ -5865,26 +5854,31 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       prizesCount: giveaway.prizes?.length
     }, null, 2));
     
-    // Проверяем, есть ли невыбранные победители, и выбираем их автоматически (новая структура)
-    const prizesNeedingWinners = giveaway.prizes.map(prize => {
-      // Конвертируем старую структуру в новую для обработки
-      let placeFrom = prize.placeFrom || prize.place || 1;
-      let placeTo = prize.placeTo || prize.place || 1;
-      const placesCount = placeTo - placeFrom + 1;
-      const currentWinners = prize.winners || (prize.winner ? [prize.winner] : []);
-      const needed = Math.max(0, placesCount - currentWinners.length);
-      
-      return {
-        prize,
-        placeFrom,
-        placeTo,
-        placesCount,
-        currentWinners,
-        needed
-      };
-    }).filter(p => p.needed > 0);
+    // Проверяем, есть ли невыбранные победители, и выбираем их автоматически
+    let totalWinnersNeeded = 0;
+    const prizesNeedingWinners = [];
     
-    const totalWinnersNeeded = prizesNeedingWinners.reduce((sum, p) => sum + p.needed, 0);
+    giveaway.prizes.forEach((prize, index) => {
+      const placeStart = prize.placeStart || (prize.place || 1);
+      const placeEnd = prize.placeEnd || placeStart;
+      const placesCount = placeEnd - placeStart + 1;
+      
+      if (placeStart === placeEnd) {
+        // Одно место - нужен один победитель
+        if (!prize.winner || !prize.winner.userId) {
+          prizesNeedingWinners.push({ index, prize, placesCount: 1, isRange: false });
+          totalWinnersNeeded += 1;
+        }
+      } else {
+        // Диапазон - нужно несколько победителей
+        const currentWinners = prize.winners || [];
+        const needed = placesCount - currentWinners.length;
+        if (needed > 0) {
+          prizesNeedingWinners.push({ index, prize, placesCount: needed, isRange: true, currentWinners });
+          totalWinnersNeeded += needed;
+        }
+      }
+    });
     
     if (totalWinnersNeeded > 0 && giveaway.participants && giveaway.participants.length > 0) {
       console.log('🎲 [GIVEAWAY] Автоматически выбираем победителей для невыбранных призов...');
@@ -5892,12 +5886,19 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       // Получаем уже выбранных победителей
       const alreadySelectedUserIds = new Set();
       giveaway.prizes.forEach(prize => {
-        if (prize.winners && Array.isArray(prize.winners)) {
-          prize.winners.forEach(w => {
-            if (w && w.userId) alreadySelectedUserIds.add(String(w.userId));
-          });
-        } else if (prize.winner && prize.winner.userId) {
-          alreadySelectedUserIds.add(String(prize.winner.userId));
+        const placeStart = prize.placeStart || (prize.place || 1);
+        const placeEnd = prize.placeEnd || placeStart;
+        
+        if (placeStart === placeEnd) {
+          if (prize.winner && prize.winner.userId) {
+            alreadySelectedUserIds.add(String(prize.winner.userId));
+          }
+        } else {
+          if (prize.winners && Array.isArray(prize.winners)) {
+            prize.winners.forEach(w => {
+              if (w.userId) alreadySelectedUserIds.add(String(w.userId));
+            });
+          }
         }
       });
       
@@ -5907,32 +5908,48 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       );
       
       if (availableParticipants.length >= totalWinnersNeeded) {
-        // Обновляем призы, выбирая победителей для каждого
-        let availablePool = [...availableParticipants];
-        giveaway.prizes = giveaway.prizes.map((prize) => {
-          let placeFrom = prize.placeFrom || prize.place || 1;
-          let placeTo = prize.placeTo || prize.place || 1;
-          const placesCount = placeTo - placeFrom + 1;
-          let currentWinners = prize.winners || (prize.winner ? [prize.winner] : []);
-          const needed = Math.max(0, placesCount - currentWinners.length);
-          
-          // Если нужно выбрать победителей
-          if (needed > 0 && availablePool.length >= needed) {
-            const selected = weightedRandomSelect(availablePool, needed);
-            currentWinners = [...currentWinners, ...selected];
-            // Убираем выбранных из доступного пула
-            selected.forEach(winner => {
-              availablePool = availablePool.filter(p => p.userId !== winner.userId);
-            });
+        // Выбираем случайных победителей с учетом весов
+        const allWinners = weightedRandomSelect(availableParticipants, totalWinnersNeeded);
+        let winnerIndex = 0;
+        
+        // Обновляем только призы без победителей
+        giveaway.prizes = giveaway.prizes.map((prize, index) => {
+          const needWinners = prizesNeedingWinners.find(p => p.index === index);
+          if (!needWinners) {
+            return prize;
           }
           
-          // Возвращаем приз в новой структуре
-          return {
-            placeFrom,
-            placeTo,
-            name: prize.name || 'Приз',
-            winners: currentWinners
-          };
+          const placeStart = prize.placeStart || (prize.place || 1);
+          const placeEnd = prize.placeEnd || placeStart;
+          
+          if (placeStart === placeEnd) {
+            // Одно место - один победитель
+            if (winnerIndex < allWinners.length) {
+              return {
+                ...prize,
+                placeStart,
+                placeEnd,
+                winner: allWinners[winnerIndex++],
+                winners: []
+              };
+            }
+          } else {
+            // Диапазон - массив победителей
+            const existingWinners = prize.winners || [];
+            const newWinners = [];
+            for (let i = 0; i < needWinners.placesCount && winnerIndex < allWinners.length; i++) {
+              newWinners.push(allWinners[winnerIndex++]);
+            }
+            return {
+              ...prize,
+              placeStart,
+              placeEnd,
+              winner: null,
+              winners: [...existingWinners, ...newWinners]
+            };
+          }
+          
+          return prize;
         });
         
         await giveaway.save();
@@ -5940,24 +5957,40 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       }
     }
     
-    // Проверяем, что есть победители (новая структура с диапазонами)
+    // Собираем всех победителей (для одного места и для диапазонов)
     const winnersWithPrizes = [];
+    
     giveaway.prizes.forEach(prize => {
-      const placeFrom = prize.placeFrom || prize.place || 1;
-      const placeTo = prize.placeTo || prize.place || 1;
-      const winners = prize.winners || (prize.winner ? [prize.winner] : []);
+      const placeStart = prize.placeStart || (prize.place || 1);
+      const placeEnd = prize.placeEnd || placeStart;
       
-      winners.forEach((winner, index) => {
-        if (winner && (winner.userId || winner.username)) {
+      if (placeStart === placeEnd) {
+        // Одно место - один победитель
+        if (prize.winner && (prize.winner.userId || prize.winner.username)) {
           winnersWithPrizes.push({
-            ...winner,
+            ...prize.winner,
             prizeName: prize.name,
-            place: placeFrom + index, // Место в диапазоне
-            placeFrom,
-            placeTo
+            place: placeStart,
+            placeStart,
+            placeEnd
           });
         }
-      });
+      } else {
+        // Диапазон - массив победителей
+        if (prize.winners && Array.isArray(prize.winners)) {
+          prize.winners.forEach((winner, index) => {
+            if (winner && (winner.userId || winner.username)) {
+              winnersWithPrizes.push({
+                ...winner,
+                prizeName: prize.name,
+                place: placeStart + index,
+                placeStart,
+                placeEnd
+              });
+            }
+          });
+        }
+      }
     });
     
     console.log('🔍 [GIVEAWAY] Найдено победителей:', winnersWithPrizes.length);
@@ -6033,21 +6066,13 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
     
     message += '🎉 **РЕЗУЛЬТАТЫ РОЗЫГРЫША** 🎉\n\n';
     
-    // Сортируем призы по началу диапазона (новая структура)
-    const sortedPrizes = [...giveaway.prizes].sort((a, b) => {
-      const aFrom = a.placeFrom || a.place || 1;
-      const bFrom = b.placeFrom || b.place || 1;
-      return aFrom - bFrom;
-    });
+    // Сортируем призы по месту
+    const sortedPrizes = [...giveaway.prizes].sort((a, b) => a.place - b.place);
     
     // Сначала получаем данные пользователей из базы для всех победителей
-    const winnerUserIds = [];
-    sortedPrizes.forEach(prize => {
-      const winners = prize.winners || (prize.winner ? [prize.winner] : []);
-      winners.forEach(w => {
-        if (w && w.userId) winnerUserIds.push(w.userId);
-      });
-    });
+    const winnerUserIds = sortedPrizes
+      .filter(p => p.winner && p.winner.userId)
+      .map(p => p.winner.userId);
     
     const usersFromDb = {};
     if (winnerUserIds.length > 0) {
@@ -6059,83 +6084,67 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
     }
     
     for (const prize of sortedPrizes) {
-      const placeFrom = prize.placeFrom || prize.place || 1;
-      const placeTo = prize.placeTo || prize.place || 1;
-      const winners = prize.winners || (prize.winner ? [prize.winner] : []);
+      // Проверяем наличие победителя (может быть объект, но пустой)
+      const hasWinner = prize.winner && (
+        prize.winner.userId || 
+        prize.winner.username || 
+        (prize.winner.firstName && prize.winner.firstName.trim()) ||
+        (prize.winner.lastName && prize.winner.lastName.trim())
+      );
       
-      // Формируем строку диапазона мест
-      let placeRange = '';
-      if (placeFrom === placeTo) {
-        placeRange = `${placeFrom} место`;
-      } else {
-        placeRange = `места ${placeFrom}-${placeTo}`;
-      }
-      
-      if (winners.length > 0) {
-        message += `🏆 **${prize.name}** (${placeRange}):\n`;
+      if (hasWinner) {
+        // Логируем данные победителя для отладки
+        console.log(`🔍 [GIVEAWAY] Приз ${prize.place}:`, JSON.stringify(prize.winner, null, 2));
         
-        // Выводим всех победителей для этого приза
-        winners.forEach((winner, index) => {
-          if (winner && (winner.userId || winner.username)) {
-            // Логируем данные победителя для отладки
-            console.log(`🔍 [GIVEAWAY] Приз ${placeRange}, победитель ${index + 1}:`, JSON.stringify(winner, null, 2));
-            
-            // Формируем имя победителя
-            let firstName = (winner.firstName || '').trim();
-            let lastName = (winner.lastName || '').trim();
-            let username = (winner.username || '').trim();
-            const userId = winner.userId;
-            
-            // Если данных нет в объекте победителя, пытаемся получить из базы
-            if (userId && usersFromDb[userId]) {
-              const dbUser = usersFromDb[userId];
-              if (!firstName && dbUser.firstName) firstName = dbUser.firstName.trim();
-              if (!lastName && dbUser.lastName) lastName = dbUser.lastName.trim();
-              if (!username && dbUser.username) username = dbUser.username.trim();
-              console.log(`✅ [GIVEAWAY] Данные пользователя ${userId} дополнены из БД`);
-            }
-            
-            const fullName = `${firstName} ${lastName}`.trim();
-            
-            // Формируем отображаемое имя
-            let displayName = '';
-            if (fullName) {
-              displayName = fullName;
-            } else if (username) {
-              displayName = `@${username}`;
-            } else if (userId) {
-              displayName = `ID: ${userId}`;
-            } else {
-              displayName = 'Победитель не указан';
-            }
-            
-            message += `👤 ${displayName}`;
-            
-            // Добавляем username, если есть и не совпадает с именем
-            if (username && fullName) {
-              message += ` (@${username})`;
-            }
-            
-            // Добавляем ID
-            if (userId) {
-              message += `\n   ID: ${userId}`;
-            }
-            
-            // Добавляем проект
-            if (winner.project) {
-              message += `\n   📁 Проект: ${winner.project}`;
-            }
-            
-            message += '\n';
-          }
-        });
+        message += `🏆 **${prize.name}** (${prize.place} место):\n`;
         
-        message += '\n';
+        // Формируем имя победителя
+        let firstName = (prize.winner.firstName || '').trim();
+        let lastName = (prize.winner.lastName || '').trim();
+        let username = (prize.winner.username || '').trim();
+        const userId = prize.winner.userId;
+        
+        // Если данных нет в объекте победителя, пытаемся получить из базы
+        if (userId && usersFromDb[userId]) {
+          const dbUser = usersFromDb[userId];
+          if (!firstName && dbUser.firstName) firstName = dbUser.firstName.trim();
+          if (!lastName && dbUser.lastName) lastName = dbUser.lastName.trim();
+          if (!username && dbUser.username) username = dbUser.username.trim();
+          console.log(`✅ [GIVEAWAY] Данные пользователя ${userId} дополнены из БД`);
+        }
+        
+        const fullName = `${firstName} ${lastName}`.trim();
+        
+        // Формируем отображаемое имя
+        let displayName = '';
+        if (fullName) {
+          displayName = fullName;
+        } else if (username) {
+          displayName = `@${username}`;
+        } else if (userId) {
+          displayName = `ID: ${userId}`;
+        } else {
+          displayName = 'Победитель не указан';
+        }
+        
+        message += `👤 ${displayName}`;
+        
+        // Добавляем username, если есть и не совпадает с именем
+        if (username && fullName) {
+          message += ` (@${username})`;
+        }
+        
+        // Добавляем проект
+        if (prize.winner.project) {
+          message += `\n📁 Проект: ${prize.winner.project}`;
+        }
+        
+        message += '\n\n';
       } else {
-        // Если победители не выбраны
-        console.log(`⚠️ [GIVEAWAY] Приз ${placeRange} не имеет победителей`);
-        message += `🏆 **${prize.name}** (${placeRange}):\n`;
-        message += `❌ Победители не выбраны\n\n`;
+        // Если победитель не выбран, показываем приз без победителя
+        console.log(`⚠️ [GIVEAWAY] Приз ${prize.place} не имеет победителя. Данные:`, JSON.stringify(prize.winner, null, 2));
+        message += `🏆 **${prize.name}** (${prize.place} место):\n`;
+        message += `❌ Победитель не выбран\n\n`;
       }
     }
     

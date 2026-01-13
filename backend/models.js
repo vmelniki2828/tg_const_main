@@ -255,18 +255,26 @@ const GiveawaySchema = new mongoose.Schema({
     project: String, // Проект из CSV
     weight: { type: Number, default: 1 } // Вес для вероятности (чем выше, тем больше шанс)
   }],
-  prizePlaces: { type: Number, default: 1, min: 1, max: 100 }, // Общее количество призовых мест
   prizes: [{
-    placeFrom: { type: Number, required: true }, // Начало диапазона мест (например, 5)
-    placeTo: { type: Number, required: true }, // Конец диапазона мест (например, 10)
-    name: { type: String, required: true }, // "Приз для мест 5-10"
-    winners: [{ // Массив победителей (может быть несколько для одного приза)
+    placeStart: { type: Number, required: true }, // Начало диапазона мест (например, 1)
+    placeEnd: { type: Number, required: true }, // Конец диапазона мест (например, 1 для одного места, или 10 для диапазона 1-10)
+    name: { type: String, required: true }, // "Приз 1", "Приз 2" и т.д.
+    // Для одного места (placeStart === placeEnd) - один winner
+    winner: {
       userId: Number,
       username: String,
       firstName: String,
       lastName: String,
       project: String
-    }] // Победители (может быть пустым если не выбраны)
+    },
+    // Для диапазона мест (placeStart < placeEnd) - массив winners
+    winners: [{
+      userId: Number,
+      username: String,
+      firstName: String,
+      lastName: String,
+      project: String
+    }]
   }],
   description: { type: String, default: '' }, // Текст про розыгрыш
   status: { type: String, enum: ['draft', 'completed'], default: 'draft' },
