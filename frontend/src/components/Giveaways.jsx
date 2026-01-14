@@ -137,7 +137,7 @@ const Giveaways = ({ botId, onClose }) => {
     setBackgroundImageFile(null);
   };
 
-  const handleAddPrize = () => {
+  const handleAddPrize = async () => {
     // Находим максимальное место из существующих призов
     const maxPlace = giveawayData.prizes.reduce((max, prize) => {
       return Math.max(max, prize.placeEnd || 0);
@@ -152,21 +152,84 @@ const Giveaways = ({ botId, onClose }) => {
       winners: []
     };
     
+    const updatedPrizes = [...giveawayData.prizes, newPrize];
+    
     setGiveawayData({
       ...giveawayData,
-      prizes: [...giveawayData.prizes, newPrize]
+      prizes: updatedPrizes
     });
+    
+    // Автоматически сохраняем на сервер, если розыгрыш уже создан
+    if (selectedGiveaway && selectedGiveaway._id) {
+      try {
+        const response = await fetch(
+          `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...giveawayData,
+              prizes: updatedPrizes
+            }),
+          }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.giveaway) {
+            handleSelectGiveaway(data.giveaway);
+          }
+        } else {
+          console.error('❌ Ошибка сохранения при добавлении приза');
+        }
+      } catch (error) {
+        console.error('❌ Ошибка сохранения при добавлении приза:', error);
+      }
+    }
   };
 
-  const handleRemovePrize = (index) => {
+  const handleRemovePrize = async (index) => {
     const newPrizes = giveawayData.prizes.filter((_, i) => i !== index);
+    
     setGiveawayData({
       ...giveawayData,
       prizes: newPrizes
     });
+    
+    // Автоматически сохраняем на сервер, если розыгрыш уже создан
+    if (selectedGiveaway && selectedGiveaway._id) {
+      try {
+        const response = await fetch(
+          `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...giveawayData,
+              prizes: newPrizes
+            }),
+          }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.giveaway) {
+            handleSelectGiveaway(data.giveaway);
+          }
+        } else {
+          console.error('❌ Ошибка сохранения при удалении приза');
+        }
+      } catch (error) {
+        console.error('❌ Ошибка сохранения при удалении приза:', error);
+      }
+    }
   };
 
-  const handlePrizeRangeChange = (index, field, value) => {
+  const handlePrizeRangeChange = async (index, field, value) => {
     const numValue = parseInt(value) || 1;
     const updatedPrizes = [...giveawayData.prizes];
     updatedPrizes[index] = {
@@ -186,15 +249,73 @@ const Giveaways = ({ botId, onClose }) => {
       ...giveawayData,
       prizes: updatedPrizes
     });
+    
+    // Автоматически сохраняем на сервер, если розыгрыш уже создан
+    if (selectedGiveaway && selectedGiveaway._id) {
+      try {
+        const response = await fetch(
+          `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...giveawayData,
+              prizes: updatedPrizes
+            }),
+          }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.giveaway) {
+            handleSelectGiveaway(data.giveaway);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Ошибка сохранения при изменении диапазона приза:', error);
+      }
+    }
   };
 
-  const handlePrizeNameChange = (index, name) => {
+  const handlePrizeNameChange = async (index, name) => {
+    const updatedPrizes = giveawayData.prizes.map((p, i) => 
+      i === index ? { ...p, name } : p
+    );
+    
     setGiveawayData({
       ...giveawayData,
-      prizes: giveawayData.prizes.map((p, i) => 
-        i === index ? { ...p, name } : p
-      )
+      prizes: updatedPrizes
     });
+    
+    // Автоматически сохраняем на сервер, если розыгрыш уже создан
+    if (selectedGiveaway && selectedGiveaway._id) {
+      try {
+        const response = await fetch(
+          `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...giveawayData,
+              prizes: updatedPrizes
+            }),
+          }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.giveaway) {
+            handleSelectGiveaway(data.giveaway);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Ошибка сохранения при изменении названия приза:', error);
+      }
+    }
   };
 
   const handleFileChange = (e) => {
