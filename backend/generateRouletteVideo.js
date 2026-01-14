@@ -529,19 +529,22 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
   ctx.lineWidth = 5;
   ctx.stroke();
   
+  // Начальная позиция Y для элементов (от верха карточки)
+  let currentY = -cardHeight/2 + 80;
+  
   // Название приза (без эмодзи)
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 50px Arial';
+  ctx.font = 'bold 48px Arial';
   ctx.textAlign = 'center';
   const prizeText = winner.prizeName || 'Победитель';
   const placeText = winner.place ? ` (${winner.place} место)` : '';
-  ctx.fillText(prizeText + placeText, 0, -cardHeight/2 + 100);
+  ctx.fillText(prizeText + placeText, 0, currentY);
+  currentY += 70; // Отступ после названия приза
   
   // Изображение приза (если есть)
-  let imageY = -cardHeight/2 + 180;
   if (prizeImage) {
-    const imageMaxWidth = cardWidth * 0.75; // Максимальная ширина изображения
-    const imageMaxHeight = 250; // Максимальная высота изображения
+    const imageMaxWidth = cardWidth * 0.65; // Максимальная ширина изображения
+    const imageMaxHeight = 220; // Максимальная высота изображения
     
     // Вычисляем размеры с сохранением пропорций
     let imgWidth = prizeImage.width;
@@ -560,48 +563,54 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
     
     // Рисуем изображение по центру с закругленными углами
     const imgX = -imgWidth / 2;
+    const imgY = currentY;
     
     // Создаем путь для закругленных углов
     const cornerRadius = 15;
     ctx.save();
     ctx.beginPath();
     // Рисуем закругленный прямоугольник вручную
-    drawRoundedRect(ctx, imgX, imageY, imgWidth, imgHeight, cornerRadius);
+    drawRoundedRect(ctx, imgX, imgY, imgWidth, imgHeight, cornerRadius);
     ctx.clip();
     
     // Рисуем изображение
-    ctx.drawImage(prizeImage, imgX, imageY, imgWidth, imgHeight);
+    ctx.drawImage(prizeImage, imgX, imgY, imgWidth, imgHeight);
     
     // Рисуем рамку
     ctx.restore();
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    drawRoundedRect(ctx, imgX, imageY, imgWidth, imgHeight, cornerRadius);
+    drawRoundedRect(ctx, imgX, imgY, imgWidth, imgHeight, cornerRadius);
     ctx.stroke();
     
-    // Обновляем позицию для следующего элемента
-    imageY += imgHeight + 25;
+    // Обновляем позицию для следующего элемента (под изображением с отступом)
+    currentY += imgHeight + 35;
+  } else {
+    // Если нет изображения, добавляем отступ
+    currentY += 20;
   }
   
   // Имя победителя
   const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim() || `ID: ${winner.userId}`;
-  ctx.font = 'bold 60px Arial';
+  ctx.font = 'bold 56px Arial';
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(winnerName, 0, imageY);
+  ctx.fillText(winnerName, 0, currentY);
+  currentY += 65; // Отступ после имени
   
   // Username
   if (winner.username) {
-    ctx.font = '40px Arial';
+    ctx.font = '38px Arial';
     ctx.fillStyle = '#e0e0e0';
-    ctx.fillText(`@${winner.username}`, 0, imageY + 60);
+    ctx.fillText(`@${winner.username}`, 0, currentY);
+    currentY += 50; // Отступ после username
   }
   
   // Проект (без эмодзи)
   if (winner.project) {
-    ctx.font = '35px Arial';
+    ctx.font = '32px Arial';
     ctx.fillStyle = '#b0b0b0';
-    ctx.fillText(winner.project, 0, imageY + 120);
+    ctx.fillText(winner.project, 0, currentY);
   }
   
   ctx.restore();
