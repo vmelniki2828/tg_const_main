@@ -529,56 +529,37 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
   ctx.lineWidth = 5;
   ctx.stroke();
   
-  // Начальная позиция Y для элементов (от верха карточки)
-  let currentY = -cardHeight/2 + 80;
+  // Сначала вычисляем общую высоту всех элементов для центрирования
+  let totalHeight = 0;
   
-  // Название приза (без эмодзи)
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 48px Arial';
-  ctx.textAlign = 'center';
-  const prizeText = winner.prizeName || 'Победитель';
-  const placeText = winner.place ? ` (${winner.place} место)` : '';
-  ctx.fillText(prizeText + placeText, 0, currentY);
-  currentY += 70; // Отступ после названия приза
+  // Высота названия приза (примерно 48px + отступ)
+  totalHeight += 48 + 70;
   
-  // ID победителя (отображаем первым, до изображения)
+  // Высота ID (примерно 56px + отступ)
+  totalHeight += 56 + 75;
+  
+  // Высота username (если есть)
   const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim();
-  const displayId = `ID: ${winner.userId}`;
-  
-  ctx.font = 'bold 56px Arial';
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(displayId, 0, currentY);
-  currentY += 75; // Отступ после ID
-  
-  // Username (если есть и не совпадает с именем)
   if (winner.username && !winnerName) {
-    ctx.font = '38px Arial';
-    ctx.fillStyle = '#e0e0e0';
-    ctx.fillText(`@${winner.username}`, 0, currentY);
-    currentY += 50; // Отступ после username
+    totalHeight += 38 + 50;
   }
   
-  // Проект (если есть, перед изображением)
+  // Высота проекта (если есть)
   if (winner.project) {
-    ctx.font = '32px Arial';
-    ctx.fillStyle = '#b0b0b0';
-    ctx.fillText(winner.project, 0, currentY);
-    currentY += 50; // Отступ после проекта
+    totalHeight += 32 + 50;
   }
   
-  // Изображение приза (если есть, внизу)
+  // Высота изображения (если есть)
+  let imgWidth = 0;
+  let imgHeight = 0;
   if (prizeImage) {
-    currentY += 20; // Дополнительный отступ перед изображением
+    const imageMaxWidth = cardWidth * 0.7;
+    const imageMaxHeight = 280;
     
-    const imageMaxWidth = cardWidth * 0.7; // Максимальная ширина изображения
-    const imageMaxHeight = 280; // Максимальная высота изображения (увеличено, так как теперь внизу)
-    
-    // Вычисляем размеры с сохранением пропорций
-    let imgWidth = prizeImage.width;
-    let imgHeight = prizeImage.height;
+    imgWidth = prizeImage.width;
+    imgHeight = prizeImage.height;
     const imgAspect = imgWidth / imgHeight;
     
-    // Масштабируем по ширине или высоте, в зависимости от того, что больше
     if (imgWidth > imageMaxWidth || imgHeight > imageMaxHeight) {
       const widthRatio = imageMaxWidth / imgWidth;
       const heightRatio = imageMaxHeight / imgHeight;
@@ -587,6 +568,52 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
       imgWidth = imgWidth * scale;
       imgHeight = imgHeight * scale;
     }
+    
+    totalHeight += 20; // Отступ перед изображением
+    totalHeight += imgHeight; // Высота изображения
+  }
+  
+  // Вычисляем начальную позицию для центрирования всего контента
+  // Начинаем с позиции, которая центрирует весь контент в карточке
+  const startY = -totalHeight / 2;
+  let currentY = startY;
+  
+  // Название приза (без эмодзи)
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 48px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top'; // Используем top для более точного позиционирования
+  const prizeText = winner.prizeName || 'Победитель';
+  const placeText = winner.place ? ` (${winner.place} место)` : '';
+  ctx.fillText(prizeText + placeText, 0, currentY);
+  currentY += 48 + 70; // Размер шрифта + отступ
+  
+  // ID победителя
+  const displayId = `ID: ${winner.userId}`;
+  ctx.font = 'bold 56px Arial';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(displayId, 0, currentY);
+  currentY += 56 + 75; // Размер шрифта + отступ
+  
+  // Username (если есть и не совпадает с именем)
+  if (winner.username && !winnerName) {
+    ctx.font = '38px Arial';
+    ctx.fillStyle = '#e0e0e0';
+    ctx.fillText(`@${winner.username}`, 0, currentY);
+    currentY += 38 + 50; // Размер шрифта + отступ
+  }
+  
+  // Проект (если есть, перед изображением)
+  if (winner.project) {
+    ctx.font = '32px Arial';
+    ctx.fillStyle = '#b0b0b0';
+    ctx.fillText(winner.project, 0, currentY);
+    currentY += 32 + 50; // Размер шрифта + отступ
+  }
+  
+  // Изображение приза (если есть, внизу)
+  if (prizeImage) {
+    currentY += 20; // Дополнительный отступ перед изображением
     
     // Рисуем изображение по центру с закругленными углами
     const imgX = -imgWidth / 2;
@@ -611,6 +638,9 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
     drawRoundedRect(ctx, imgX, imgY, imgWidth, imgHeight, cornerRadius);
     ctx.stroke();
   }
+  
+  // Сбрасываем textBaseline
+  ctx.textBaseline = 'alphabetic';
   
   ctx.restore();
   
