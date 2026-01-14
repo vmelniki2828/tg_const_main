@@ -5421,6 +5421,7 @@ app.post('/api/giveaways/:botId', async (req, res) => {
             placeStart: prize.place,
             placeEnd: prize.place,
             name: prize.name || `Приз ${prize.place}`,
+            prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
             winner: prize.winner || null,
             winners: []
           };
@@ -5430,6 +5431,7 @@ app.post('/api/giveaways/:botId', async (req, res) => {
           placeStart: prize.placeStart || 1,
           placeEnd: prize.placeEnd || prize.placeStart || 1,
           name: prize.name || 'Приз',
+          prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
           winner: prize.winner || null,
           winners: prize.winners || []
         };
@@ -5492,6 +5494,7 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
           placeStart,
           placeEnd,
           name: prize.name || 'Приз',
+          prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
           winner: null,
           winners: []
         };
@@ -5918,8 +5921,11 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
     const updatedPrizes = prizesToProcess.map((prize, index) => {
       const needWinners = prizesNeedingWinners.find(p => p.index === index);
       if (!needWinners) {
-        // Победители уже выбраны - оставляем как есть
-        return prize;
+        // Победители уже выбраны - оставляем как есть, но сохраняем prizeImage
+        return {
+          ...prize,
+          prizeImage: prize.prizeImage || null // Сохраняем изображение приза
+        };
       }
       
       const placeStart = prize.placeStart || (prize.place || 1);
@@ -5932,6 +5938,7 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
             ...prize,
             placeStart,
             placeEnd,
+            prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
             winner: allWinners[winnerIndex++],
             winners: []
           };
@@ -5947,12 +5954,16 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
           ...prize,
           placeStart,
           placeEnd,
+          prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
           winner: null,
           winners: [...existingWinners, ...newWinners]
         };
       }
       
-      return prize;
+      return {
+        ...prize,
+        prizeImage: prize.prizeImage || null // Сохраняем изображение приза
+      };
     });
     
     // Обновляем розыгрыш
@@ -6055,7 +6066,11 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
         const updatedPrizesForPublish = giveaway.prizes.map((prize, index) => {
           const needWinners = prizesNeedingWinners.find(p => p.index === index);
           if (!needWinners) {
-            return prize;
+            // Сохраняем prizeImage даже если победители уже выбраны
+            return {
+              ...prize,
+              prizeImage: prize.prizeImage || null // Сохраняем изображение приза
+            };
           }
           
           const placeStart = prize.placeStart || (prize.place || 1);
@@ -6068,6 +6083,7 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
                 ...prize,
                 placeStart,
                 placeEnd,
+                prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
                 winner: allWinners[winnerIndex++],
                 winners: []
               };
@@ -6083,13 +6099,24 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
               ...prize,
               placeStart,
               placeEnd,
+              prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
               winner: null,
               winners: [...existingWinners, ...newWinners]
             };
           }
           
-          return prize;
+          return {
+            ...prize,
+            prizeImage: prize.prizeImage || null // Сохраняем изображение приза
+          };
         });
+        
+        console.log('🔍 [GIVEAWAY] Обновленные призы перед сохранением:', updatedPrizesForPublish.map(p => ({
+          name: p.name,
+          placeStart: p.placeStart,
+          placeEnd: p.placeEnd,
+          prizeImage: p.prizeImage
+        })));
         
         // Присваиваем обновленный массив призов
         giveaway.prizes = updatedPrizesForPublish;
