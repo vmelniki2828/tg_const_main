@@ -256,35 +256,74 @@ const Giveaways = ({ botId, onClose }) => {
       return;
     }
 
+    // Обновляем selectedGiveaway перед поиском, чтобы иметь актуальные данные
+    // Получаем свежие данные из БД
+    try {
+      const refreshResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`);
+      if (refreshResponse.ok) {
+        const refreshData = await refreshResponse.json();
+        if (refreshData.giveaway) {
+          setSelectedGiveaway(refreshData.giveaway);
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ [FRONTEND] Не удалось обновить данные перед загрузкой изображения:', err);
+    }
+
+    // Используем актуальный selectedGiveaway (может быть обновлен выше)
+    const currentGiveaway = selectedGiveaway;
+    
     // Находим индекс приза в БД по placeStart, placeEnd и name
     // Это гарантирует, что мы обновляем правильный приз
-    const dbPrizeIndex = selectedGiveaway.prizes.findIndex(p => {
-      const pPlaceStart = p.placeStart || (p.place || 1);
-      const pPlaceEnd = p.placeEnd || pPlaceStart;
-      const prizePlaceStart = prize.placeStart || 1;
-      const prizePlaceEnd = prize.placeEnd || prizePlaceStart;
+    // Сначала пытаемся найти по точному совпадению всех полей
+    let dbPrizeIndex = currentGiveaway.prizes.findIndex(p => {
+      const pPlaceStart = p.placeStart !== undefined ? p.placeStart : (p.place || 1);
+      const pPlaceEnd = p.placeEnd !== undefined ? p.placeEnd : pPlaceStart;
+      const prizePlaceStart = prize.placeStart !== undefined ? prize.placeStart : 1;
+      const prizePlaceEnd = prize.placeEnd !== undefined ? prize.placeEnd : prizePlaceStart;
       return pPlaceStart === prizePlaceStart && 
              pPlaceEnd === prizePlaceEnd && 
-             p.name === prize.name;
+             (p.name === prize.name || (!p.name && !prize.name));
     });
 
-    if (dbPrizeIndex === -1) {
-      console.error('❌ [FRONTEND] Приз не найден в БД:', {
+    // Если не нашли по точному совпадению, пробуем найти по индексу (если количество призов совпадает)
+    if (dbPrizeIndex === -1 && currentGiveaway.prizes.length === giveawayData.prizes.length) {
+      console.log(`⚠️ [FRONTEND] Приз не найден по полям, пробуем по индексу: ${prizeIndex}`);
+      dbPrizeIndex = prizeIndex;
+    }
+
+    // Если все еще не нашли, используем индекс напрямую (последняя попытка)
+    if (dbPrizeIndex === -1 || dbPrizeIndex >= currentGiveaway.prizes.length) {
+      console.warn(`⚠️ [FRONTEND] Приз не найден в БД, используем индекс из frontend: ${prizeIndex}`);
+      console.error('❌ [FRONTEND] Детали поиска приза:', {
         prizeIndex,
         prize: {
           name: prize.name,
           placeStart: prize.placeStart,
           placeEnd: prize.placeEnd
         },
-        dbPrizes: selectedGiveaway.prizes.map((p, i) => ({
+        dbPrizes: currentGiveaway.prizes.map((p, i) => ({
           index: i,
           name: p.name,
-          placeStart: p.placeStart || (p.place || 1),
-          placeEnd: p.placeEnd || (p.place || 1)
+          placeStart: p.placeStart !== undefined ? p.placeStart : (p.place || 1),
+          placeEnd: p.placeEnd !== undefined ? p.placeEnd : (p.place || 1)
+        })),
+        frontendPrizes: giveawayData.prizes.map((p, i) => ({
+          index: i,
+          name: p.name,
+          placeStart: p.placeStart,
+          placeEnd: p.placeEnd
         }))
       });
-      setError('Приз не найден в базе данных. Попробуйте обновить страницу.');
-      return;
+      
+      // Используем индекс из frontend, если он валидный
+      if (prizeIndex >= 0 && prizeIndex < currentGiveaway.prizes.length) {
+        dbPrizeIndex = prizeIndex;
+        console.log(`✅ [FRONTEND] Используем индекс из frontend: ${dbPrizeIndex}`);
+      } else {
+        setError('Приз не найден в базе данных. Попробуйте обновить страницу.');
+        return;
+      }
     }
 
     console.log(`🔍 [FRONTEND] Загрузка изображения: frontend index=${prizeIndex}, db index=${dbPrizeIndex}, приз: ${prize.name}`);
@@ -297,7 +336,7 @@ const Giveaways = ({ botId, onClose }) => {
 
     try {
       const response = await fetch(
-        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/prize/${dbPrizeIndex}/upload-image`,
+        `${config.API_BASE_URL}/api/giveaways/${botId}/${currentGiveaway._id}/prize/${dbPrizeIndex}/upload-image`,
         {
           method: 'POST',
           body: formData
@@ -314,6 +353,9 @@ const Giveaways = ({ botId, onClose }) => {
         if (input) input.value = '';
         
         // Получаем полные данные розыгрыша из БД, чтобы сохранить все изображения призов
+        // Ждем немного, чтобы БД успела обновиться
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
         const fullGiveawayResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`);
         if (fullGiveawayResponse.ok) {
           const fullData = await fullGiveawayResponse.json();
@@ -322,13 +364,18 @@ const Giveaways = ({ botId, onClose }) => {
             console.log('🔍 [FRONTEND] Изображения призов после загрузки:', fullData.giveaway.prizes.map((p, i) => ({
               index: i,
               name: p.name,
+              placeStart: p.placeStart !== undefined ? p.placeStart : (p.place || 1),
+              placeEnd: p.placeEnd !== undefined ? p.placeEnd : (p.place || 1),
               hasImage: !!p.image
             })));
+            // Обновляем selectedGiveaway с актуальными данными
+            setSelectedGiveaway(fullData.giveaway);
             handleSelectGiveaway(fullData.giveaway);
           }
         } else {
           // Fallback на данные из ответа загрузки
           if (data.giveaway) {
+            setSelectedGiveaway(data.giveaway);
             handleSelectGiveaway(data.giveaway);
           }
         }
