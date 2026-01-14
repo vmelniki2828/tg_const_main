@@ -12,7 +12,7 @@ const ffmpeg = require('fluent-ffmpeg');
  * @param {String} backgroundImagePath - Путь к фоновому изображению (опционально)
  * @returns {Promise<String>} Путь к созданному видео файлу
  */
-async function generateRouletteVideo(winners, outputPath, allParticipants = null, colorPalette = {}, backgroundImagePath = null) {
+async function generateRouletteVideo(winners, outputPath, allParticipants = null, colorPalette = {}, backgroundImagePath = null, prizeImagesDir = null) {
   const width = 1080;
   const height = 1920; // Вертикальное видео для Telegram
   const fps = 30;
@@ -46,16 +46,23 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     }
   }
   
-  // Предзагружаем изображения призов для всех победителей
-  const prizeImagesCache = {};
+  // Загружаем изображения призов
+  const prizeImages = {};
+  const { loadImage } = require('canvas');
   for (const winner of winners) {
-    if (winner.prizeImagePath && fs.existsSync(winner.prizeImagePath)) {
-      try {
-        const { loadImage } = require('canvas');
-        prizeImagesCache[winner.userId] = await loadImage(winner.prizeImagePath);
-        console.log(`✅ [VIDEO] Предзагружено изображение приза для победителя ${winner.userId}`);
-      } catch (err) {
-        console.error(`⚠️ [VIDEO] Ошибка предзагрузки изображения приза для ${winner.userId}:`, err);
+    if (winner.prizeImage && !prizeImages[winner.prizeImage]) {
+      // winner.prizeImage должен быть полным путем
+      const imagePath = winner.prizeImage;
+      
+      if (fs.existsSync(imagePath)) {
+        try {
+          prizeImages[winner.prizeImage] = await loadImage(imagePath);
+          console.log('✅ [VIDEO] Изображение приза загружено:', imagePath);
+        } catch (err) {
+          console.error('⚠️ [VIDEO] Ошибка загрузки изображения приза:', err);
+        }
+      } else {
+        console.warn('⚠️ [VIDEO] Изображение приза не найдено:', imagePath);
       }
     }
   }
@@ -142,14 +149,14 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
       } else {
         // Фаза показа победителя
         const revealTime = localTime - spinDuration - pauseDuration;
-        const prizeImage = prizeImagesCache[currentWinner.userId] || null;
+        const prizeImage = currentWinner.prizeImage ? prizeImages[currentWinner.prizeImage] : null;
         drawWinnerReveal(ctx, width, height, currentWinner, revealTime, revealDuration, colorPalette, prizeImage);
       }
     } else {
       // Показываем последнего победителя в конце
       if (winners.length > 0 && winners[winners.length - 1]) {
         const lastWinner = winners[winners.length - 1];
-        const prizeImage = prizeImagesCache[lastWinner.userId] || null;
+        const prizeImage = lastWinner.prizeImage ? prizeImages[lastWinner.prizeImage] : null;
         drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (time - (winners.length - 1) * segmentDuration) / revealDuration), revealDuration, colorPalette, prizeImage);
       }
     }
@@ -525,34 +532,48 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
   ctx.textAlign = 'center';
   const prizeText = winner.prizeName || 'Победитель';
   const placeText = winner.place ? ` (${winner.place} место)` : '';
+  ctx.fillText(prizeText + placeText, 0, -cardHeight/2 + 150);
   
-  // Если есть изображение приза, рисуем его выше названия
+  // Изображение приза (если есть)
+  let imageY = -cardHeight/2 + 220; // Позиция после названия приза
   if (prizeImage) {
-    const imageSize = 150;
-    const imageY = -cardHeight/2 + 80;
-    ctx.drawImage(prizeImage, -imageSize/2, imageY, imageSize, imageSize);
-    ctx.fillText(prizeText + placeText, 0, imageY + imageSize + 40);
-  } else {
-    ctx.fillText(prizeText + placeText, 0, -cardHeight/2 + 150);
+    try {
+      const maxImageWidth = cardWidth * 0.7;
+      const maxImageHeight = 300;
+      let imageWidth = prizeImage.width;
+      let imageHeight = prizeImage.height;
+      
+      // Масштабируем изображение, сохраняя пропорции
+      const scale = Math.min(maxImageWidth / imageWidth, maxImageHeight / imageHeight, 1);
+      imageWidth = imageWidth * scale;
+      imageHeight = imageHeight * scale;
+      
+      const imageX = -imageWidth / 2;
+      ctx.drawImage(prizeImage, imageX, imageY, imageWidth, imageHeight);
+      
+      imageY += imageHeight + 20; // Отступ после изображения
+    } catch (err) {
+      console.error('⚠️ [VIDEO] Ошибка отрисовки изображения приза:', err);
+    }
   }
   
   // Имя победителя
   const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim() || `ID: ${winner.userId}`;
   ctx.font = 'bold 60px Arial';
-  ctx.fillText(winnerName, 0, 0);
+  ctx.fillText(winnerName, 0, imageY);
   
   // Username
   if (winner.username) {
     ctx.font = '40px Arial';
     ctx.fillStyle = '#e0e0e0';
-    ctx.fillText(`@${winner.username}`, 0, 60);
+    ctx.fillText(`@${winner.username}`, 0, imageY + 60);
   }
   
   // Проект (без эмодзи)
   if (winner.project) {
     ctx.font = '35px Arial';
     ctx.fillStyle = '#b0b0b0';
-    ctx.fillText(winner.project, 0, 120);
+    ctx.fillText(winner.project, 0, imageY + 120);
   }
   
   ctx.restore();

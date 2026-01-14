@@ -20,7 +20,7 @@ const Giveaways = ({ botId, onClose }) => {
   // Состояние для нового/редактируемого розыгрыша
   const [giveawayData, setGiveawayData] = useState({
     name: 'Розыгрыш',
-    prizes: [{ placeStart: 1, placeEnd: 1, name: 'Приз 1', image: null, winner: null, winners: [] }],
+    prizes: [{ placeStart: 1, placeEnd: 1, name: 'Приз 1', winner: null, winners: [] }],
     description: '',
     selectedChannels: [],
     colorPalette: {
@@ -96,33 +96,9 @@ const Giveaways = ({ botId, onClose }) => {
 
   const handleSelectGiveaway = (giveaway) => {
     setSelectedGiveaway(giveaway);
-    // Конвертируем старый формат (place) в новый (placeStart/placeEnd) для обратной совместимости
-    const convertedPrizes = (giveaway.prizes || []).map(prize => {
-      if (prize.place !== undefined) {
-        // Старый формат - конвертируем
-        return {
-          placeStart: prize.place,
-          placeEnd: prize.place,
-          name: prize.name || `Приз ${prize.place}`,
-          image: prize.image || null, // Сохраняем изображение при конвертации
-          winner: prize.winner || null,
-          winners: []
-        };
-      }
-      // Новый формат - сохраняем все поля, включая image
-      return {
-        placeStart: prize.placeStart || 1,
-        placeEnd: prize.placeEnd || 1,
-        name: prize.name || 'Приз',
-        image: prize.image || null, // Важно сохранить изображение
-        winner: prize.winner || null,
-        winners: prize.winners || []
-      };
-    });
-    
     setGiveawayData({
       name: giveaway.name,
-      prizes: convertedPrizes.length > 0 ? convertedPrizes : [{ placeStart: 1, placeEnd: 1, name: 'Приз 1', image: null, winner: null, winners: [] }],
+      prizes: giveaway.prizes || [{ placeStart: 1, placeEnd: 1, name: 'Приз 1', winner: null, winners: [] }],
       description: giveaway.description || '',
       selectedChannels: giveaway.selectedChannels || [],
       backgroundImage: giveaway.backgroundImage || null,
@@ -147,7 +123,6 @@ const Giveaways = ({ botId, onClose }) => {
       placeStart: maxPlace + 1,
       placeEnd: maxPlace + 1,
       name: `Приз ${giveawayData.prizes.length + 1}`,
-      image: null,
       winner: null,
       winners: []
     };
@@ -229,7 +204,10 @@ const Giveaways = ({ botId, onClose }) => {
     if (selectedFile) {
       const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
       if (allowedTypes.includes(selectedFile.type)) {
-        setPrizeImageFiles({ ...prizeImageFiles, [prizeIndex]: selectedFile });
+        setPrizeImageFiles({
+          ...prizeImageFiles,
+          [prizeIndex]: selectedFile
+        });
         setError('');
       } else {
         setError('Пожалуйста, выберите изображение (JPEG, PNG, GIF, WebP)');
@@ -238,8 +216,8 @@ const Giveaways = ({ botId, onClose }) => {
   };
 
   const handleUploadPrizeImage = async (prizeIndex) => {
-    const imageFile = prizeImageFiles[prizeIndex];
-    if (!imageFile) {
+    const file = prizeImageFiles[prizeIndex];
+    if (!file) {
       setError('Пожалуйста, выберите изображение');
       return;
     }
@@ -249,94 +227,18 @@ const Giveaways = ({ botId, onClose }) => {
       return;
     }
 
-    // Находим приз в giveawayData для получения его данных
-    const prize = giveawayData.prizes[prizeIndex];
-    if (!prize) {
-      setError('Приз не найден');
-      return;
-    }
-
-    // Обновляем selectedGiveaway перед поиском, чтобы иметь актуальные данные
-    // Получаем свежие данные из БД
-    try {
-      const refreshResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`);
-      if (refreshResponse.ok) {
-        const refreshData = await refreshResponse.json();
-        if (refreshData.giveaway) {
-          setSelectedGiveaway(refreshData.giveaway);
-        }
-      }
-    } catch (err) {
-      console.warn('⚠️ [FRONTEND] Не удалось обновить данные перед загрузкой изображения:', err);
-    }
-
-    // Используем актуальный selectedGiveaway (может быть обновлен выше)
-    const currentGiveaway = selectedGiveaway;
-    
-    // Находим индекс приза в БД по placeStart, placeEnd и name
-    // Это гарантирует, что мы обновляем правильный приз
-    // Сначала пытаемся найти по точному совпадению всех полей
-    let dbPrizeIndex = currentGiveaway.prizes.findIndex(p => {
-      const pPlaceStart = p.placeStart !== undefined ? p.placeStart : (p.place || 1);
-      const pPlaceEnd = p.placeEnd !== undefined ? p.placeEnd : pPlaceStart;
-      const prizePlaceStart = prize.placeStart !== undefined ? prize.placeStart : 1;
-      const prizePlaceEnd = prize.placeEnd !== undefined ? prize.placeEnd : prizePlaceStart;
-      return pPlaceStart === prizePlaceStart && 
-             pPlaceEnd === prizePlaceEnd && 
-             (p.name === prize.name || (!p.name && !prize.name));
+    setUploadingPrizeImages({
+      ...uploadingPrizeImages,
+      [prizeIndex]: true
     });
-
-    // Если не нашли по точному совпадению, пробуем найти по индексу (если количество призов совпадает)
-    if (dbPrizeIndex === -1 && currentGiveaway.prizes.length === giveawayData.prizes.length) {
-      console.log(`⚠️ [FRONTEND] Приз не найден по полям, пробуем по индексу: ${prizeIndex}`);
-      dbPrizeIndex = prizeIndex;
-    }
-
-    // Если все еще не нашли, используем индекс напрямую (последняя попытка)
-    if (dbPrizeIndex === -1 || dbPrizeIndex >= currentGiveaway.prizes.length) {
-      console.warn(`⚠️ [FRONTEND] Приз не найден в БД, используем индекс из frontend: ${prizeIndex}`);
-      console.error('❌ [FRONTEND] Детали поиска приза:', {
-        prizeIndex,
-        prize: {
-          name: prize.name,
-          placeStart: prize.placeStart,
-          placeEnd: prize.placeEnd
-        },
-        dbPrizes: currentGiveaway.prizes.map((p, i) => ({
-          index: i,
-          name: p.name,
-          placeStart: p.placeStart !== undefined ? p.placeStart : (p.place || 1),
-          placeEnd: p.placeEnd !== undefined ? p.placeEnd : (p.place || 1)
-        })),
-        frontendPrizes: giveawayData.prizes.map((p, i) => ({
-          index: i,
-          name: p.name,
-          placeStart: p.placeStart,
-          placeEnd: p.placeEnd
-        }))
-      });
-      
-      // Используем индекс из frontend, если он валидный
-      if (prizeIndex >= 0 && prizeIndex < currentGiveaway.prizes.length) {
-        dbPrizeIndex = prizeIndex;
-        console.log(`✅ [FRONTEND] Используем индекс из frontend: ${dbPrizeIndex}`);
-      } else {
-        setError('Приз не найден в базе данных. Попробуйте обновить страницу.');
-        return;
-      }
-    }
-
-    console.log(`🔍 [FRONTEND] Загрузка изображения: frontend index=${prizeIndex}, db index=${dbPrizeIndex}, приз: ${prize.name}`);
-
-    setUploadingPrizeImages({ ...uploadingPrizeImages, [prizeIndex]: true });
     setError('');
 
     const formData = new FormData();
-    formData.append('prizeImage', imageFile);
+    formData.append('prizeImage', file);
 
     try {
       const response = await fetch(
-        `${config.API_BASE_URL}/api/giveaways/${botId}/${currentGiveaway._id}/prize/${dbPrizeIndex}/upload-image`,
+        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/prize/${prizeIndex}/upload-image`,
         {
           method: 'POST',
           body: formData
@@ -347,40 +249,15 @@ const Giveaways = ({ botId, onClose }) => {
 
       if (response.ok) {
         alert('✅ Изображение приза успешно загружено!');
-        setPrizeImageFiles({ ...prizeImageFiles, [prizeIndex]: null });
-        const inputId = `prize-image-input-${prizeIndex}`;
-        const input = document.getElementById(inputId);
-        if (input) input.value = '';
-        
-        // Получаем полные данные розыгрыша из БД, чтобы сохранить все изображения призов
-        // Ждем немного, чтобы БД успела обновиться
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        const fullGiveawayResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`);
-        if (fullGiveawayResponse.ok) {
-          const fullData = await fullGiveawayResponse.json();
-          if (fullData.giveaway) {
-            // Проверяем, что все изображения призов сохранены
-            console.log('🔍 [FRONTEND] Изображения призов после загрузки:', fullData.giveaway.prizes.map((p, i) => ({
-              index: i,
-              name: p.name,
-              placeStart: p.placeStart !== undefined ? p.placeStart : (p.place || 1),
-              placeEnd: p.placeEnd !== undefined ? p.placeEnd : (p.place || 1),
-              hasImage: !!p.image
-            })));
-            // Обновляем selectedGiveaway с актуальными данными
-            setSelectedGiveaway(fullData.giveaway);
-            handleSelectGiveaway(fullData.giveaway);
-          }
-        } else {
-          // Fallback на данные из ответа загрузки
-          if (data.giveaway) {
-            setSelectedGiveaway(data.giveaway);
-            handleSelectGiveaway(data.giveaway);
-          }
-        }
-        
+        setPrizeImageFiles({
+          ...prizeImageFiles,
+          [prizeIndex]: null
+        });
+        document.getElementById(`prize-image-input-${prizeIndex}`).value = '';
         fetchGiveaways();
+        if (data.giveaway) {
+          handleSelectGiveaway(data.giveaway);
+        }
       } else {
         setError(data.error || 'Ошибка загрузки изображения');
       }
@@ -388,7 +265,10 @@ const Giveaways = ({ botId, onClose }) => {
       setError('Ошибка соединения с сервером');
       console.error('Upload prize image error:', err);
     } finally {
-      setUploadingPrizeImages({ ...uploadingPrizeImages, [prizeIndex]: false });
+      setUploadingPrizeImages({
+        ...uploadingPrizeImages,
+        [prizeIndex]: false
+      });
     }
   };
 
@@ -1180,30 +1060,32 @@ const Giveaways = ({ botId, onClose }) => {
                             
                             {/* Загрузка изображения приза */}
                             <div style={{ marginTop: '10px', marginBottom: '10px' }}>
-                              <label>🖼️ Изображение приза:</label>
-                              <input
-                                id={`prize-image-input-${index}`}
-                                type="file"
-                                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                                onChange={(e) => handlePrizeImageChange(index, e)}
-                                className="file-input"
-                                style={{ marginTop: '5px' }}
-                              />
-                              <button
-                                onClick={() => handleUploadPrizeImage(index)}
-                                disabled={!prizeImageFiles[index] || uploadingPrizeImages[index]}
-                                className="upload-btn"
-                                style={{ marginTop: '5px', padding: '5px 10px', fontSize: '12px' }}
-                              >
-                                {uploadingPrizeImages[index] ? '⏳ Загрузка...' : prizeImageFiles[index] ? `📁 Загрузить ${prizeImageFiles[index].name}` : '📁 Выберите изображение'}
-                              </button>
-                              {prize.image && (
+                              <label>🖼️ Изображение приза (для видео):</label>
+                              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '5px' }}>
+                                <input
+                                  id={`prize-image-input-${index}`}
+                                  type="file"
+                                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                                  onChange={(e) => handlePrizeImageChange(index, e)}
+                                  className="file-input"
+                                  style={{ flex: 1 }}
+                                />
+                                <button
+                                  onClick={() => handleUploadPrizeImage(index)}
+                                  disabled={!prizeImageFiles[index] || uploadingPrizeImages[index]}
+                                  className="upload-btn"
+                                  style={{ padding: '8px 16px', fontSize: '14px' }}
+                                >
+                                  {uploadingPrizeImages[index] ? '⏳ Загрузка...' : prizeImageFiles[index] ? `📁 Загрузить` : '📁 Выбрать'}
+                                </button>
+                              </div>
+                              {selectedGiveaway && selectedGiveaway.prizes && selectedGiveaway.prizes[index] && selectedGiveaway.prizes[index].prizeImage && (
                                 <div style={{ marginTop: '10px' }}>
-                                  <p>✅ Изображение загружено</p>
+                                  <p style={{ fontSize: '12px', color: '#666' }}>✅ Изображение загружено</p>
                                   <img 
-                                    src={`${config.API_BASE_URL}/${prize.image}`} 
+                                    src={`${config.API_BASE_URL}/${selectedGiveaway.prizes[index].prizeImage}`} 
                                     alt="Изображение приза" 
-                                    style={{ maxWidth: '200px', maxHeight: '200px', marginTop: '5px', borderRadius: '8px' }}
+                                    style={{ maxWidth: '150px', maxHeight: '150px', marginTop: '5px', borderRadius: '8px', border: '1px solid #ddd' }}
                                   />
                                 </div>
                               )}

@@ -259,7 +259,7 @@ const GiveawaySchema = new mongoose.Schema({
     placeStart: { type: Number, required: true }, // Начало диапазона мест (например, 1)
     placeEnd: { type: Number, required: true }, // Конец диапазона мест (например, 1 для одного места, или 10 для диапазона 1-10)
     name: { type: String, required: true }, // "Приз 1", "Приз 2" и т.д.
-    image: { type: String, default: null }, // Путь к изображению приза
+    prizeImage: { type: String, default: null }, // Путь к изображению приза
     // Для одного места (placeStart === placeEnd) - один winner
     winner: {
       userId: Number,
