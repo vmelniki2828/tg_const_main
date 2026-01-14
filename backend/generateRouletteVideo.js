@@ -541,10 +541,37 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
   ctx.fillText(prizeText + placeText, 0, currentY);
   currentY += 70; // Отступ после названия приза
   
-  // Изображение приза (если есть)
+  // ID победителя (отображаем первым, до изображения)
+  const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim();
+  const displayId = `ID: ${winner.userId}`;
+  
+  ctx.font = 'bold 56px Arial';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(displayId, 0, currentY);
+  currentY += 75; // Отступ после ID
+  
+  // Username (если есть и не совпадает с именем)
+  if (winner.username && !winnerName) {
+    ctx.font = '38px Arial';
+    ctx.fillStyle = '#e0e0e0';
+    ctx.fillText(`@${winner.username}`, 0, currentY);
+    currentY += 50; // Отступ после username
+  }
+  
+  // Проект (если есть, перед изображением)
+  if (winner.project) {
+    ctx.font = '32px Arial';
+    ctx.fillStyle = '#b0b0b0';
+    ctx.fillText(winner.project, 0, currentY);
+    currentY += 50; // Отступ после проекта
+  }
+  
+  // Изображение приза (если есть, внизу)
   if (prizeImage) {
-    const imageMaxWidth = cardWidth * 0.65; // Максимальная ширина изображения
-    const imageMaxHeight = 220; // Максимальная высота изображения
+    currentY += 20; // Дополнительный отступ перед изображением
+    
+    const imageMaxWidth = cardWidth * 0.7; // Максимальная ширина изображения
+    const imageMaxHeight = 280; // Максимальная высота изображения (увеличено, так как теперь внизу)
     
     // Вычисляем размеры с сохранением пропорций
     let imgWidth = prizeImage.width;
@@ -583,34 +610,6 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
     ctx.beginPath();
     drawRoundedRect(ctx, imgX, imgY, imgWidth, imgHeight, cornerRadius);
     ctx.stroke();
-    
-    // Обновляем позицию для следующего элемента (под изображением с отступом)
-    currentY += imgHeight + 35;
-  } else {
-    // Если нет изображения, добавляем отступ
-    currentY += 20;
-  }
-  
-  // Имя победителя
-  const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim() || `ID: ${winner.userId}`;
-  ctx.font = 'bold 56px Arial';
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(winnerName, 0, currentY);
-  currentY += 65; // Отступ после имени
-  
-  // Username
-  if (winner.username) {
-    ctx.font = '38px Arial';
-    ctx.fillStyle = '#e0e0e0';
-    ctx.fillText(`@${winner.username}`, 0, currentY);
-    currentY += 50; // Отступ после username
-  }
-  
-  // Проект (без эмодзи)
-  if (winner.project) {
-    ctx.font = '32px Arial';
-    ctx.fillStyle = '#b0b0b0';
-    ctx.fillText(winner.project, 0, currentY);
   }
   
   ctx.restore();
