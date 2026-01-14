@@ -12,6 +12,8 @@ const Giveaways = ({ botId, onClose }) => {
   const [uploading, setUploading] = useState(false);
   const [backgroundImageFile, setBackgroundImageFile] = useState(null);
   const [uploadingBackground, setUploadingBackground] = useState(false);
+  const [prizeImageFiles, setPrizeImageFiles] = useState({}); // { prizeIndex: File }
+  const [uploadingPrizeImages, setUploadingPrizeImages] = useState({}); // { prizeIndex: boolean }
   const [channelInput, setChannelInput] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // 'active' или 'archive'
 
@@ -194,6 +196,69 @@ const Giveaways = ({ botId, onClose }) => {
         setError('Пожалуйста, выберите изображение (JPEG, PNG, GIF, WebP)');
         setBackgroundImageFile(null);
       }
+    }
+  };
+
+  const handlePrizeImageChange = (prizeIndex, e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile) {
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (allowedTypes.includes(selectedFile.type)) {
+        setPrizeImageFiles({ ...prizeImageFiles, [prizeIndex]: selectedFile });
+        setError('');
+      } else {
+        setError('Пожалуйста, выберите изображение (JPEG, PNG, GIF, WebP)');
+      }
+    }
+  };
+
+  const handleUploadPrizeImage = async (prizeIndex) => {
+    const imageFile = prizeImageFiles[prizeIndex];
+    if (!imageFile) {
+      setError('Пожалуйста, выберите изображение');
+      return;
+    }
+
+    if (!selectedGiveaway) {
+      setError('Сначала создайте розыгрыш');
+      return;
+    }
+
+    setUploadingPrizeImages({ ...uploadingPrizeImages, [prizeIndex]: true });
+    setError('');
+
+    const formData = new FormData();
+    formData.append('prizeImage', imageFile);
+
+    try {
+      const response = await fetch(
+        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/prize/${prizeIndex}/upload-image`,
+        {
+          method: 'POST',
+          body: formData
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert('✅ Изображение приза успешно загружено!');
+        setPrizeImageFiles({ ...prizeImageFiles, [prizeIndex]: null });
+        const inputId = `prize-image-input-${prizeIndex}`;
+        const input = document.getElementById(inputId);
+        if (input) input.value = '';
+        fetchGiveaways();
+        if (data.giveaway) {
+          handleSelectGiveaway(data.giveaway);
+        }
+      } else {
+        setError(data.error || 'Ошибка загрузки изображения');
+      }
+    } catch (err) {
+      setError('Ошибка соединения с сервером');
+      console.error('Upload prize image error:', err);
+    } finally {
+      setUploadingPrizeImages({ ...uploadingPrizeImages, [prizeIndex]: false });
     }
   };
 
@@ -982,6 +1047,37 @@ const Giveaways = ({ botId, onClose }) => {
                                 <strong>Место:</strong> {prize.placeStart}
                               </div>
                             )}
+                            
+                            {/* Загрузка изображения приза */}
+                            <div style={{ marginTop: '10px', marginBottom: '10px' }}>
+                              <label>🖼️ Изображение приза:</label>
+                              <input
+                                id={`prize-image-input-${index}`}
+                                type="file"
+                                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                                onChange={(e) => handlePrizeImageChange(index, e)}
+                                className="file-input"
+                                style={{ marginTop: '5px' }}
+                              />
+                              <button
+                                onClick={() => handleUploadPrizeImage(index)}
+                                disabled={!prizeImageFiles[index] || uploadingPrizeImages[index]}
+                                className="upload-btn"
+                                style={{ marginTop: '5px', padding: '5px 10px', fontSize: '12px' }}
+                              >
+                                {uploadingPrizeImages[index] ? '⏳ Загрузка...' : prizeImageFiles[index] ? `📁 Загрузить ${prizeImageFiles[index].name}` : '📁 Выберите изображение'}
+                              </button>
+                              {prize.image && (
+                                <div style={{ marginTop: '10px' }}>
+                                  <p>✅ Изображение загружено</p>
+                                  <img 
+                                    src={`${config.API_BASE_URL}/${prize.image}`} 
+                                    alt="Изображение приза" 
+                                    style={{ maxWidth: '200px', maxHeight: '200px', marginTop: '5px', borderRadius: '8px' }}
+                                  />
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <button
                             onClick={() => handleRemovePrize(index)}

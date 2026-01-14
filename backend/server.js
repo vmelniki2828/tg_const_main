@@ -5563,6 +5563,32 @@ const giveawayImageUpload = multer({
   }
 });
 
+// Загрузка изображения приза для розыгрыша
+const prizeImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadsDir = path.join(__dirname, 'uploads', 'prize_images');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, `prize_${uniqueSuffix}${path.extname(file.originalname)}`);
+    }
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Разрешены только изображения (JPEG, PNG, GIF, WebP)'));
+    }
+  }
+});
+
 app.post('/api/giveaways/:botId/:giveawayId/upload', giveawayUpload.single('file'), async (req, res) => {
   try {
     const { botId, giveawayId } = req.params;
@@ -5669,6 +5695,80 @@ app.post('/api/giveaways/:botId/:giveawayId/upload-background', giveawayImageUpl
       }
     }
     res.status(500).json({ error: 'Failed to upload background image', details: error.message });
+  }
+});
+
+// Загрузка изображения приза для розыгрыша
+app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', prizeImageUpload.single('prizeImage'), async (req, res) => {
+  try {
+    const { botId, giveawayId, prizeIndex } = req.params;
+    const prizeIdx = parseInt(prizeIndex);
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image uploaded' });
+    }
+    
+    const giveaway = await Giveaway.findOne({ _id: giveawayId, botId });
+    if (!giveaway) {
+      // Удаляем загруженный файл, если розыгрыш не найден
+      if (req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(404).json({ error: 'Giveaway not found' });
+    }
+    
+    if (prizeIdx < 0 || prizeIdx >= giveaway.prizes.length) {
+      // Удаляем загруженный файл, если приз не найден
+      if (req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(404).json({ error: 'Prize not found' });
+    }
+    
+    // Удаляем старое изображение приза, если оно было
+    const prize = giveaway.prizes[prizeIdx];
+    if (prize.image && fs.existsSync(path.join(__dirname, prize.image))) {
+      try {
+        fs.unlinkSync(path.join(__dirname, prize.image));
+      } catch (err) {
+        console.error('⚠️ Ошибка удаления старого изображения приза:', err);
+      }
+    }
+    
+    // Сохраняем относительный путь к изображению
+    const relativePath = path.relative(__dirname, req.file.path);
+    prize.image = relativePath;
+    
+    // Используем updateOne для сохранения только измененного приза
+    await Giveaway.updateOne(
+      { _id: giveawayId, botId },
+      { 
+        $set: { 
+          [`prizes.${prizeIdx}.image`]: relativePath,
+          updatedAt: new Date()
+        } 
+      }
+    );
+    
+    // Получаем обновленный розыгрыш для ответа
+    const updatedGiveaway = await Giveaway.findOne({ _id: giveawayId, botId });
+    
+    res.json({ 
+      success: true, 
+      image: relativePath,
+      giveaway: updatedGiveaway
+    });
+  } catch (error) {
+    console.error('❌ Ошибка при загрузке изображения приза:', error);
+    // Удаляем загруженный файл при ошибке
+    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (err) {
+        console.error('⚠️ Ошибка удаления файла при ошибке:', err);
+      }
+    }
+    res.status(500).json({ error: 'Failed to upload prize image', details: error.message });
   }
 });
 
@@ -6044,16 +6144,37 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       const colorPalette = giveaway.colorPalette || {};
       const backgroundImagePath = giveaway.backgroundImage ? path.join(__dirname, giveaway.backgroundImage) : null;
       
+      // Добавляем пути к изображениям призов для каждого победителя
+      const winnersWithPrizeImages = winnersWithPrizes.map(winner => {
+        // Находим приз для этого победителя
+        const prize = giveaway.prizes.find(p => {
+          const placeStart = p.placeStart || (p.place || 1);
+          const placeEnd = p.placeEnd || placeStart;
+          
+          if (placeStart === placeEnd) {
+            return p.winner && p.winner.userId === winner.userId;
+          } else {
+            return p.winners && p.winners.some(w => w.userId === winner.userId);
+          }
+        });
+        
+        return {
+          ...winner,
+          prizeImagePath: prize && prize.image ? path.join(__dirname, prize.image) : null
+        };
+      });
+      
       // Логируем для отладки
-      console.log('📋 [GIVEAWAY] Победители для видео:', winnersWithPrizes.map(w => ({
+      console.log('📋 [GIVEAWAY] Победители для видео:', winnersWithPrizeImages.map(w => ({
         userId: w.userId,
         prizeName: w.prizeName,
-        place: w.place
+        place: w.place,
+        hasPrizeImage: !!w.prizeImagePath
       })));
       console.log('📋 [GIVEAWAY] Всего участников:', allParticipants.length);
       console.log('📋 [GIVEAWAY] Фоновое изображение:', backgroundImagePath || 'не указано');
       
-      await generateRouletteVideo(winnersWithPrizes, videoPath, allParticipants, colorPalette, backgroundImagePath);
+      await generateRouletteVideo(winnersWithPrizeImages, videoPath, allParticipants, colorPalette, backgroundImagePath);
       console.log('✅ Видео рулетки создано:', videoPath);
     } catch (videoError) {
       console.error('❌ Ошибка генерации видео:', videoError);

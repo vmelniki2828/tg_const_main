@@ -46,6 +46,20 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
     }
   }
   
+  // Предзагружаем изображения призов для всех победителей
+  const prizeImagesCache = {};
+  for (const winner of winners) {
+    if (winner.prizeImagePath && fs.existsSync(winner.prizeImagePath)) {
+      try {
+        const { loadImage } = require('canvas');
+        prizeImagesCache[winner.userId] = await loadImage(winner.prizeImagePath);
+        console.log(`✅ [VIDEO] Предзагружено изображение приза для победителя ${winner.userId}`);
+      } catch (err) {
+        console.error(`⚠️ [VIDEO] Ошибка предзагрузки изображения приза для ${winner.userId}:`, err);
+      }
+    }
+  }
+  
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
     const time = frameIndex * frameDuration;
     const canvas = createCanvas(width, height);
@@ -128,13 +142,15 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
       } else {
         // Фаза показа победителя
         const revealTime = localTime - spinDuration - pauseDuration;
-        drawWinnerReveal(ctx, width, height, currentWinner, revealTime, revealDuration, colorPalette);
+        const prizeImage = prizeImagesCache[currentWinner.userId] || null;
+        drawWinnerReveal(ctx, width, height, currentWinner, revealTime, revealDuration, colorPalette, prizeImage);
       }
     } else {
       // Показываем последнего победителя в конце
       if (winners.length > 0 && winners[winners.length - 1]) {
         const lastWinner = winners[winners.length - 1];
-        drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (time - (winners.length - 1) * segmentDuration) / revealDuration), revealDuration, colorPalette);
+        const prizeImage = prizeImagesCache[lastWinner.userId] || null;
+        drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (time - (winners.length - 1) * segmentDuration) / revealDuration), revealDuration, colorPalette, prizeImage);
       }
     }
     
@@ -470,7 +486,7 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
 /**
  * Рисует выпадение победителя
  */
-function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalette = {}) {
+function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalette = {}, prizeImage = null) {
   const centerX = width / 2;
   const centerY = height / 2;
   
@@ -509,7 +525,16 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
   ctx.textAlign = 'center';
   const prizeText = winner.prizeName || 'Победитель';
   const placeText = winner.place ? ` (${winner.place} место)` : '';
-  ctx.fillText(prizeText + placeText, 0, -cardHeight/2 + 150);
+  
+  // Если есть изображение приза, рисуем его выше названия
+  if (prizeImage) {
+    const imageSize = 150;
+    const imageY = -cardHeight/2 + 80;
+    ctx.drawImage(prizeImage, -imageSize/2, imageY, imageSize, imageSize);
+    ctx.fillText(prizeText + placeText, 0, imageY + imageSize + 40);
+  } else {
+    ctx.fillText(prizeText + placeText, 0, -cardHeight/2 + 150);
+  }
   
   // Имя победителя
   const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim() || `ID: ${winner.userId}`;
