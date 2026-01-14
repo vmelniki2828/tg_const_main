@@ -216,8 +216,8 @@ const Giveaways = ({ botId, onClose }) => {
   };
 
   const handleUploadPrizeImage = async (prizeIndex) => {
-    const file = prizeImageFiles[prizeIndex];
-    if (!file) {
+    const imageFile = prizeImageFiles[prizeIndex];
+    if (!imageFile) {
       setError('Пожалуйста, выберите изображение');
       return;
     }
@@ -227,41 +227,6 @@ const Giveaways = ({ botId, onClose }) => {
       return;
     }
 
-    // Сначала сохраняем призы, чтобы они были в БД
-    const prize = giveawayData.prizes[prizeIndex];
-    if (!prize) {
-      setError('Приз не найден');
-      return;
-    }
-
-    // Сохраняем текущие данные призов в БД перед загрузкой изображения
-    try {
-      const saveResponse = await fetch(
-        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            ...giveawayData,
-            prizes: giveawayData.prizes
-          }),
-        }
-      );
-
-      if (!saveResponse.ok) {
-        console.warn('⚠️ Не удалось сохранить призы перед загрузкой изображения');
-      } else {
-        const saveData = await saveResponse.json();
-        if (saveData.giveaway) {
-          handleSelectGiveaway(saveData.giveaway);
-        }
-      }
-    } catch (err) {
-      console.warn('⚠️ Ошибка сохранения призов:', err);
-    }
-
     setUploadingPrizeImages({
       ...uploadingPrizeImages,
       [prizeIndex]: true
@@ -269,12 +234,7 @@ const Giveaways = ({ botId, onClose }) => {
     setError('');
 
     const formData = new FormData();
-    formData.append('prizeImage', file);
-    
-    // Добавляем данные приза для поиска по уникальным характеристикам
-    formData.append('placeStart', prize.placeStart || 1);
-    formData.append('placeEnd', prize.placeEnd || prize.placeStart || 1);
-    formData.append('name', prize.name || '');
+    formData.append('prizeImage', imageFile);
 
     try {
       const response = await fetch(
@@ -293,7 +253,9 @@ const Giveaways = ({ botId, onClose }) => {
           ...prizeImageFiles,
           [prizeIndex]: null
         });
-        document.getElementById(`prize-image-input-${prizeIndex}`).value = '';
+        const inputId = `prize-image-input-${prizeIndex}`;
+        const input = document.getElementById(inputId);
+        if (input) input.value = '';
         fetchGiveaways();
         if (data.giveaway) {
           handleSelectGiveaway(data.giveaway);
@@ -1099,34 +1061,64 @@ const Giveaways = ({ botId, onClose }) => {
                             )}
                             
                             {/* Загрузка изображения приза */}
-                            <div style={{ marginTop: '10px', marginBottom: '10px' }}>
-                              <label>🖼️ Изображение приза (для видео):</label>
-                              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '5px' }}>
-                                <input
-                                  id={`prize-image-input-${index}`}
-                                  type="file"
-                                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                                  onChange={(e) => handlePrizeImageChange(index, e)}
-                                  className="file-input"
-                                  style={{ flex: 1 }}
-                                />
-                                <button
-                                  onClick={() => handleUploadPrizeImage(index)}
-                                  disabled={!prizeImageFiles[index] || uploadingPrizeImages[index]}
-                                  className="upload-btn"
-                                  style={{ padding: '8px 16px', fontSize: '14px' }}
-                                >
-                                  {uploadingPrizeImages[index] ? '⏳ Загрузка...' : prizeImageFiles[index] ? `📁 Загрузить` : '📁 Выбрать'}
-                                </button>
-                              </div>
-                              {selectedGiveaway && selectedGiveaway.prizes && selectedGiveaway.prizes[index] && selectedGiveaway.prizes[index].prizeImage && (
+                            <div style={{ marginTop: '15px', marginBottom: '10px' }}>
+                              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>🖼️ Изображение приза:</label>
+                              <input
+                                id={`prize-image-input-${index}`}
+                                type="file"
+                                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                                onChange={(e) => handlePrizeImageChange(index, e)}
+                                className="file-input"
+                                style={{ marginBottom: '8px' }}
+                              />
+                              <button
+                                onClick={() => handleUploadPrizeImage(index)}
+                                disabled={!prizeImageFiles[index] || uploadingPrizeImages[index]}
+                                className="upload-btn"
+                                style={{ padding: '6px 12px', fontSize: '13px' }}
+                              >
+                                {uploadingPrizeImages[index] ? '⏳ Загрузка...' : prizeImageFiles[index] ? `📁 Загрузить ${prizeImageFiles[index].name}` : '📁 Выберите изображение'}
+                              </button>
+                              {prize.prizeImage && (
                                 <div style={{ marginTop: '10px' }}>
-                                  <p style={{ fontSize: '12px', color: '#666' }}>✅ Изображение загружено</p>
+                                  <p style={{ fontSize: '12px', color: '#4caf50', marginBottom: '5px' }}>✅ Изображение загружено</p>
                                   <img 
-                                    src={`${config.API_BASE_URL}/${selectedGiveaway.prizes[index].prizeImage}`} 
+                                    src={`${config.API_BASE_URL}/${prize.prizeImage}`} 
                                     alt="Изображение приза" 
-                                    style={{ maxWidth: '150px', maxHeight: '150px', marginTop: '5px', borderRadius: '8px', border: '1px solid #ddd' }}
+                                    style={{ maxWidth: '150px', maxHeight: '150px', borderRadius: '6px', border: '2px solid #e0e0e0' }}
                                   />
+                                  <button
+                                    onClick={async () => {
+                                      // Удаляем изображение приза
+                                      const updatedPrizes = giveawayData.prizes.map((p, i) => {
+                                        if (i === index) {
+                                          return { ...p, prizeImage: null };
+                                        }
+                                        return p;
+                                      });
+                                      setGiveawayData({ ...giveawayData, prizes: updatedPrizes });
+                                      
+                                      // Сохраняем на сервере
+                                      if (selectedGiveaway && selectedGiveaway._id) {
+                                        const response = await fetch(
+                                          `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
+                                          {
+                                            method: 'PUT',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ ...giveawayData, prizes: updatedPrizes })
+                                          }
+                                        );
+                                        if (response.ok) {
+                                          const data = await response.json();
+                                          if (data.giveaway) handleSelectGiveaway(data.giveaway);
+                                        }
+                                      }
+                                    }}
+                                    className="cancel-btn"
+                                    style={{ marginLeft: '10px', padding: '4px 8px', fontSize: '11px' }}
+                                  >
+                                    ✕ Удалить
+                                  </button>
                                 </div>
                               )}
                             </div>

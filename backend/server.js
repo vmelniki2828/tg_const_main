@@ -5421,7 +5421,6 @@ app.post('/api/giveaways/:botId', async (req, res) => {
             placeStart: prize.place,
             placeEnd: prize.place,
             name: prize.name || `Приз ${prize.place}`,
-            prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
             winner: prize.winner || null,
             winners: []
           };
@@ -5431,7 +5430,6 @@ app.post('/api/giveaways/:botId', async (req, res) => {
           placeStart: prize.placeStart || 1,
           placeEnd: prize.placeEnd || prize.placeStart || 1,
           name: prize.name || 'Приз',
-          prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
           winner: prize.winner || null,
           winners: prize.winners || []
         };
@@ -5494,7 +5492,6 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
           placeStart,
           placeEnd,
           name: prize.name || 'Приз',
-          prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
           winner: null,
           winners: []
         };
@@ -5553,6 +5550,32 @@ const giveawayImageUpload = multer({
     filename: (req, file, cb) => {
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
       cb(null, `bg_${uniqueSuffix}${path.extname(file.originalname)}`);
+    }
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Разрешены только изображения (JPEG, PNG, GIF, WebP)'));
+    }
+  }
+});
+
+// Загрузка изображения приза
+const prizeImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadsDir = path.join(__dirname, 'uploads', 'prize_images');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, `prize_${uniqueSuffix}${path.extname(file.originalname)}`);
     }
   }),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
@@ -5676,36 +5699,10 @@ app.post('/api/giveaways/:botId/:giveawayId/upload-background', giveawayImageUpl
 });
 
 // Загрузка изображения приза
-const prizeImageUpload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const uploadsDir = path.join(__dirname, 'uploads', 'prize_images');
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      cb(null, uploadsDir);
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      cb(null, `prize_${uniqueSuffix}${path.extname(file.originalname)}`);
-    }
-  }),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-  fileFilter: (req, file, cb) => {
-    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-    if (allowedMimes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Разрешены только изображения (JPEG, PNG, GIF, WebP)'));
-    }
-  }
-});
-
-// Загрузка изображения приза
 app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', prizeImageUpload.single('prizeImage'), async (req, res) => {
   try {
     const { botId, giveawayId, prizeIndex } = req.params;
-    const index = parseInt(prizeIndex);
+    const prizeIdx = parseInt(prizeIndex);
     
     if (!req.file) {
       return res.status(400).json({ error: 'No image uploaded' });
@@ -5720,60 +5717,19 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
       return res.status(404).json({ error: 'Giveaway not found' });
     }
     
-    // Получаем данные приза из body для поиска по уникальным характеристикам
-    const placeStart = req.body.placeStart ? parseInt(req.body.placeStart) : undefined;
-    const placeEnd = req.body.placeEnd ? parseInt(req.body.placeEnd) : undefined;
-    const name = req.body.name;
-    
-    let targetPrizeIndex = -1;
-    
-    console.log('🔍 [GIVEAWAY] Поиск приза. Индекс из URL:', index, 'placeStart:', placeStart, 'placeEnd:', placeEnd, 'name:', name);
-    console.log('🔍 [GIVEAWAY] Всего призов в БД:', giveaway.prizes?.length || 0);
-    
-    // Сначала пытаемся найти по уникальным характеристикам (более надежно)
-    if (placeStart !== undefined && placeEnd !== undefined && name) {
-      targetPrizeIndex = giveaway.prizes.findIndex(p => {
-        const pStart = p.placeStart || (p.place || 1);
-        const pEnd = p.placeEnd || pStart;
-        const match = pStart === placeStart && 
-                      pEnd === placeEnd && 
-                      p.name === name;
-        if (match) {
-          console.log('✅ [GIVEAWAY] Приз найден по характеристикам, индекс:', targetPrizeIndex);
-        }
-        return match;
-      });
-    }
-    
-    // Если не нашли по характеристикам, пробуем по индексу
-    if (targetPrizeIndex === -1 && !isNaN(index) && index >= 0 && giveaway.prizes && index < giveaway.prizes.length) {
-      targetPrizeIndex = index;
-      console.log('✅ [GIVEAWAY] Приз найден по индексу:', targetPrizeIndex);
-    }
-    
-    if (targetPrizeIndex === -1 || !giveaway.prizes || targetPrizeIndex >= giveaway.prizes.length) {
+    if (!giveaway.prizes || !giveaway.prizes[prizeIdx]) {
       // Удаляем загруженный файл, если приз не найден
       if (req.file.path) {
         fs.unlinkSync(req.file.path);
       }
-      console.error('❌ [GIVEAWAY] Приз не найден. Индекс:', index, 'placeStart:', placeStart, 'placeEnd:', placeEnd, 'name:', name);
-      console.error('❌ [GIVEAWAY] Всего призов в БД:', giveaway.prizes?.length || 0);
-      if (giveaway.prizes && giveaway.prizes.length > 0) {
-        console.error('❌ [GIVEAWAY] Призы в БД:', giveaway.prizes.map((p, i) => ({
-          index: i,
-          placeStart: p.placeStart || p.place,
-          placeEnd: p.placeEnd || p.placeStart || p.place,
-          name: p.name
-        })));
-      }
-      return res.status(400).json({ error: 'Invalid prize index or prize not found' });
+      return res.status(404).json({ error: 'Prize not found' });
     }
     
-    // Удаляем старое изображение, если оно было
-    const oldImagePath = giveaway.prizes[targetPrizeIndex].prizeImage;
-    if (oldImagePath && fs.existsSync(path.join(__dirname, oldImagePath))) {
+    // Удаляем старое изображение приза, если оно было
+    const oldPrizeImage = giveaway.prizes[prizeIdx].prizeImage;
+    if (oldPrizeImage && fs.existsSync(path.join(__dirname, oldPrizeImage))) {
       try {
-        fs.unlinkSync(path.join(__dirname, oldImagePath));
+        fs.unlinkSync(path.join(__dirname, oldPrizeImage));
       } catch (err) {
         console.error('⚠️ Ошибка удаления старого изображения приза:', err);
       }
@@ -5781,13 +5737,26 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
     
     // Сохраняем относительный путь к изображению
     const relativePath = path.relative(__dirname, req.file.path);
-    giveaway.prizes[targetPrizeIndex].prizeImage = relativePath;
-    await giveaway.save();
+    
+    // Обновляем изображение приза
+    const updatedPrizes = [...giveaway.prizes];
+    updatedPrizes[prizeIdx] = {
+      ...updatedPrizes[prizeIdx],
+      prizeImage: relativePath
+    };
+    
+    await Giveaway.updateOne(
+      { _id: giveawayId, botId },
+      { $set: { prizes: updatedPrizes, updatedAt: new Date() } }
+    );
+    
+    // Получаем обновленный розыгрыш для ответа
+    const updatedGiveaway = await Giveaway.findOne({ _id: giveawayId, botId });
     
     res.json({ 
       success: true, 
       prizeImage: relativePath,
-      giveaway 
+      giveaway: updatedGiveaway
     });
   } catch (error) {
     console.error('❌ Ошибка при загрузке изображения приза:', error);
@@ -5921,11 +5890,8 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
     const updatedPrizes = prizesToProcess.map((prize, index) => {
       const needWinners = prizesNeedingWinners.find(p => p.index === index);
       if (!needWinners) {
-        // Победители уже выбраны - оставляем как есть, но сохраняем prizeImage
-        return {
-          ...prize,
-          prizeImage: prize.prizeImage || null // Сохраняем изображение приза
-        };
+        // Победители уже выбраны - оставляем как есть
+        return prize;
       }
       
       const placeStart = prize.placeStart || (prize.place || 1);
@@ -5938,7 +5904,6 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
             ...prize,
             placeStart,
             placeEnd,
-            prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
             winner: allWinners[winnerIndex++],
             winners: []
           };
@@ -5954,16 +5919,12 @@ app.post('/api/giveaways/:botId/:giveawayId/random-winners', async (req, res) =>
           ...prize,
           placeStart,
           placeEnd,
-          prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
           winner: null,
           winners: [...existingWinners, ...newWinners]
         };
       }
       
-      return {
-        ...prize,
-        prizeImage: prize.prizeImage || null // Сохраняем изображение приза
-      };
+      return prize;
     });
     
     // Обновляем розыгрыш
@@ -6066,11 +6027,7 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
         const updatedPrizesForPublish = giveaway.prizes.map((prize, index) => {
           const needWinners = prizesNeedingWinners.find(p => p.index === index);
           if (!needWinners) {
-            // Сохраняем prizeImage даже если победители уже выбраны
-            return {
-              ...prize,
-              prizeImage: prize.prizeImage || null // Сохраняем изображение приза
-            };
+            return prize;
           }
           
           const placeStart = prize.placeStart || (prize.place || 1);
@@ -6083,7 +6040,6 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
                 ...prize,
                 placeStart,
                 placeEnd,
-                prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
                 winner: allWinners[winnerIndex++],
                 winners: []
               };
@@ -6099,24 +6055,13 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
               ...prize,
               placeStart,
               placeEnd,
-              prizeImage: prize.prizeImage || null, // Сохраняем изображение приза
               winner: null,
               winners: [...existingWinners, ...newWinners]
             };
           }
           
-          return {
-            ...prize,
-            prizeImage: prize.prizeImage || null // Сохраняем изображение приза
-          };
+          return prize;
         });
-        
-        console.log('🔍 [GIVEAWAY] Обновленные призы перед сохранением:', updatedPrizesForPublish.map(p => ({
-          name: p.name,
-          placeStart: p.placeStart,
-          placeEnd: p.placeEnd,
-          prizeImage: p.prizeImage
-        })));
         
         // Присваиваем обновленный массив призов
         giveaway.prizes = updatedPrizesForPublish;
@@ -6138,7 +6083,6 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
           winnersWithPrizes.push({
             ...prize.winner,
             prizeName: prize.name,
-            prizeImage: prize.prizeImage || null,
             place: placeStart,
             placeStart,
             placeEnd
@@ -6157,7 +6101,6 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
                 lastName: winner.lastName || '',
                 project: winner.project || '',
                 prizeName: prize.name,
-                prizeImage: prize.prizeImage || null, // Передаем путь к изображению приза
                 place: placeStart + index,
                 placeStart,
                 placeEnd
@@ -6200,51 +6143,19 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
       const allParticipants = giveaway.participants || [];
       const colorPalette = giveaway.colorPalette || {};
       const backgroundImagePath = giveaway.backgroundImage ? path.join(__dirname, giveaway.backgroundImage) : null;
-      const prizeImagesDir = path.join(__dirname, 'uploads', 'prize_images');
-      
-      // Преобразуем относительные пути изображений призов в полные пути для генерации видео
-      const winnersWithFullPaths = winnersWithPrizes.map(winner => {
-        if (winner.prizeImage) {
-          // Если путь относительный, делаем его полным
-          if (!path.isAbsolute(winner.prizeImage)) {
-            const fullPath = path.join(__dirname, winner.prizeImage);
-            console.log('🖼️ [GIVEAWAY] Преобразование пути изображения приза:', winner.prizeImage, '->', fullPath);
-            // Проверяем существование файла
-            if (fs.existsSync(fullPath)) {
-              console.log('✅ [GIVEAWAY] Файл изображения приза существует:', fullPath);
-            } else {
-              console.warn('⚠️ [GIVEAWAY] Файл изображения приза не найден:', fullPath);
-            }
-            return {
-              ...winner,
-              prizeImage: fullPath
-            };
-          } else {
-            console.log('🖼️ [GIVEAWAY] Путь изображения приза уже абсолютный:', winner.prizeImage);
-            if (fs.existsSync(winner.prizeImage)) {
-              console.log('✅ [GIVEAWAY] Файл изображения приза существует:', winner.prizeImage);
-            } else {
-              console.warn('⚠️ [GIVEAWAY] Файл изображения приза не найден:', winner.prizeImage);
-            }
-          }
-        } else {
-          console.log('⚠️ [GIVEAWAY] У победителя нет изображения приза:', winner.userId, winner.prizeName);
-        }
-        return winner;
-      });
+      const prizesData = giveaway.prizes || [];
       
       // Логируем для отладки
-      console.log('📋 [GIVEAWAY] Победители для видео:', winnersWithFullPaths.map(w => ({
+      console.log('📋 [GIVEAWAY] Победители для видео:', winnersWithPrizes.map(w => ({
         userId: w.userId,
         prizeName: w.prizeName,
-        prizeImage: w.prizeImage,
         place: w.place
       })));
       console.log('📋 [GIVEAWAY] Всего участников:', allParticipants.length);
       console.log('📋 [GIVEAWAY] Фоновое изображение:', backgroundImagePath || 'не указано');
-      console.log('📋 [GIVEAWAY] Директория изображений призов:', prizeImagesDir);
+      console.log('📋 [GIVEAWAY] Призы с изображениями:', prizesData.filter(p => p.prizeImage).map(p => ({ name: p.name, image: p.prizeImage })));
       
-      await generateRouletteVideo(winnersWithFullPaths, videoPath, allParticipants, colorPalette, backgroundImagePath, prizeImagesDir);
+      await generateRouletteVideo(winnersWithPrizes, videoPath, allParticipants, colorPalette, backgroundImagePath, prizesData);
       console.log('✅ Видео рулетки создано:', videoPath);
     } catch (videoError) {
       console.error('❌ Ошибка генерации видео:', videoError);
