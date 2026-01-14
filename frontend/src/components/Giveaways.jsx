@@ -252,6 +252,13 @@ const Giveaways = ({ botId, onClose }) => {
       return;
     }
 
+    console.log('📸 [FRONTEND] Загрузка изображения приза:', {
+      prizeIndex,
+      prizeName: giveawayData.prizes[prizeIndex]?.name,
+      totalPrizes: giveawayData.prizes.length,
+      selectedGiveawayPrizes: selectedGiveaway.prizes?.length
+    });
+
     setUploadingPrizeImages({
       ...uploadingPrizeImages,
       [prizeIndex]: true
@@ -282,26 +289,19 @@ const Giveaways = ({ botId, onClose }) => {
         const input = document.getElementById(inputId);
         if (input) input.value = '';
         
-        // Обновляем локальное состояние приза с изображением
-        if (data.giveaway && data.giveaway.prizes && data.giveaway.prizes[prizeIndex]) {
-          const updatedPrizes = [...giveawayData.prizes];
-          updatedPrizes[prizeIndex] = {
-            ...updatedPrizes[prizeIndex],
-            prizeImage: data.giveaway.prizes[prizeIndex].prizeImage
-          };
-          setGiveawayData({
-            ...giveawayData,
-            prizes: updatedPrizes
-          });
-        }
-        
-        // Обновляем selectedGiveaway
+        // Обновляем selectedGiveaway с полными данными из ответа
         if (data.giveaway) {
+          console.log('✅ [FRONTEND] Обновляем данные розыгрыша после загрузки изображения:', {
+            prizeIndex,
+            prizeImage: data.giveaway.prizes[prizeIndex]?.prizeImage,
+            totalPrizes: data.giveaway.prizes.length
+          });
           handleSelectGiveaway(data.giveaway);
         }
         
         fetchGiveaways();
       } else {
+        console.error('❌ [FRONTEND] Ошибка загрузки изображения:', data);
         setError(data.error || 'Ошибка загрузки изображения');
       }
     } catch (err) {

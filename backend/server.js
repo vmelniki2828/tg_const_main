@@ -5705,7 +5705,15 @@ app.post('/api/giveaways/:botId/:giveawayId/upload-background', giveawayImageUpl
 app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', prizeImageUpload.single('prizeImage'), async (req, res) => {
   try {
     const { botId, giveawayId, prizeIndex } = req.params;
-    const prizeIdx = parseInt(prizeIndex);
+    const prizeIdx = parseInt(prizeIndex, 10);
+    
+    console.log('📸 [PRIZE_IMAGE] Запрос на загрузку изображения приза:', {
+      botId,
+      giveawayId,
+      prizeIndex,
+      prizeIdx,
+      file: req.file ? req.file.originalname : 'no file'
+    });
     
     if (!req.file) {
       return res.status(400).json({ error: 'No image uploaded' });
@@ -5720,12 +5728,31 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
       return res.status(404).json({ error: 'Giveaway not found' });
     }
     
-    if (!giveaway.prizes || !giveaway.prizes[prizeIdx]) {
-      // Удаляем загруженный файл, если приз не найден
+    console.log('📸 [PRIZE_IMAGE] Розыгрыш найден:', {
+      prizesCount: giveaway.prizes ? giveaway.prizes.length : 0,
+      prizes: giveaway.prizes ? giveaway.prizes.map((p, i) => ({ index: i, name: p.name, prizeImage: p.prizeImage })) : []
+    });
+    
+    // Проверяем валидность индекса
+    if (isNaN(prizeIdx) || prizeIdx < 0) {
+      console.error('❌ [PRIZE_IMAGE] Невалидный индекс:', prizeIdx);
       if (req.file.path) {
         fs.unlinkSync(req.file.path);
       }
-      return res.status(404).json({ error: 'Prize not found' });
+      return res.status(400).json({ error: 'Invalid prize index' });
+    }
+    
+    if (!giveaway.prizes || !Array.isArray(giveaway.prizes) || prizeIdx >= giveaway.prizes.length) {
+      // Удаляем загруженный файл, если приз не найден
+      console.error('❌ [PRIZE_IMAGE] Приз не найден:', {
+        prizeIndex: prizeIdx,
+        prizesCount: giveaway.prizes ? giveaway.prizes.length : 0,
+        prizes: giveaway.prizes ? giveaway.prizes.map((p, i) => ({ index: i, name: p.name })) : []
+      });
+      if (req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(404).json({ error: `Prize not found at index ${prizeIdx}. Total prizes: ${giveaway.prizes ? giveaway.prizes.length : 0}` });
     }
     
     // Удаляем старое изображение приза, если оно было
@@ -5746,25 +5773,48 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
       currentPrize: giveaway.prizes[prizeIdx] ? {
         name: giveaway.prizes[prizeIdx].name,
         currentImage: giveaway.prizes[prizeIdx].prizeImage
-      } : 'not found'
+      } : 'not found',
+      allPrizes: giveaway.prizes.map((p, i) => ({ index: i, name: p.name }))
     });
     
     // Обновляем изображение приза напрямую в документе
     if (!giveaway.prizes[prizeIdx]) {
+      console.error('❌ [PRIZE_IMAGE] Приз не найден по индексу:', {
+        requestedIndex: prizeIdx,
+        availablePrizes: giveaway.prizes.map((p, i) => ({ index: i, name: p.name }))
+      });
+      if (req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
       return res.status(404).json({ error: 'Prize not found at index ' + prizeIdx });
     }
     
-    giveaway.prizes[prizeIdx].prizeImage = relativePath;
-    giveaway.updatedAt = new Date();
+    // Создаем новый массив призов с обновленным изображением
+    const updatedPrizes = giveaway.prizes.map((prize, idx) => {
+      if (idx === prizeIdx) {
+        return {
+          ...prize.toObject ? prize.toObject() : prize,
+          prizeImage: relativePath
+        };
+      }
+      return prize.toObject ? prize.toObject() : prize;
+    });
     
-    // Помечаем массив prizes как измененный для Mongoose
-    giveaway.markModified('prizes');
-    await giveaway.save();
+    // Обновляем через updateOne с полным массивом
+    await Giveaway.updateOne(
+      { _id: giveawayId, botId },
+      { 
+        $set: { 
+          prizes: updatedPrizes,
+          updatedAt: new Date() 
+        } 
+      }
+    );
     
     console.log('✅ [PRIZE_IMAGE] Изображение приза сохранено. Проверяем результат...');
     
     // Получаем обновленный розыгрыш для ответа
-    const updatedGiveaway = await Giveaway.findOne({ _id: giveawayId, botId });
+    const updatedGiveaway = await Giveaway.findOne({ _id: giveawayId, botId }).lean();
     
     console.log('🔍 [PRIZE_IMAGE] Обновленный приз:', updatedGiveaway.prizes[prizeIdx] ? {
       name: updatedGiveaway.prizes[prizeIdx].name,
