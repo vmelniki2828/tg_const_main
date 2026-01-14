@@ -49,23 +49,53 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
   // Загружаем изображения призов
   const prizeImages = {};
   const { loadImage } = require('canvas');
+  
+  // Собираем уникальные пути к изображениям призов
+  const uniquePrizeImages = new Set();
   for (const winner of winners) {
-    if (winner.prizeImage && !prizeImages[winner.prizeImage]) {
-      // winner.prizeImage должен быть полным путем
-      const imagePath = winner.prizeImage;
-      
-      if (fs.existsSync(imagePath)) {
-        try {
-          prizeImages[winner.prizeImage] = await loadImage(imagePath);
-          console.log('✅ [VIDEO] Изображение приза загружено:', imagePath);
-        } catch (err) {
-          console.error('⚠️ [VIDEO] Ошибка загрузки изображения приза:', err);
-        }
-      } else {
-        console.warn('⚠️ [VIDEO] Изображение приза не найдено:', imagePath);
-      }
+    if (winner.prizeImage) {
+      uniquePrizeImages.add(winner.prizeImage);
     }
   }
+  
+  console.log('🖼️ [VIDEO] Найдено уникальных изображений призов:', uniquePrizeImages.size);
+  
+  // Загружаем каждое уникальное изображение
+  for (const prizeImagePath of uniquePrizeImages) {
+    // prizeImagePath должен быть полным путем
+    let imagePath = prizeImagePath;
+    
+    // Если путь относительный, пробуем найти его
+    if (!path.isAbsolute(imagePath)) {
+      // Пробуем несколько вариантов
+      const possiblePaths = [
+        path.join(path.dirname(outputPath), '..', imagePath),
+        path.join(path.dirname(outputPath), '..', 'uploads', 'prize_images', path.basename(imagePath)),
+        path.join(prizeImagesDir || path.dirname(outputPath), path.basename(imagePath))
+      ];
+      
+      for (const possiblePath of possiblePaths) {
+        if (fs.existsSync(possiblePath)) {
+          imagePath = possiblePath;
+          break;
+        }
+      }
+    }
+    
+    if (fs.existsSync(imagePath)) {
+      try {
+        const loadedImage = await loadImage(imagePath);
+        prizeImages[prizeImagePath] = loadedImage;
+        console.log('✅ [VIDEO] Изображение приза загружено:', imagePath, 'Размер:', loadedImage.width, 'x', loadedImage.height);
+      } catch (err) {
+        console.error('⚠️ [VIDEO] Ошибка загрузки изображения приза:', imagePath, err);
+      }
+    } else {
+      console.warn('⚠️ [VIDEO] Изображение приза не найдено. Оригинальный путь:', prizeImagePath, 'Пробовали:', imagePath);
+    }
+  }
+  
+  console.log('🖼️ [VIDEO] Загружено изображений призов:', Object.keys(prizeImages).length);
   
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
     const time = frameIndex * frameDuration;
@@ -150,6 +180,12 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
         // Фаза показа победителя
         const revealTime = localTime - spinDuration - pauseDuration;
         const prizeImage = currentWinner.prizeImage ? prizeImages[currentWinner.prizeImage] : null;
+        
+        // Логируем для отладки (только один раз за сегмент)
+        if (frameIndex % 90 === 0 && localTime > spinDuration + pauseDuration) {
+          console.log(`🖼️ [VIDEO] Сегмент ${currentSegment}: prizeImage path=${currentWinner.prizeImage}, loaded=${prizeImage ? 'yes' : 'no'}`);
+        }
+        
         drawWinnerReveal(ctx, width, height, currentWinner, revealTime, revealDuration, colorPalette, prizeImage);
       }
     } else {
@@ -538,8 +574,10 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
   let imageY = -cardHeight/2 + 220; // Позиция после названия приза
   if (prizeImage) {
     try {
+      console.log('🖼️ [VIDEO] Отрисовка изображения приза. Размер оригинала:', prizeImage.width, 'x', prizeImage.height);
+      
       const maxImageWidth = cardWidth * 0.7;
-      const maxImageHeight = 300;
+      const maxImageHeight = 250; // Уменьшил высоту, чтобы было место для текста
       let imageWidth = prizeImage.width;
       let imageHeight = prizeImage.height;
       
@@ -548,13 +586,20 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
       imageWidth = imageWidth * scale;
       imageHeight = imageHeight * scale;
       
+      console.log('🖼️ [VIDEO] Масштабированное изображение:', imageWidth, 'x', imageHeight, 'scale:', scale);
+      
       const imageX = -imageWidth / 2;
       ctx.drawImage(prizeImage, imageX, imageY, imageWidth, imageHeight);
       
-      imageY += imageHeight + 20; // Отступ после изображения
+      console.log('✅ [VIDEO] Изображение приза отрисовано в позиции:', imageX, imageY);
+      
+      imageY += imageHeight + 30; // Отступ после изображения
     } catch (err) {
       console.error('⚠️ [VIDEO] Ошибка отрисовки изображения приза:', err);
+      console.error('⚠️ [VIDEO] Stack:', err.stack);
     }
+  } else {
+    console.log('⚠️ [VIDEO] Изображение приза не передано для победителя:', winner.userId, 'prizeName:', winner.prizeName);
   }
   
   // Имя победителя

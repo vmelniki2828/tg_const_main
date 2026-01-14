@@ -6130,7 +6130,7 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
                 lastName: winner.lastName || '',
                 project: winner.project || '',
                 prizeName: prize.name,
-                prizeImage: prize.prizeImage || null,
+                prizeImage: prize.prizeImage || null, // Передаем путь к изображению приза
                 place: placeStart + index,
                 placeStart,
                 placeEnd
@@ -6181,11 +6181,27 @@ app.post('/api/giveaways/:botId/:giveawayId/publish', async (req, res) => {
           // Если путь относительный, делаем его полным
           if (!path.isAbsolute(winner.prizeImage)) {
             const fullPath = path.join(__dirname, winner.prizeImage);
+            console.log('🖼️ [GIVEAWAY] Преобразование пути изображения приза:', winner.prizeImage, '->', fullPath);
+            // Проверяем существование файла
+            if (fs.existsSync(fullPath)) {
+              console.log('✅ [GIVEAWAY] Файл изображения приза существует:', fullPath);
+            } else {
+              console.warn('⚠️ [GIVEAWAY] Файл изображения приза не найден:', fullPath);
+            }
             return {
               ...winner,
               prizeImage: fullPath
             };
+          } else {
+            console.log('🖼️ [GIVEAWAY] Путь изображения приза уже абсолютный:', winner.prizeImage);
+            if (fs.existsSync(winner.prizeImage)) {
+              console.log('✅ [GIVEAWAY] Файл изображения приза существует:', winner.prizeImage);
+            } else {
+              console.warn('⚠️ [GIVEAWAY] Файл изображения приза не найден:', winner.prizeImage);
+            }
           }
+        } else {
+          console.log('⚠️ [GIVEAWAY] У победителя нет изображения приза:', winner.userId, winner.prizeName);
         }
         return winner;
       });
