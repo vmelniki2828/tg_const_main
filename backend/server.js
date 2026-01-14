@@ -5412,7 +5412,7 @@ app.post('/api/giveaways/:botId', async (req, res) => {
     // Конвертируем старый формат (place) в новый (placeStart/placeEnd) для обратной совместимости
     let prizesArray = prizes || [];
     if (prizesArray.length === 0) {
-      prizesArray = [{ placeStart: 1, placeEnd: 1, name: 'Приз 1', winner: null, winners: [] }];
+      prizesArray = [{ placeStart: 1, placeEnd: 1, name: 'Приз 1', image: null, winner: null, winners: [] }];
     } else {
       prizesArray = prizesArray.map(prize => {
         if (prize.place !== undefined) {
@@ -5421,15 +5421,17 @@ app.post('/api/giveaways/:botId', async (req, res) => {
             placeStart: prize.place,
             placeEnd: prize.place,
             name: prize.name || `Приз ${prize.place}`,
+            image: prize.image || null, // Сохраняем изображение при конвертации
             winner: prize.winner || null,
             winners: []
           };
         }
-        // Новый формат - нормализуем
+        // Новый формат - нормализуем, сохраняя все поля включая image
         return {
           placeStart: prize.placeStart || 1,
           placeEnd: prize.placeEnd || prize.placeStart || 1,
           name: prize.name || 'Приз',
+          image: prize.image || null, // Важно сохранить изображение
           winner: prize.winner || null,
           winners: prize.winners || []
         };
@@ -5492,6 +5494,7 @@ app.put('/api/giveaways/:botId/:giveawayId', async (req, res) => {
           placeStart,
           placeEnd,
           name: prize.name || 'Приз',
+          image: prize.image || null, // Сохраняем изображение при нормализации
           winner: null,
           winners: []
         };
@@ -5737,10 +5740,9 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
     
     // Сохраняем относительный путь к изображению
     const relativePath = path.relative(__dirname, req.file.path);
-    prize.image = relativePath;
     
-    // Используем updateOne для сохранения только измененного приза
-    await Giveaway.updateOne(
+    // Обновляем только изображение конкретного приза, сохраняя все остальные данные
+    const updateResult = await Giveaway.updateOne(
       { _id: giveawayId, botId },
       { 
         $set: { 
@@ -5750,8 +5752,25 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
       }
     );
     
+    // Проверяем, что обновление прошло успешно
+    if (updateResult.matchedCount === 0) {
+      // Удаляем загруженный файл, если розыгрыш не найден
+      if (req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(404).json({ error: 'Giveaway not found' });
+    }
+    
     // Получаем обновленный розыгрыш для ответа
     const updatedGiveaway = await Giveaway.findOne({ _id: giveawayId, botId });
+    
+    // Проверяем, что изображение сохранилось и другие призы не потеряли свои изображения
+    if (updatedGiveaway && updatedGiveaway.prizes) {
+      console.log('🔍 [PRIZE_IMAGE] Проверка сохраненных изображений призов:');
+      updatedGiveaway.prizes.forEach((p, idx) => {
+        console.log(`  Приз ${idx}: ${p.name}, изображение: ${p.image || 'нет'}`);
+      });
+    }
     
     res.json({ 
       success: true, 

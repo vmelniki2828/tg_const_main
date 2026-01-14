@@ -20,7 +20,7 @@ const Giveaways = ({ botId, onClose }) => {
   // Состояние для нового/редактируемого розыгрыша
   const [giveawayData, setGiveawayData] = useState({
     name: 'Розыгрыш',
-    prizes: [{ placeStart: 1, placeEnd: 1, name: 'Приз 1', winner: null, winners: [] }],
+    prizes: [{ placeStart: 1, placeEnd: 1, name: 'Приз 1', image: null, winner: null, winners: [] }],
     description: '',
     selectedChannels: [],
     colorPalette: {
@@ -96,9 +96,33 @@ const Giveaways = ({ botId, onClose }) => {
 
   const handleSelectGiveaway = (giveaway) => {
     setSelectedGiveaway(giveaway);
+    // Конвертируем старый формат (place) в новый (placeStart/placeEnd) для обратной совместимости
+    const convertedPrizes = (giveaway.prizes || []).map(prize => {
+      if (prize.place !== undefined) {
+        // Старый формат - конвертируем
+        return {
+          placeStart: prize.place,
+          placeEnd: prize.place,
+          name: prize.name || `Приз ${prize.place}`,
+          image: prize.image || null, // Сохраняем изображение при конвертации
+          winner: prize.winner || null,
+          winners: []
+        };
+      }
+      // Новый формат - сохраняем все поля, включая image
+      return {
+        placeStart: prize.placeStart || 1,
+        placeEnd: prize.placeEnd || 1,
+        name: prize.name || 'Приз',
+        image: prize.image || null, // Важно сохранить изображение
+        winner: prize.winner || null,
+        winners: prize.winners || []
+      };
+    });
+    
     setGiveawayData({
       name: giveaway.name,
-      prizes: giveaway.prizes || [{ placeStart: 1, placeEnd: 1, name: 'Приз 1', winner: null, winners: [] }],
+      prizes: convertedPrizes.length > 0 ? convertedPrizes : [{ placeStart: 1, placeEnd: 1, name: 'Приз 1', image: null, winner: null, winners: [] }],
       description: giveaway.description || '',
       selectedChannels: giveaway.selectedChannels || [],
       backgroundImage: giveaway.backgroundImage || null,
@@ -123,6 +147,7 @@ const Giveaways = ({ botId, onClose }) => {
       placeStart: maxPlace + 1,
       placeEnd: maxPlace + 1,
       name: `Приз ${giveawayData.prizes.length + 1}`,
+      image: null,
       winner: null,
       winners: []
     };
@@ -247,10 +272,28 @@ const Giveaways = ({ botId, onClose }) => {
         const inputId = `prize-image-input-${prizeIndex}`;
         const input = document.getElementById(inputId);
         if (input) input.value = '';
-        fetchGiveaways();
-        if (data.giveaway) {
-          handleSelectGiveaway(data.giveaway);
+        
+        // Получаем полные данные розыгрыша из БД, чтобы сохранить все изображения призов
+        const fullGiveawayResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`);
+        if (fullGiveawayResponse.ok) {
+          const fullData = await fullGiveawayResponse.json();
+          if (fullData.giveaway) {
+            // Проверяем, что все изображения призов сохранены
+            console.log('🔍 [FRONTEND] Изображения призов после загрузки:', fullData.giveaway.prizes.map((p, i) => ({
+              index: i,
+              name: p.name,
+              hasImage: !!p.image
+            })));
+            handleSelectGiveaway(fullData.giveaway);
+          }
+        } else {
+          // Fallback на данные из ответа загрузки
+          if (data.giveaway) {
+            handleSelectGiveaway(data.giveaway);
+          }
         }
+        
+        fetchGiveaways();
       } else {
         setError(data.error || 'Ошибка загрузки изображения');
       }
