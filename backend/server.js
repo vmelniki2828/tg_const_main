@@ -5720,19 +5720,42 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
       return res.status(404).json({ error: 'Giveaway not found' });
     }
     
-    if (prizeIdx < 0 || prizeIdx >= giveaway.prizes.length) {
+    // Логируем для отладки
+    console.log('🔍 [PRIZE_IMAGE] Запрос на загрузку изображения:');
+    console.log(`  prizeIndex из запроса: ${prizeIndex} (parsed: ${prizeIdx})`);
+    console.log(`  Количество призов в БД: ${giveaway.prizes.length}`);
+    console.log(`  Призы в БД:`, giveaway.prizes.map((p, i) => ({
+      index: i,
+      name: p.name,
+      placeStart: p.placeStart,
+      placeEnd: p.placeEnd
+    })));
+    
+    if (isNaN(prizeIdx) || prizeIdx < 0 || prizeIdx >= giveaway.prizes.length) {
       // Удаляем загруженный файл, если приз не найден
       if (req.file.path) {
         fs.unlinkSync(req.file.path);
       }
-      return res.status(404).json({ error: 'Prize not found' });
+      console.error(`❌ [PRIZE_IMAGE] Неверный индекс приза: ${prizeIdx}, доступно призов: ${giveaway.prizes.length}`);
+      return res.status(404).json({ 
+        error: 'Prize not found',
+        details: `Requested index: ${prizeIdx}, available prizes: ${giveaway.prizes.length}`
+      });
     }
     
     // Удаляем старое изображение приза, если оно было
     const prize = giveaway.prizes[prizeIdx];
+    if (!prize) {
+      if (req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(404).json({ error: 'Prize not found at specified index' });
+    }
+    
     if (prize.image && fs.existsSync(path.join(__dirname, prize.image))) {
       try {
         fs.unlinkSync(path.join(__dirname, prize.image));
+        console.log(`🗑️ [PRIZE_IMAGE] Удалено старое изображение: ${prize.image}`);
       } catch (err) {
         console.error('⚠️ Ошибка удаления старого изображения приза:', err);
       }
@@ -5740,6 +5763,7 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
     
     // Сохраняем относительный путь к изображению
     const relativePath = path.relative(__dirname, req.file.path);
+    console.log(`💾 [PRIZE_IMAGE] Сохраняем изображение для приза ${prizeIdx} (${prize.name}): ${relativePath}`);
     
     // Обновляем только изображение конкретного приза, сохраняя все остальные данные
     const updateResult = await Giveaway.updateOne(
@@ -5761,6 +5785,10 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
       return res.status(404).json({ error: 'Giveaway not found' });
     }
     
+    if (updateResult.modifiedCount === 0) {
+      console.warn(`⚠️ [PRIZE_IMAGE] Изображение не было обновлено (modifiedCount: 0)`);
+    }
+    
     // Получаем обновленный розыгрыш для ответа
     const updatedGiveaway = await Giveaway.findOne({ _id: giveawayId, botId });
     
@@ -5779,6 +5807,11 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
     });
   } catch (error) {
     console.error('❌ Ошибка при загрузке изображения приза:', error);
+    console.error('❌ Детали ошибки:', {
+      message: error.message,
+      stack: error.stack,
+      params: req.params
+    });
     // Удаляем загруженный файл при ошибке
     if (req.file && req.file.path && fs.existsSync(req.file.path)) {
       try {

@@ -249,6 +249,46 @@ const Giveaways = ({ botId, onClose }) => {
       return;
     }
 
+    // Находим приз в giveawayData для получения его данных
+    const prize = giveawayData.prizes[prizeIndex];
+    if (!prize) {
+      setError('Приз не найден');
+      return;
+    }
+
+    // Находим индекс приза в БД по placeStart, placeEnd и name
+    // Это гарантирует, что мы обновляем правильный приз
+    const dbPrizeIndex = selectedGiveaway.prizes.findIndex(p => {
+      const pPlaceStart = p.placeStart || (p.place || 1);
+      const pPlaceEnd = p.placeEnd || pPlaceStart;
+      const prizePlaceStart = prize.placeStart || 1;
+      const prizePlaceEnd = prize.placeEnd || prizePlaceStart;
+      return pPlaceStart === prizePlaceStart && 
+             pPlaceEnd === prizePlaceEnd && 
+             p.name === prize.name;
+    });
+
+    if (dbPrizeIndex === -1) {
+      console.error('❌ [FRONTEND] Приз не найден в БД:', {
+        prizeIndex,
+        prize: {
+          name: prize.name,
+          placeStart: prize.placeStart,
+          placeEnd: prize.placeEnd
+        },
+        dbPrizes: selectedGiveaway.prizes.map((p, i) => ({
+          index: i,
+          name: p.name,
+          placeStart: p.placeStart || (p.place || 1),
+          placeEnd: p.placeEnd || (p.place || 1)
+        }))
+      });
+      setError('Приз не найден в базе данных. Попробуйте обновить страницу.');
+      return;
+    }
+
+    console.log(`🔍 [FRONTEND] Загрузка изображения: frontend index=${prizeIndex}, db index=${dbPrizeIndex}, приз: ${prize.name}`);
+
     setUploadingPrizeImages({ ...uploadingPrizeImages, [prizeIndex]: true });
     setError('');
 
@@ -257,7 +297,7 @@ const Giveaways = ({ botId, onClose }) => {
 
     try {
       const response = await fetch(
-        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/prize/${prizeIndex}/upload-image`,
+        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/prize/${dbPrizeIndex}/upload-image`,
         {
           method: 'POST',
           body: formData
