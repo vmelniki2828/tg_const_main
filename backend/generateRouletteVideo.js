@@ -15,7 +15,7 @@ const ffmpeg = require('fluent-ffmpeg');
 async function generateRouletteVideo(winners, outputPath, allParticipants = null, colorPalette = {}, backgroundImagePath = null, prizeImagesDir = null) {
   const width = 1080;
   const height = 1920; // Вертикальное видео для Telegram
-  const fps = 30;
+  const fps = 24; // Снижено с 30 до 24 для ускорения (~20% меньше кадров)
   const frameDuration = 1 / fps;
   
   // Параметры анимации
@@ -23,6 +23,8 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
   const pauseDuration = 1.5; // Пауза после прокрутки, чтобы увидеть выпавший ID (секунды)
   const revealDuration = 2.5; // Длительность показа каждого победителя (секунды)
   const totalFrames = Math.ceil((spinDuration + pauseDuration + revealDuration) * winners.length * fps);
+  
+  console.log(`⚡ [VIDEO] Генерация видео: ${winners.length} победителей, ${totalFrames} кадров, ${fps} FPS`);
   
   // Создаем директорию для временных кадров
   const framesDir = path.join(path.dirname(outputPath), 'roulette_frames');
@@ -48,6 +50,7 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
   
   // Загружаем изображения призов
   const prizeImages = {};
+  const prizeImagesByPath = {}; // Дополнительный индекс для поиска по любому варианту пути
   const { loadImage } = require('canvas');
   
   // Собираем уникальные пути к изображениям призов
@@ -59,43 +62,82 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
   }
   
   console.log('🖼️ [VIDEO] Найдено уникальных изображений призов:', uniquePrizeImages.size);
+  console.log('🖼️ [VIDEO] Пути к изображениям:', Array.from(uniquePrizeImages));
   
   // Загружаем каждое уникальное изображение
   for (const prizeImagePath of uniquePrizeImages) {
-    // prizeImagePath должен быть полным путем
+    // prizeImagePath должен быть полным путем (из server.js он уже преобразован)
     let imagePath = prizeImagePath;
+    let foundPath = null;
     
-    // Если путь относительный, пробуем найти его
-    if (!path.isAbsolute(imagePath)) {
-      // Пробуем несколько вариантов
+    // Проверяем, существует ли файл по указанному пути
+    if (path.isAbsolute(imagePath) && fs.existsSync(imagePath)) {
+      foundPath = imagePath;
+    } else if (!path.isAbsolute(imagePath)) {
+      // Если путь относительный, пробуем найти его
       const possiblePaths = [
         path.join(path.dirname(outputPath), '..', imagePath),
         path.join(path.dirname(outputPath), '..', 'uploads', 'prize_images', path.basename(imagePath)),
-        path.join(prizeImagesDir || path.dirname(outputPath), path.basename(imagePath))
+        path.join(prizeImagesDir || path.dirname(outputPath), path.basename(imagePath)),
+        path.join(__dirname, imagePath), // Относительно backend директории
+        path.join(__dirname, 'uploads', 'prize_images', path.basename(imagePath))
       ];
       
       for (const possiblePath of possiblePaths) {
         if (fs.existsSync(possiblePath)) {
+          foundPath = possiblePath;
           imagePath = possiblePath;
           break;
         }
       }
     }
     
-    if (fs.existsSync(imagePath)) {
+    if (foundPath && fs.existsSync(foundPath)) {
       try {
-        const loadedImage = await loadImage(imagePath);
+        const loadedImage = await loadImage(foundPath);
+        // Сохраняем по оригинальному пути (как он пришел)
         prizeImages[prizeImagePath] = loadedImage;
-        console.log('✅ [VIDEO] Изображение приза загружено:', imagePath, 'Размер:', loadedImage.width, 'x', loadedImage.height);
+        // Также сохраняем по найденному пути для надежности
+        prizeImagesByPath[foundPath] = loadedImage;
+        // И по нормализованному пути
+        const normalizedPath = path.normalize(foundPath);
+        prizeImagesByPath[normalizedPath] = loadedImage;
+        // И по базовому имени файла
+        const basename = path.basename(foundPath);
+        prizeImagesByPath[basename] = loadedImage;
       } catch (err) {
-        console.error('⚠️ [VIDEO] Ошибка загрузки изображения приза:', imagePath, err);
+        console.error('⚠️ [VIDEO] Ошибка загрузки изображения приза:', foundPath, err);
       }
     } else {
-      console.warn('⚠️ [VIDEO] Изображение приза не найдено. Оригинальный путь:', prizeImagePath, 'Пробовали:', imagePath);
+      // Убрано избыточное логирование
     }
   }
   
   console.log('🖼️ [VIDEO] Загружено изображений призов:', Object.keys(prizeImages).length);
+  console.log('🖼️ [VIDEO] Всего индексов в prizeImagesByPath:', Object.keys(prizeImagesByPath).length);
+  
+  // Кэшируем поиск изображений призов для каждого победителя
+  const winnerPrizeImageCache = {};
+  for (const winner of winners) {
+    if (winner.prizeImage) {
+      let prizeImage = prizeImages[winner.prizeImage];
+      if (!prizeImage && path.isAbsolute(winner.prizeImage)) {
+        prizeImage = prizeImagesByPath[winner.prizeImage];
+      }
+      if (!prizeImage) {
+        const basename = path.basename(winner.prizeImage);
+        prizeImage = prizeImagesByPath[basename];
+      }
+      if (!prizeImage) {
+        const normalizedPath = path.normalize(winner.prizeImage);
+        prizeImage = prizeImagesByPath[normalizedPath];
+      }
+      winnerPrizeImageCache[winner.userId] = prizeImage;
+    }
+  }
+  
+  const startTime = Date.now();
+  let lastProgressLog = 0;
   
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
     const time = frameIndex * frameDuration;
@@ -165,9 +207,13 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
         continue;
       }
       
-      // Логируем для отладки
-      if (frameIndex % 30 === 0) { // Каждую секунду
-        console.log(`🎬 [VIDEO] Кадр ${frameIndex}: сегмент ${currentSegment}/${winners.length}, победитель userId=${currentWinner.userId}, place=${currentWinner.place}, prizeName=${currentWinner.prizeName}`);
+      // Логируем прогресс только каждые 5% кадров
+      const progressPercent = Math.floor((frameIndex / totalFrames) * 100);
+      if (progressPercent >= lastProgressLog + 5) {
+        lastProgressLog = progressPercent;
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const estimated = totalFrames > 0 ? ((Date.now() - startTime) / frameIndex * (totalFrames - frameIndex) / 1000).toFixed(1) : 0;
+        console.log(`⚡ [VIDEO] Прогресс: ${progressPercent}% (кадр ${frameIndex}/${totalFrames}, прошло: ${elapsed}с, осталось: ~${estimated}с)`);
       }
       
       if (localTime < spinDuration) {
@@ -179,12 +225,9 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
       } else {
         // Фаза показа победителя
         const revealTime = localTime - spinDuration - pauseDuration;
-        const prizeImage = currentWinner.prizeImage ? prizeImages[currentWinner.prizeImage] : null;
         
-        // Логируем для отладки (только один раз за сегмент)
-        if (frameIndex % 90 === 0 && localTime > spinDuration + pauseDuration) {
-          console.log(`🖼️ [VIDEO] Сегмент ${currentSegment}: prizeImage path=${currentWinner.prizeImage}, loaded=${prizeImage ? 'yes' : 'no'}`);
-        }
+        // Используем кэшированное изображение приза
+        const prizeImage = winnerPrizeImageCache[currentWinner.userId] || null;
         
         drawWinnerReveal(ctx, width, height, currentWinner, revealTime, revealDuration, colorPalette, prizeImage);
       }
@@ -192,17 +235,20 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
       // Показываем последнего победителя в конце
       if (winners.length > 0 && winners[winners.length - 1]) {
         const lastWinner = winners[winners.length - 1];
-        const prizeImage = lastWinner.prizeImage ? prizeImages[lastWinner.prizeImage] : null;
+        const prizeImage = winnerPrizeImageCache[lastWinner.userId] || null;
         drawWinnerReveal(ctx, width, height, lastWinner, Math.min(1, (time - (winners.length - 1) * segmentDuration) / revealDuration), revealDuration, colorPalette, prizeImage);
       }
     }
     
-    // Сохраняем кадр
+    // Сохраняем кадр (используем синхронную запись для простоты, но можно оптимизировать)
     const framePath = path.join(framesDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
     const buffer = canvas.toBuffer('image/png');
     fs.writeFileSync(framePath, buffer);
     frameFiles.push(framePath);
   }
+  
+  const frameGenTime = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`✅ [VIDEO] Генерация ${totalFrames} кадров завершена за ${frameGenTime}с`);
   
   // Собираем видео из кадров с помощью ffmpeg
   return new Promise((resolve, reject) => {
@@ -214,10 +260,11 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
       .outputOptions([
         '-c:v libx264',
         '-pix_fmt yuv420p',
-        '-preset fast', // Изменено с medium на fast для меньшего использования памяти
-        '-crf 23',
+        '-preset ultrafast', // Изменено на ultrafast для максимальной скорости
+        '-crf 25', // Немного увеличено для ускорения (качество немного ниже, но быстрее)
         '-r ' + fps,
-        '-threads 2' // Ограничиваем количество потоков для экономии памяти
+        '-threads 4', // Увеличено количество потоков для ускорения
+        '-movflags +faststart' // Быстрый старт для стриминга
       ])
       .output(tempVideoPath)
       .on('start', (commandLine) => {
@@ -325,13 +372,9 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
   // Используем всех участников для прокрутки (не только победителей)
   const participantsForSpin = allParticipants && allParticipants.length > 0 ? allParticipants : [targetWinner];
   
-  // Логируем для отладки
-  console.log(`🎯 [ROULETTE] Целевой победитель: userId=${targetWinner.userId}, prizeName=${targetWinner.prizeName}`);
-  console.log(`🎯 [ROULETTE] Всего участников для прокрутки: ${participantsForSpin.length}`);
-  
   // Создаем список всех участников для прокрутки (повторяем несколько раз для эффекта)
   const allParticipantsList = [];
-  const repeatCount = 25; // Количество повторений списка
+  const repeatCount = 20; // Уменьшено с 25 до 20 для ускорения
   for (let i = 0; i < repeatCount; i++) {
     allParticipantsList.push(...participantsForSpin);
   }
@@ -347,11 +390,9 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
     // Вычисляем позицию в повторенном списке (примерно в середине для эффекта)
     const middleRepeat = Math.floor(repeatCount / 2);
     targetPosition = middleRepeat * participantsForSpin.length + originalIndex;
-    console.log(`✅ [ROULETTE] Найден целевой победитель на позиции ${targetPosition} (оригинальный индекс: ${originalIndex})`);
   } else {
     // Если не нашли, используем позицию в середине списка
     targetPosition = Math.floor(allParticipantsList.length / 2);
-    console.log(`⚠️ [ROULETTE] Целевой победитель не найден в списке участников, используем среднюю позицию: ${targetPosition}`);
   }
   
   // Вычисляем смещение так, чтобы в конце остановиться на целевом победителе
@@ -369,13 +410,7 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
   // Применяем easing: от начальной позиции к финальной
   const scrollOffset = initialScrollOffset + easeOut * (finalScrollOffset - initialScrollOffset);
   
-  // Проверяем, что в конце прокрутки правильный участник в центре
-  if (progress > 0.99) {
-    const finalStartIdx = Math.floor(scrollOffset / slotHeight);
-    const centerParticipant = allParticipantsList[(finalStartIdx + centerSlotIndex) % allParticipantsList.length];
-    const isCorrect = centerParticipant && centerParticipant.userId === targetWinner.userId;
-    console.log(`✅ [ROULETTE] Финальная проверка: centerParticipant.userId=${centerParticipant?.userId}, target=${targetWinner.userId}, правильный=${isCorrect ? '✅' : '❌'}`);
-  }
+  // Убрана избыточная проверка в цикле для ускорения
   
   // Рисуем рамку для рулетки
   const rouletteY = centerY - (visibleSlots * slotHeight) / 2;
@@ -411,14 +446,7 @@ function drawHorizontalRoulette(ctx, width, height, time, duration, allParticipa
                            isInCenter &&
                            (progress >= 0.85 || isPaused); // В конце прокрутки или во время паузы
       
-      // Логируем для отладки в последних кадрах (только один раз)
-      if (progress > 0.95 && isInCenter && participant && Math.abs(progress - 0.95) < 0.01) {
-        const matches = participant.userId === targetWinner.userId;
-        console.log(`🎯 [ROULETTE] Финальный центральный слот: userId=${participant.userId}, target=${targetWinner.userId}, совпадение=${matches ? '✅' : '❌'}`);
-        if (!matches) {
-          console.error(`❌ [ROULETTE] ОШИБКА: В центре не тот победитель! Ожидался ${targetWinner.userId}, получен ${participant.userId}`);
-        }
-      }
+      // Убрано избыточное логирование в цикле для ускорения
       
       // Цвета из палитры
       const winnerColor = colorPalette.winnerColor || '#ffd700';
@@ -564,20 +592,19 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
   
   // Название приза (без эмодзи)
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 50px Arial';
+  ctx.font = 'bold 48px Arial';
   ctx.textAlign = 'center';
   const prizeText = winner.prizeName || 'Победитель';
   const placeText = winner.place ? ` (${winner.place} место)` : '';
-  ctx.fillText(prizeText + placeText, 0, -cardHeight/2 + 150);
+  const titleY = -cardHeight/2 + 80;
+  ctx.fillText(prizeText + placeText, 0, titleY);
   
   // Изображение приза (если есть)
-  let imageY = -cardHeight/2 + 220; // Позиция после названия приза
+  let imageY = titleY + 60; // Позиция после названия приза
   if (prizeImage) {
     try {
-      console.log('🖼️ [VIDEO] Отрисовка изображения приза. Размер оригинала:', prizeImage.width, 'x', prizeImage.height);
-      
-      const maxImageWidth = cardWidth * 0.7;
-      const maxImageHeight = 250; // Уменьшил высоту, чтобы было место для текста
+      const maxImageWidth = cardWidth * 0.65;
+      const maxImageHeight = 220;
       let imageWidth = prizeImage.width;
       let imageHeight = prizeImage.height;
       
@@ -586,39 +613,39 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
       imageWidth = imageWidth * scale;
       imageHeight = imageHeight * scale;
       
-      console.log('🖼️ [VIDEO] Масштабированное изображение:', imageWidth, 'x', imageHeight, 'scale:', scale);
-      
       const imageX = -imageWidth / 2;
       ctx.drawImage(prizeImage, imageX, imageY, imageWidth, imageHeight);
       
-      console.log('✅ [VIDEO] Изображение приза отрисовано в позиции:', imageX, imageY);
-      
-      imageY += imageHeight + 30; // Отступ после изображения
+      imageY += imageHeight + 40; // Отступ после изображения
     } catch (err) {
-      console.error('⚠️ [VIDEO] Ошибка отрисовки изображения приза:', err);
-      console.error('⚠️ [VIDEO] Stack:', err.stack);
+      // Убрано избыточное логирование в цикле
     }
   } else {
-    console.log('⚠️ [VIDEO] Изображение приза не передано для победителя:', winner.userId, 'prizeName:', winner.prizeName);
+    // Если изображения нет, увеличиваем отступ для текста
+    imageY += 20;
   }
   
-  // Имя победителя
+  // Имя победителя (ID)
   const winnerName = `${winner.firstName || ''} ${winner.lastName || ''}`.trim() || `ID: ${winner.userId}`;
-  ctx.font = 'bold 60px Arial';
+  ctx.font = 'bold 56px Arial';
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
   ctx.fillText(winnerName, 0, imageY);
   
-  // Username
-  if (winner.username) {
-    ctx.font = '40px Arial';
-    ctx.fillStyle = '#e0e0e0';
-    ctx.fillText(`@${winner.username}`, 0, imageY + 60);
+  // Username или проект - более заметный и выровненный
+  let nextY = imageY + 70;
+  if (winner.username && winnerName !== `@${winner.username}`) {
+    ctx.font = 'bold 42px Arial';
+    ctx.fillStyle = '#e8e8e8';
+    ctx.fillText(`@${winner.username}`, 0, nextY);
+    nextY += 60;
   }
   
-  // Проект (без эмодзи)
+  // Проект (без эмодзи) - более заметный
   if (winner.project) {
-    ctx.font = '35px Arial';
-    ctx.fillStyle = '#b0b0b0';
-    ctx.fillText(winner.project, 0, imageY + 120);
+    ctx.font = 'bold 38px Arial';
+    ctx.fillStyle = '#d0d0d0';
+    ctx.fillText(winner.project, 0, nextY);
   }
   
   ctx.restore();
@@ -633,13 +660,19 @@ function drawWinnerReveal(ctx, width, height, winner, time, duration, colorPalet
  * Рисует эффект конфетти
  */
 function drawConfetti(ctx, width, height, time) {
-  const confettiCount = 50;
+  const confettiCount = 30; // Уменьшено с 50 до 30 для ускорения
   const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#6c5ce7', '#a29bfe', '#fd79a8', '#00b894'];
+  
+  // Оптимизация: предвычисляем некоторые значения
+  const widthRange = width * 0.6;
+  const heightRange = height * 0.8;
+  const startX = width * 0.2;
+  const startY = height * 0.1;
   
   for (let i = 0; i < confettiCount; i++) {
     const seed = i * 0.1;
-    const x = (width * 0.2) + (width * 0.6 * ((seed * 7) % 1));
-    const y = (height * 0.1) + (height * 0.8 * ((time * 2 + seed) % 1));
+    const x = startX + (widthRange * ((seed * 7) % 1));
+    const y = startY + (heightRange * ((time * 2 + seed) % 1));
     const size = 10 + (seed * 5) % 10;
     const rotation = (time * 5 + seed) * Math.PI;
     
