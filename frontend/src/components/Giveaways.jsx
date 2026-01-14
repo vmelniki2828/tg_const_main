@@ -227,6 +227,41 @@ const Giveaways = ({ botId, onClose }) => {
       return;
     }
 
+    // Сначала сохраняем призы, чтобы они были в БД
+    const prize = giveawayData.prizes[prizeIndex];
+    if (!prize) {
+      setError('Приз не найден');
+      return;
+    }
+
+    // Сохраняем текущие данные призов в БД перед загрузкой изображения
+    try {
+      const saveResponse = await fetch(
+        `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...giveawayData,
+            prizes: giveawayData.prizes
+          }),
+        }
+      );
+
+      if (!saveResponse.ok) {
+        console.warn('⚠️ Не удалось сохранить призы перед загрузкой изображения');
+      } else {
+        const saveData = await saveResponse.json();
+        if (saveData.giveaway) {
+          handleSelectGiveaway(saveData.giveaway);
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ Ошибка сохранения призов:', err);
+    }
+
     setUploadingPrizeImages({
       ...uploadingPrizeImages,
       [prizeIndex]: true
@@ -235,6 +270,11 @@ const Giveaways = ({ botId, onClose }) => {
 
     const formData = new FormData();
     formData.append('prizeImage', file);
+    
+    // Добавляем данные приза для поиска по уникальным характеристикам
+    formData.append('placeStart', prize.placeStart || 1);
+    formData.append('placeEnd', prize.placeEnd || prize.placeStart || 1);
+    formData.append('name', prize.name || '');
 
     try {
       const response = await fetch(

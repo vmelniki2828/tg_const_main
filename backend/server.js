@@ -5717,16 +5717,57 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
       return res.status(404).json({ error: 'Giveaway not found' });
     }
     
-    if (!giveaway.prizes || index < 0 || index >= giveaway.prizes.length) {
-      // Удаляем загруженный файл, если индекс неверный
+    // Получаем данные приза из body для поиска по уникальным характеристикам
+    const placeStart = req.body.placeStart ? parseInt(req.body.placeStart) : undefined;
+    const placeEnd = req.body.placeEnd ? parseInt(req.body.placeEnd) : undefined;
+    const name = req.body.name;
+    
+    let targetPrizeIndex = -1;
+    
+    console.log('🔍 [GIVEAWAY] Поиск приза. Индекс из URL:', index, 'placeStart:', placeStart, 'placeEnd:', placeEnd, 'name:', name);
+    console.log('🔍 [GIVEAWAY] Всего призов в БД:', giveaway.prizes?.length || 0);
+    
+    // Сначала пытаемся найти по уникальным характеристикам (более надежно)
+    if (placeStart !== undefined && placeEnd !== undefined && name) {
+      targetPrizeIndex = giveaway.prizes.findIndex(p => {
+        const pStart = p.placeStart || (p.place || 1);
+        const pEnd = p.placeEnd || pStart;
+        const match = pStart === placeStart && 
+                      pEnd === placeEnd && 
+                      p.name === name;
+        if (match) {
+          console.log('✅ [GIVEAWAY] Приз найден по характеристикам, индекс:', targetPrizeIndex);
+        }
+        return match;
+      });
+    }
+    
+    // Если не нашли по характеристикам, пробуем по индексу
+    if (targetPrizeIndex === -1 && !isNaN(index) && index >= 0 && giveaway.prizes && index < giveaway.prizes.length) {
+      targetPrizeIndex = index;
+      console.log('✅ [GIVEAWAY] Приз найден по индексу:', targetPrizeIndex);
+    }
+    
+    if (targetPrizeIndex === -1 || !giveaway.prizes || targetPrizeIndex >= giveaway.prizes.length) {
+      // Удаляем загруженный файл, если приз не найден
       if (req.file.path) {
         fs.unlinkSync(req.file.path);
       }
-      return res.status(400).json({ error: 'Invalid prize index' });
+      console.error('❌ [GIVEAWAY] Приз не найден. Индекс:', index, 'placeStart:', placeStart, 'placeEnd:', placeEnd, 'name:', name);
+      console.error('❌ [GIVEAWAY] Всего призов в БД:', giveaway.prizes?.length || 0);
+      if (giveaway.prizes && giveaway.prizes.length > 0) {
+        console.error('❌ [GIVEAWAY] Призы в БД:', giveaway.prizes.map((p, i) => ({
+          index: i,
+          placeStart: p.placeStart || p.place,
+          placeEnd: p.placeEnd || p.placeStart || p.place,
+          name: p.name
+        })));
+      }
+      return res.status(400).json({ error: 'Invalid prize index or prize not found' });
     }
     
     // Удаляем старое изображение, если оно было
-    const oldImagePath = giveaway.prizes[index].prizeImage;
+    const oldImagePath = giveaway.prizes[targetPrizeIndex].prizeImage;
     if (oldImagePath && fs.existsSync(path.join(__dirname, oldImagePath))) {
       try {
         fs.unlinkSync(path.join(__dirname, oldImagePath));
@@ -5737,7 +5778,7 @@ app.post('/api/giveaways/:botId/:giveawayId/prize/:prizeIndex/upload-image', pri
     
     // Сохраняем относительный путь к изображению
     const relativePath = path.relative(__dirname, req.file.path);
-    giveaway.prizes[index].prizeImage = relativePath;
+    giveaway.prizes[targetPrizeIndex].prizeImage = relativePath;
     await giveaway.save();
     
     res.json({ 
