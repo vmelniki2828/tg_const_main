@@ -641,13 +641,17 @@ app.get('/api/quiz-stats', async (req, res) => {
           });
           if (promo) {
             promoCode = promo.code;
-    }
-  } catch (error) {
-          console.error('❌ Error fetching promo code:', error);
+          }
+        } catch (err) {
+          console.error('❌ Error fetching promo code:', err);
         }
       }
       
-      // Добавляем попытку пользователя
+      // Добавляем попытку пользователя (защита от отсутствующих полей в старых записях)
+      const answers = Array.isArray(record.answers) ? record.answers : [];
+      const completedAt = record.completedAt && typeof record.completedAt.getTime === 'function' ? record.completedAt : new Date();
+      const completionTime = typeof record.completionTime === 'number' ? record.completionTime : 0;
+      
       stats[quizId].userAttempts.push({
         userId: record.userId,
         userName: userInfo.userName,
@@ -656,11 +660,11 @@ app.get('/api/quiz-stats', async (req, res) => {
         success: record.percentage === 100,
         score: record.correctAnswers,
         successRate: record.percentage,
-        timestamp: record.completedAt.getTime(),
-        duration: record.completionTime * 1000, // конвертируем в миллисекунды
-        answers: record.answers.map(answer => ({
-          selectedAnswer: answer.answer,
-          isCorrect: answer.isCorrect
+        timestamp: completedAt.getTime(),
+        duration: completionTime * 1000,
+        answers: answers.map(answer => ({
+          selectedAnswer: answer && answer.answer,
+          isCorrect: answer && answer.isCorrect
         })),
         promoCode: promoCode
       });

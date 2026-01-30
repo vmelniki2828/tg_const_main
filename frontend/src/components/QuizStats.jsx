@@ -46,12 +46,22 @@ const QuizStats = ({ blocks, botId, onClose }) => {
       
       setStats(data);
       
-      // Загружаем статистику промокодов для всех квизов
+      // Загружаем статистику промокодов для всех квизов (только если выбран бот)
       const quizBlocks = blocks.filter(block => block.type === 'quiz');
       const promoCodesData = {};
       
       for (const quiz of quizBlocks) {
         try {
+          if (!botId) {
+            promoCodesData[quiz.id] = {
+              hasPromoCodes: false,
+              totalPromoCodes: 0,
+              availablePromoCodes: 0,
+              usedPromoCodes: 0,
+              promoCodesList: []
+            };
+            continue;
+          }
           const promoResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${quiz.id}?botId=${botId}`);
           if (promoResponse.ok) {
             const promoData = await promoResponse.json();
