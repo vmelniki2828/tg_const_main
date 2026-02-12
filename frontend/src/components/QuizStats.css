@@ -698,13 +698,13 @@
   border-right: none;
 }
 
-/* Таблица викторин: 4 ровные колонки */
+/* Таблица викторин: 5 колонок (пользователь, ответ, результат, ваучер, дата) */
 .attempts-table--trivia .table-header {
-  grid-template-columns: 1.5fr 1.5fr 1fr 1.2fr;
+  grid-template-columns: 1.2fr 1fr 0.8fr 1fr 1.2fr;
 }
 
 .attempts-table--trivia .table-row {
-  grid-template-columns: 1.5fr 1.5fr 1fr 1.2fr;
+  grid-template-columns: 1.2fr 1fr 0.8fr 1fr 1.2fr;
 }
 
 .attempts-table--trivia .table-cell {

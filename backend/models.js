@@ -81,6 +81,7 @@ const TriviaStatsSchema = new mongoose.Schema({
   blockId: { type: String, required: true },
   success: { type: Boolean, required: true },
   userAnswer: { type: String, default: '' },
+  promoCode: { type: String, default: '' }, // выданный ваучер при успехе
   completedAt: { type: Date, default: Date.now }
 });
 TriviaStatsSchema.index({ botId: 1, blockId: 1 });

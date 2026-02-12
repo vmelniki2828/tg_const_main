@@ -730,6 +730,7 @@ app.get('/api/trivia-stats', async (req, res) => {
         username: userInfo.username,
         success: record.success,
         userAnswer: record.userAnswer || '',
+        promoCode: record.promoCode || '',
         timestamp: completedAt.getTime()
       });
     }
@@ -2703,6 +2704,100 @@ app.post('/api/export-quiz-stats', async (req, res) => {
       error: 'Ошибка при экспорте статистики',
       details: error.message 
     });
+  }
+});
+
+// Экспорт статистики викторин в CSV
+app.post('/api/export-trivia-stats', async (req, res) => {
+  try {
+    const { stats, blocks } = req.body;
+    const csvSections = [];
+
+    csvSections.push('Общая статистика викторин');
+    csvSections.push([
+      'Дата экспорта',
+      'Количество викторин',
+      'Всего попыток',
+      'Успешных попыток',
+      'Неудачных попыток',
+      'Общая успешность (%)'
+    ].join(','));
+    const totalAttempts = Object.values(stats || {}).reduce((sum, t) => sum + (t.totalAttempts || 0), 0);
+    const totalSuccessful = Object.values(stats || {}).reduce((sum, t) => sum + (t.successfulCompletions || 0), 0);
+    const totalFailed = Object.values(stats || {}).reduce((sum, t) => sum + (t.failedAttempts || 0), 0);
+    const overallRate = totalAttempts > 0 ? ((totalSuccessful / totalAttempts) * 100).toFixed(1) : 0;
+    csvSections.push([
+      new Date().toLocaleString('ru-RU'),
+      (blocks || []).length,
+      totalAttempts,
+      totalSuccessful,
+      totalFailed,
+      overallRate
+    ].join(','));
+    csvSections.push('');
+
+    csvSections.push('Статистика по викторинам');
+    csvSections.push([
+      'ID викторины',
+      'Название',
+      'Всего попыток',
+      'Успешных',
+      'Неудачных',
+      'Успешность (%)'
+    ].join(','));
+    (blocks || []).forEach(trivia => {
+      const t = stats[trivia.id] || { totalAttempts: 0, successfulCompletions: 0, failedAttempts: 0 };
+      const rate = t.totalAttempts > 0 ? ((t.successfulCompletions / t.totalAttempts) * 100).toFixed(1) : 0;
+      csvSections.push([
+        trivia.id,
+        `"${(trivia.message || `Викторина ${trivia.id}`).replace(/"/g, '""')}"`,
+        t.totalAttempts,
+        t.successfulCompletions,
+        t.failedAttempts,
+        rate
+      ].join(','));
+    });
+    csvSections.push('');
+
+    csvSections.push('Попытки пользователей');
+    csvSections.push([
+      'ID викторины',
+      'Название',
+      'ID пользователя',
+      'Имя',
+      'Фамилия',
+      'Username',
+      'Ответ',
+      'Результат',
+      'Ваучер',
+      'Дата попытки'
+    ].join(','));
+    (blocks || []).forEach(trivia => {
+      const t = stats[trivia.id] || { userAttempts: [] };
+      (t.userAttempts || []).forEach((attempt) => {
+        csvSections.push([
+          trivia.id,
+          `"${(trivia.message || `Викторина ${trivia.id}`).replace(/"/g, '""')}"`,
+          attempt.userId,
+          `"${(attempt.userName || '').replace(/"/g, '""')}"`,
+          `"${(attempt.userLastName || '').replace(/"/g, '""')}"`,
+          attempt.username ? `@${attempt.username}` : '',
+          `"${(attempt.userAnswer || '').replace(/"/g, '""')}"`,
+          attempt.success ? 'Верно' : 'Неверно',
+          attempt.promoCode || '',
+          new Date(attempt.timestamp).toLocaleString('ru-RU')
+        ].join(','));
+      });
+    });
+
+    const csvContent = csvSections.join('\r\n');
+    const fileName = `trivia-stats-${new Date().toISOString().split('T')[0]}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Error exporting trivia stats to CSV:', error);
+    res.status(500).json({ error: 'Ошибка при экспорте статистики викторин', details: error.message });
   }
 });
 

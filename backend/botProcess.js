@@ -1828,20 +1828,8 @@ function setupBotHandlers(bot, blocks, connections) {
         const variants = (currentBlock.correctAnswerVariants || []).map(normalizeAnswer).filter(Boolean);
         const isCorrect = variants.length > 0 && variants.some(v => userNormalized === v);
         
-        try {
-          await TriviaStats.create({
-            botId,
-            userId,
-            blockId: currentBlockId,
-            success: isCorrect,
-            userAnswer: messageText || ''
-          });
-        } catch (err) {
-          console.error('❌ TriviaStats save error:', err);
-        }
-        
+        let promoCode = '';
         if (isCorrect) {
-          let promoCode = '';
           try {
             const availablePromo = await PromoCode.findOne({
               botId,
@@ -1859,6 +1847,22 @@ function setupBotHandlers(bot, blocks, connections) {
           } catch (err) {
             console.error('❌ Ошибка при выдаче ваучера за викторину:', err);
           }
+        }
+        
+        try {
+          await TriviaStats.create({
+            botId,
+            userId,
+            blockId: currentBlockId,
+            success: isCorrect,
+            userAnswer: messageText || '',
+            promoCode: promoCode || ''
+          });
+        } catch (err) {
+          console.error('❌ TriviaStats save error:', err);
+        }
+        
+        if (isCorrect) {
           const successText = currentBlock.successMessage || 'Поздравляем! Верно!';
           const fullMessage = promoCode ? `${successText}\n\n🎁 Ваш ваучер: \`${promoCode}\`` : successText;
           await ctx.reply(fullMessage, promoCode ? { parse_mode: 'Markdown' } : {});

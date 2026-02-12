@@ -46,6 +46,29 @@ const TriviaStats = ({ blocks, onClose }) => {
     return ((s.successfulCompletions / s.totalAttempts) * 100).toFixed(1);
   };
 
+  const exportStatsToFile = async () => {
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/export-trivia-stats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stats, blocks: getTriviaBlocks() })
+      });
+      if (!response.ok) throw new Error('Ошибка при экспорте');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `trivia-stats-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Ошибка при экспорте:', err);
+      alert('Ошибка при сохранении файла: ' + err.message);
+    }
+  };
+
   const filterAndSortAttempts = (attempts) => {
     if (!attempts) return [];
     let filtered = attempts;
@@ -91,6 +114,9 @@ const TriviaStats = ({ blocks, onClose }) => {
         <div className="quiz-stats-header">
           <h2>🎲 Статистика викторин</h2>
           <div className="header-controls">
+            <button className="export-btn" onClick={exportStatsToFile} title="Сохранить статистику в CSV">
+              📊 Экспорт в CSV
+            </button>
             <button className="close-btn" onClick={onClose}>✕</button>
           </div>
         </div>
@@ -202,6 +228,7 @@ const TriviaStats = ({ blocks, onClose }) => {
                                 <div className="header-cell header-cell--left">👤 Пользователь</div>
                                 <div className="header-cell header-cell--left">💬 Ответ</div>
                                 <div className="header-cell header-cell--center">✅ Результат</div>
+                                <div className="header-cell header-cell--left">🎁 Ваучер</div>
                                 <div className="header-cell header-cell--right">📅 Дата</div>
                               </div>
                               {attempts.map((a, i) => (
@@ -212,6 +239,7 @@ const TriviaStats = ({ blocks, onClose }) => {
                                   </div>
                                   <div className="table-cell table-cell--left">{a.userAnswer || '—'}</div>
                                   <div className="table-cell table-cell--center">{a.success ? '✅ Верно' : '❌ Неверно'}</div>
+                                  <div className="table-cell table-cell--left">{a.promoCode || '—'}</div>
                                   <div className="table-cell table-cell--right">{formatDate(a.timestamp)}</div>
                                 </div>
                               ))}
