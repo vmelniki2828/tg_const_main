@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import config from '../config';
 
 export function normalizeAnswer(str) {
@@ -8,6 +8,7 @@ export function normalizeAnswer(str) {
 
 const TriviaBlock = ({
   block,
+  botId,
   onMessageChange,
   onCorrectVariantsChange,
   onSuccessMessageChange,
@@ -17,6 +18,9 @@ const TriviaBlock = ({
   onMediaMove,
   onRemoveBlock
 }) => {
+  const [promoUploadMessage, setPromoUploadMessage] = useState('');
+  const [promoUploadError, setPromoUploadError] = useState('');
+
   const correctVariantsStr = Array.isArray(block.correctAnswerVariants)
     ? block.correctAnswerVariants.join(', ')
     : '';
@@ -28,6 +32,37 @@ const TriviaBlock = ({
       .map(s => s.trim())
       .filter(Boolean);
     onCorrectVariantsChange(variants);
+  };
+
+  const handlePromoCodeUpload = async (file) => {
+    const formData = new FormData();
+    formData.append('promocodes', file);
+    formData.append('quizId', block.id);
+    formData.append('botId', botId || '');
+    try {
+      try {
+        const deleteResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${block.id}?botId=${botId}`, {
+          method: 'DELETE'
+        });
+        if (deleteResponse.ok) console.log('🗑️ Старые промокоды для викторины удалены');
+      } catch (e) {}
+      const response = await fetch(`${config.API_BASE_URL}/api/upload-promocodes`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setPromoUploadMessage(`✅ ${data.message}`);
+        setPromoUploadError('');
+        setTimeout(() => setPromoUploadMessage(''), 3000);
+      } else {
+        setPromoUploadError(`❌ ${data.error || 'Ошибка загрузки'}`);
+        setPromoUploadMessage('');
+      }
+    } catch (err) {
+      setPromoUploadError('❌ Ошибка соединения с сервером');
+      setPromoUploadMessage('');
+    }
   };
 
   return (
@@ -142,6 +177,45 @@ const TriviaBlock = ({
           onClick={(e) => e.stopPropagation()}
         />
       </div>
+
+      {/* Секция промокодов/ваучеров */}
+      {botId && (
+        <div className="promo-section">
+          <div className="promo-header">
+            <span>🎁 Ваучеры для награждения:</span>
+            <input
+              type="file"
+              id={`promo-trivia-${block.id}`}
+              accept=".csv"
+              onChange={(e) => {
+                const file = e.target.files[0];
+                if (file) {
+                  handlePromoCodeUpload(file);
+                  e.target.value = '';
+                }
+              }}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              className="block-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                document.getElementById(`promo-trivia-${block.id}`).click();
+              }}
+              title="Загрузить файл с ваучерами"
+            >
+              🎁
+            </button>
+          </div>
+          {promoUploadMessage && <div className="promo-success-message">{promoUploadMessage}</div>}
+          {promoUploadError && <div className="promo-error-message">{promoUploadError}</div>}
+          <div className="promo-info">
+            <p>📋 Формат: CSV с колонками <code>Code, User, Activated</code></p>
+            <p>💡 Ваучер выдаётся при правильном ответе в викторине</p>
+          </div>
+        </div>
+      )}
 
       <div className="quiz-messages">
         <div className="quiz-message">

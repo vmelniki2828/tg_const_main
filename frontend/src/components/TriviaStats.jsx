@@ -197,22 +197,22 @@ const TriviaStats = ({ blocks, onClose }) => {
                           <p className="no-attempts">По запросу ничего не найдено</p>
                         ) : (
                           <div className="attempts-list">
-                            <div className="attempts-table">
+                            <div className="attempts-table attempts-table--trivia">
                               <div className="table-header">
-                                <div className="header-cell">👤 Пользователь</div>
-                                <div className="header-cell">💬 Ответ</div>
-                                <div className="header-cell">✅ Результат</div>
-                                <div className="header-cell">📅 Дата</div>
+                                <div className="header-cell header-cell--left">👤 Пользователь</div>
+                                <div className="header-cell header-cell--left">💬 Ответ</div>
+                                <div className="header-cell header-cell--center">✅ Результат</div>
+                                <div className="header-cell header-cell--right">📅 Дата</div>
                               </div>
                               {attempts.map((a, i) => (
-                                <div key={i} className="table-row">
-                                  <div className="table-cell">
+                                <div key={i} className={`table-row ${a.success ? 'success' : 'failed'}`}>
+                                  <div className="table-cell table-cell--left">
                                     {a.userName || a.userLastName ? [a.userName, a.userLastName].filter(Boolean).join(' ') : `ID: ${a.userId}`}
                                     {a.username && <span className="username"> @{a.username}</span>}
                                   </div>
-                                  <div className="table-cell">{a.userAnswer || '—'}</div>
-                                  <div className="table-cell">{a.success ? '✅ Верно' : '❌ Неверно'}</div>
-                                  <div className="table-cell">{formatDate(a.timestamp)}</div>
+                                  <div className="table-cell table-cell--left">{a.userAnswer || '—'}</div>
+                                  <div className="table-cell table-cell--center">{a.success ? '✅ Верно' : '❌ Неверно'}</div>
+                                  <div className="table-cell table-cell--right">{formatDate(a.timestamp)}</div>
                                 </div>
                               ))}
                             </div>

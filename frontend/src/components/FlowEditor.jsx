@@ -986,6 +986,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                 >
                   <TriviaBlock
                     block={block}
+                    botId={botId}
                     onMessageChange={(message) => updateMessage(block.id, message)}
                     onCorrectVariantsChange={(variants) => updateTriviaField(block.id, 'correctAnswerVariants', variants)}
                     onSuccessMessageChange={(value) => updateTriviaField(block.id, 'successMessage', value)}

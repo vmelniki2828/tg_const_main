@@ -1841,7 +1841,27 @@ function setupBotHandlers(bot, blocks, connections) {
         }
         
         if (isCorrect) {
-          await ctx.reply(currentBlock.successMessage || 'Поздравляем! Верно!');
+          let promoCode = '';
+          try {
+            const availablePromo = await PromoCode.findOne({
+              botId,
+              quizId: currentBlockId,
+              activated: false
+            });
+            if (availablePromo) {
+              await PromoCode.updateOne(
+                { _id: availablePromo._id },
+                { activated: true, activatedBy: userId, activatedAt: new Date() }
+              );
+              promoCode = availablePromo.code;
+              console.log(`🎁 Выдан ваучер ${promoCode} пользователю ${userId} за викторину ${currentBlockId}`);
+            }
+          } catch (err) {
+            console.error('❌ Ошибка при выдаче ваучера за викторину:', err);
+          }
+          const successText = currentBlock.successMessage || 'Поздравляем! Верно!';
+          const fullMessage = promoCode ? `${successText}\n\n🎁 Ваш ваучер: \`${promoCode}\`` : successText;
+          await ctx.reply(fullMessage, promoCode ? { parse_mode: 'Markdown' } : {});
           userCurrentBlock.set(userId, 'start');
           const startBlock = dialogMap.get('start');
           if (startBlock) {
