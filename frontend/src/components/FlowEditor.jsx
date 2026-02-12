@@ -609,18 +609,14 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
           return { ...block, mediaFiles: updatedMediaFiles };
         }
         // Для обычных блоков перемещаем в основном блоке
-          const updatedMediaFiles = [...(block.mediaFiles || [])];
-          const newIndex = direction === 'up' ? index - 1 : index + 1;
-          
-          // Меняем местами элементы
-          [updatedMediaFiles[index], updatedMediaFiles[newIndex]] = 
+        const updatedMediaFiles = [...(block.mediaFiles || [])];
+        const newIndex = direction === 'up' ? index - 1 : index + 1;
+        [updatedMediaFiles[index], updatedMediaFiles[newIndex]] =
           [updatedMediaFiles[newIndex], updatedMediaFiles[index]];
-          
-          return {
-            ...block,
-            mediaFiles: updatedMediaFiles
-          };
-        }
+        return {
+          ...block,
+          mediaFiles: updatedMediaFiles
+        };
       }
       return block;
     }));
