@@ -877,23 +877,30 @@ function setupBotHandlers(bot, blocks, connections) {
   const dialogMap = new Map();
   console.log(`[BOOT] Creating dialogMap from ${blocks.length} blocks:`);
   blocks.forEach(block => {
-    dialogMap.set(block.id, {
+    const blockData = {
       message: block.message,
       buttons: block.buttons || [],
       mediaFiles: block.mediaFiles || [],
       type: block.type,
-      name: block.name || block.id, // Добавляем имя блока для статистики
+      name: block.name || block.id,
       questions: block.questions || [],
       currentQuestionIndex: block.currentQuestionIndex || 0,
       finalSuccessMessage: block.finalSuccessMessage,
       returnToStartOnComplete: block.returnToStartOnComplete
-    });
+    };
+    if (block.type === 'trivia') {
+      blockData.correctAnswerVariants = block.correctAnswerVariants || [];
+      blockData.successMessage = block.successMessage;
+      blockData.failureMessage = block.failureMessage;
+    }
+    dialogMap.set(block.id, blockData);
     console.log(`[BOOT] dialogMap: ${block.id} -> ${block.type} (${(block.buttons || []).length} buttons)`);
     
-    // Диагностика квизов
     if (block.type === 'quiz') {
       console.log(`[BOOT] Quiz block ${block.id} questions:`, (block.questions || []).length);
-      console.log(`[BOOT] Quiz block ${block.id} questions data:`, JSON.stringify(block.questions, null, 2));
+    }
+    if (block.type === 'trivia') {
+      console.log(`[BOOT] Trivia block ${block.id} correctAnswerVariants:`, block.correctAnswerVariants || []);
     }
   });
   console.log(`[BOOT] Final dialogMap size: ${dialogMap.size}`);
@@ -1807,15 +1814,19 @@ function setupBotHandlers(bot, blocks, connections) {
         return;
       }
       
-      // Викторина: проверка текстового ответа (нормализация: регистр, пробелы)
+      // Викторина: проверка текстового ответа (нормализация: регистр, пробелы, Unicode)
       if (currentBlock && currentBlock.type === 'trivia') {
         const normalizeAnswer = (str) => {
           if (str == null || typeof str !== 'string') return '';
-          return str.toLowerCase().trim().replace(/\s+/g, ' ');
+          return String(str)
+            .normalize('NFC')
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, ' ');
         };
         const userNormalized = normalizeAnswer(messageText);
         const variants = (currentBlock.correctAnswerVariants || []).map(normalizeAnswer).filter(Boolean);
-        const isCorrect = variants.some(v => v && userNormalized === v);
+        const isCorrect = variants.length > 0 && variants.some(v => userNormalized === v);
         
         if (isCorrect) {
           await ctx.reply(currentBlock.successMessage || 'Поздравляем! Верно!');
