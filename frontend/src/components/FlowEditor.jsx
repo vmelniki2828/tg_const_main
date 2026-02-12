@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import QuizBlock from './QuizBlock';
+import TriviaBlock from './TriviaBlock';
 import config from '../config';
 
 const FlowEditor = forwardRef(({ botId }, ref) => {
@@ -24,6 +25,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [quizDropdownOpen, setQuizDropdownOpen] = useState(false);
   
   const editorRef = useRef(null);
 
@@ -135,8 +137,30 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
         mediaFiles: null
       };
       setBlocks([...blocks, newQuizBlock]);
-    }
+    },
+    createTriviaBlock
   }));
+
+  function createTriviaBlock() {
+    const editorRect = editorRef.current?.getBoundingClientRect();
+    if (!editorRect) return;
+    const centerX = (editorRect.width / 2 - pan.x) / scale;
+    const centerY = (editorRect.height / 2 - pan.y) / scale;
+    const offset = blocks.length * 20;
+    const newTriviaBlock = {
+      id: Date.now(),
+      type: 'trivia',
+      position: { x: centerX + offset, y: centerY + offset },
+      message: '',
+      mediaFiles: [],
+      correctAnswer: '',
+      correctAnswerVariants: [],
+      successMessage: 'Поздравляем! Верно!',
+      failureMessage: 'Попробуйте ещё раз.',
+      buttons: []
+    };
+    setBlocks([...blocks, newTriviaBlock]);
+  }
 
   // Обработка колесика мыши для масштабирования
   const handleWheel = (e) => {
@@ -495,14 +519,17 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
               questions: updatedQuestions,
               mediaFiles: currentQuestion.mediaFiles // Синхронизируем с основным блоком
             };
-          } else {
-            // Для обычных блоков добавляем к основному блоку
-            const currentMediaFiles = block.mediaFiles || [];
-            return {
-              ...block,
-              mediaFiles: [...currentMediaFiles, result.file]
-            };
           }
+          if (block.type === 'trivia') {
+            const currentMediaFiles = block.mediaFiles || [];
+            return { ...block, mediaFiles: [...currentMediaFiles, result.file] };
+          }
+          // Для обычных блоков добавляем к основному блоку
+          const currentMediaFiles = block.mediaFiles || [];
+          return {
+            ...block,
+            mediaFiles: [...currentMediaFiles, result.file]
+          };
         }
         return block;
       }));
@@ -532,15 +559,19 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
             questions: updatedQuestions,
             mediaFiles: currentQuestion.mediaFiles // Синхронизируем с основным блоком
           };
-        } else {
-          // Для обычных блоков удаляем из основного блока
+        }
+        if (block.type === 'trivia') {
           const updatedMediaFiles = [...(block.mediaFiles || [])];
           updatedMediaFiles.splice(index, 1);
-          return {
-            ...block,
-            mediaFiles: updatedMediaFiles.length > 0 ? updatedMediaFiles : null
-          };
+          return { ...block, mediaFiles: updatedMediaFiles.length > 0 ? updatedMediaFiles : [] };
         }
+        // Для обычных блоков удаляем из основного блока
+        const updatedMediaFiles = [...(block.mediaFiles || [])];
+        updatedMediaFiles.splice(index, 1);
+        return {
+          ...block,
+          mediaFiles: updatedMediaFiles.length > 0 ? updatedMediaFiles : null
+        };
       }
       return block;
     }));
@@ -568,8 +599,16 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
             questions: updatedQuestions,
             mediaFiles: currentQuestion.mediaFiles // Синхронизируем с основным блоком
           };
-        } else {
-          // Для обычных блоков перемещаем в основном блоке
+        }
+        if (block.type === 'trivia') {
+          const updatedMediaFiles = [...(block.mediaFiles || [])];
+          const newIndex = direction === 'up' ? index - 1 : index + 1;
+          if (newIndex < 0 || newIndex >= updatedMediaFiles.length) return block;
+          [updatedMediaFiles[index], updatedMediaFiles[newIndex]] =
+            [updatedMediaFiles[newIndex], updatedMediaFiles[index]];
+          return { ...block, mediaFiles: updatedMediaFiles };
+        }
+        // Для обычных блоков перемещаем в основном блоке
           const updatedMediaFiles = [...(block.mediaFiles || [])];
           const newIndex = direction === 'up' ? index - 1 : index + 1;
           
@@ -656,6 +695,15 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
         const currentQuestion = updatedQuestions[block.currentQuestionIndex];
         currentQuestion.failureMessage = message;
         return { ...block, questions: updatedQuestions };
+      }
+      return block;
+    }));
+  };
+
+  const updateTriviaField = (blockId, field, value) => {
+    setBlocks(blocks.map(block => {
+      if (block.id === blockId && block.type === 'trivia') {
+        return { ...block, [field]: value };
       }
       return block;
     }));
@@ -765,12 +813,49 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
         >
           💬 Создать сообщение
         </button>
-        <button 
-          className="editor-button"
-          onClick={() => createBlock('quiz')}
-        >
-          🎯 Создать квиз
-        </button>
+        <div className="editor-dropdown-wrap" style={{ position: 'relative' }}>
+          <button 
+            className="editor-button"
+            onClick={() => setQuizDropdownOpen(!quizDropdownOpen)}
+            onBlur={() => setTimeout(() => setQuizDropdownOpen(false), 150)}
+          >
+            🎯 Создать квиз ▾
+          </button>
+          {quizDropdownOpen && (
+            <div
+              className="editor-dropdown"
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: '4px',
+                background: '#fff',
+                border: '1px solid #ddd',
+                borderRadius: '8px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                zIndex: 100,
+                minWidth: '180px'
+              }}
+            >
+              <button
+                type="button"
+                className="editor-button"
+                style={{ display: 'block', width: '100%', textAlign: 'left', borderRadius: 0 }}
+                onClick={() => { createBlock('quiz'); setQuizDropdownOpen(false); }}
+              >
+                🎯 Создать квиз
+              </button>
+              <button
+                type="button"
+                className="editor-button"
+                style={{ display: 'block', width: '100%', textAlign: 'left', borderRadius: 0 }}
+                onClick={() => { createTriviaBlock(); setQuizDropdownOpen(false); }}
+              >
+                🎲 Создать Викторину
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div 
@@ -804,16 +889,20 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
               const toBlock = blocks.find(b => b.id === connection.to);
               if (!fromBlock || !toBlock) return null;
 
-              // Находим кнопку, от которой идет соединение
-              const button = fromBlock.buttons.find(b => b.id === connection.from.buttonId);
-              if (!button) return null;
+              // Для викторины — одна точка выхода "trivia_success"; для остальных — кнопка
+              let fromX, fromY;
+              if (fromBlock.type === 'trivia' && connection.from.buttonId === 'trivia_success') {
+                fromX = (fromBlock.position.x + 320) * scale;
+                fromY = (fromBlock.position.y + 320) * scale; // под блоком викторины
+              } else {
+                const button = fromBlock.buttons?.find(b => b.id === connection.from.buttonId);
+                if (!button) return null;
+                const buttonIndex = fromBlock.buttons.findIndex(b => b.id === button.id);
+                const buttonY = fromBlock.position.y + 180 + buttonIndex * 40;
+                fromX = (fromBlock.position.x + 320) * scale;
+                fromY = buttonY * scale;
+              }
 
-              // Вычисляем позицию начала линии (от кнопки)
-              const buttonIndex = fromBlock.buttons.findIndex(b => b.id === button.id);
-              const buttonY = fromBlock.position.y + 180 + buttonIndex * 40;
-
-              const fromX = (fromBlock.position.x + 320) * scale;
-              const fromY = buttonY * scale;
               const toX = toBlock.position.x * scale;
               const toY = (toBlock.position.y + 50) * scale;
 
@@ -827,18 +916,20 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                 </g>
               );
             })}
-            {connectingFrom && (
-              <path
-                d={`M ${(blocks.find(b => b.id === connectingFrom.blockId).position.x + 320) * scale} 
-                   ${(blocks.find(b => b.id === connectingFrom.blockId).position.y + 50) * scale} 
-                   C ${(blocks.find(b => b.id === connectingFrom.blockId).position.x + 420) * scale} 
-                   ${(blocks.find(b => b.id === connectingFrom.blockId).position.y + 50) * scale},
-                   ${mousePosition.x * scale - 100} ${mousePosition.y * scale},
-                   ${mousePosition.x * scale} ${mousePosition.y * scale}`}
-                className="connection-path connection-preview"
-                style={{ opacity: 0.5 }}
-              />
-            )}
+            {connectingFrom && (() => {
+              const fromB = blocks.find(b => b.id === connectingFrom.blockId);
+              if (!fromB) return null;
+              const isTrivia = fromB.type === 'trivia' && connectingFrom.buttonId === 'trivia_success';
+              const fromY = (fromB.position.y + (isTrivia ? 320 : 50)) * scale;
+              const fromX = (fromB.position.x + 320) * scale;
+              return (
+                <path
+                  d={`M ${fromX} ${fromY} C ${fromX + 100} ${fromY}, ${mousePosition.x * scale - 100} ${mousePosition.y * scale}, ${mousePosition.x * scale} ${mousePosition.y * scale}`}
+                  className="connection-path connection-preview"
+                  style={{ opacity: 0.5 }}
+                />
+              );
+            })()}
           </svg>
 
           {/* Отрисовка блоков */}
@@ -877,6 +968,38 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                     onUpdateCurrentQuestion={(newIndex) => updateCurrentQuestionIndex(block.id, newIndex)}
                     onUpdateFinalMessage={(message) => updateFinalMessage(block.id, message)}
                     onUpdateFinalFailureMessage={(message) => updateFinalFailureMessage(block.id, message)}
+                    isConnecting={isConnecting}
+                  />
+                </div>
+              );
+            }
+
+            if (block.type === 'trivia') {
+              return (
+                <div
+                  key={block.id}
+                  className={`dialog-block trivia ${isConnecting ? 'connecting' : ''}`}
+                  style={{
+                    left: block.position.x,
+                    top: block.position.y,
+                    transform: `scale(${1})`
+                  }}
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, block.id)}
+                  onClick={() => isConnecting && finishConnection(block.id)}
+                >
+                  <TriviaBlock
+                    block={block}
+                    onMessageChange={(message) => updateMessage(block.id, message)}
+                    onCorrectAnswerChange={(value) => updateTriviaField(block.id, 'correctAnswer', value)}
+                    onCorrectVariantsChange={(variants) => updateTriviaField(block.id, 'correctAnswerVariants', variants)}
+                    onSuccessMessageChange={(value) => updateTriviaField(block.id, 'successMessage', value)}
+                    onFailureMessageChange={(value) => updateTriviaField(block.id, 'failureMessage', value)}
+                    onMediaUpload={(e) => handleMediaUpload(block.id, e)}
+                    onMediaRemove={(index) => removeMediaFile(block.id, index)}
+                    onMediaMove={(index, direction) => moveMediaFile(block.id, index, direction)}
+                    onStartConnection={(buttonId, e) => startConnection(block.id, buttonId, e)}
+                    onRemoveBlock={() => removeBlock(block.id)}
                     isConnecting={isConnecting}
                   />
                 </div>

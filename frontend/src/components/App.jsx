@@ -16,6 +16,7 @@ function App() {
   const [showLoyalty, setShowLoyalty] = useState(false);
   const [showSourceStats, setShowSourceStats] = useState(false);
   const [showGiveaways, setShowGiveaways] = useState(false);
+  const [quizDropdownOpen, setQuizDropdownOpen] = useState(false);
   const flowEditorRef = useRef();
 
   // Функция для получения статуса бота
@@ -153,12 +154,48 @@ function App() {
           >
             ➕ Создать блок
           </button>
-          <button 
-            onClick={() => flowEditorRef.current?.createQuizBlock()}
-            className="editor-button quiz-button"
-          >
-            🎯 Создать квиз
-          </button>
+          <div style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setQuizDropdownOpen(!quizDropdownOpen)}
+              onBlur={() => setTimeout(() => setQuizDropdownOpen(false), 150)}
+              className="editor-button quiz-button"
+            >
+              🎯 Создать квиз ▾
+            </button>
+            {quizDropdownOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: '4px',
+                  background: '#fff',
+                  border: '1px solid #ddd',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  zIndex: 100,
+                  minWidth: '180px'
+                }}
+              >
+                <button
+                  type="button"
+                  className="editor-button quiz-button"
+                  style={{ display: 'block', width: '100%', textAlign: 'left', borderRadius: 0 }}
+                  onClick={() => { flowEditorRef.current?.createQuizBlock(); setQuizDropdownOpen(false); }}
+                >
+                  🎯 Создать квиз
+                </button>
+                <button
+                  type="button"
+                  className="editor-button"
+                  style={{ display: 'block', width: '100%', textAlign: 'left', borderRadius: 0 }}
+                  onClick={() => { flowEditorRef.current?.createTriviaBlock(); setQuizDropdownOpen(false); }}
+                >
+                  🎲 Создать Викторину
+                </button>
+              </div>
+            )}
+          </div>
           <button 
             onClick={() => setShowStats(true)}
             className="editor-button stats-button"

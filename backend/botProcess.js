@@ -1807,6 +1807,38 @@ function setupBotHandlers(bot, blocks, connections) {
         return;
       }
       
+      // Викторина: проверка текстового ответа (нормализация: регистр, пробелы)
+      if (currentBlock && currentBlock.type === 'trivia') {
+        const normalizeAnswer = (str) => {
+          if (str == null || typeof str !== 'string') return '';
+          return str.toLowerCase().trim().replace(/\s+/g, ' ');
+        };
+        const userNormalized = normalizeAnswer(messageText);
+        const correctMain = normalizeAnswer(currentBlock.correctAnswer);
+        const variants = (currentBlock.correctAnswerVariants || []).map(normalizeAnswer).filter(Boolean);
+        const isCorrect = (correctMain && userNormalized === correctMain) || variants.some(v => v && userNormalized === v);
+        
+        if (isCorrect) {
+          const connectionKey = `${String(currentBlockId)}_trivia_success`;
+          const nextBlockId = connectionMap.get(connectionKey);
+          const nextBlock = nextBlockId ? dialogMap.get(nextBlockId) : null;
+          await ctx.reply(currentBlock.successMessage || 'Поздравляем! Верно!');
+          if (nextBlock) {
+            let userHistory = userNavigationHistory.get(userId) || [];
+            userHistory.push(currentBlockId);
+            userNavigationHistory.set(userId, userHistory);
+            userCurrentBlock.set(userId, nextBlockId);
+            const { keyboard, inlineKeyboard } = await createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
+            await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
+          } else {
+            userCurrentBlock.set(userId, currentBlockId);
+          }
+        } else {
+          await ctx.reply(currentBlock.failureMessage || 'Попробуйте ещё раз.');
+        }
+        return;
+      }
+      
       // Проверяем, не пытается ли пользователь пройти квест повторно
       if (currentBlockId === 'start') {
         

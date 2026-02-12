@@ -641,7 +641,7 @@ app.get('/api/quiz-stats', async (req, res) => {
           });
           if (promo) {
             promoCode = promo.code;
-          }
+    }
         } catch (err) {
           console.error('❌ Error fetching promo code:', err);
         }
