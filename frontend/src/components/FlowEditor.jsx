@@ -987,16 +987,13 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                   <TriviaBlock
                     block={block}
                     onMessageChange={(message) => updateMessage(block.id, message)}
-                    onCorrectAnswerChange={(value) => updateTriviaField(block.id, 'correctAnswer', value)}
                     onCorrectVariantsChange={(variants) => updateTriviaField(block.id, 'correctAnswerVariants', variants)}
                     onSuccessMessageChange={(value) => updateTriviaField(block.id, 'successMessage', value)}
                     onFailureMessageChange={(value) => updateTriviaField(block.id, 'failureMessage', value)}
                     onMediaUpload={(e) => handleMediaUpload(block.id, e)}
                     onMediaRemove={(index) => removeMediaFile(block.id, index)}
                     onMediaMove={(index, direction) => moveMediaFile(block.id, index, direction)}
-                    onStartConnection={(buttonId, e) => startConnection(block.id, buttonId, e)}
                     onRemoveBlock={() => removeBlock(block.id)}
-                    isConnecting={isConnecting}
                   />
                 </div>
               );

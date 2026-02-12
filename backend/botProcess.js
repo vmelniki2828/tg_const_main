@@ -1814,9 +1814,8 @@ function setupBotHandlers(bot, blocks, connections) {
           return str.toLowerCase().trim().replace(/\s+/g, ' ');
         };
         const userNormalized = normalizeAnswer(messageText);
-        const correctMain = normalizeAnswer(currentBlock.correctAnswer);
         const variants = (currentBlock.correctAnswerVariants || []).map(normalizeAnswer).filter(Boolean);
-        const isCorrect = (correctMain && userNormalized === correctMain) || variants.some(v => v && userNormalized === v);
+        const isCorrect = variants.some(v => v && userNormalized === v);
         
         if (isCorrect) {
           await ctx.reply(currentBlock.successMessage || 'Поздравляем! Верно!');

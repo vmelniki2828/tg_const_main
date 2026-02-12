@@ -1,30 +1,21 @@
 import React from 'react';
 import config from '../config';
 
-/**
- * Нормализация строки для сравнения ответов: нижний регистр, trim, схлопывание пробелов.
- */
 export function normalizeAnswer(str) {
   if (str == null || typeof str !== 'string') return '';
-  return str
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, ' ');
+  return str.toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
 const TriviaBlock = ({
   block,
   onMessageChange,
-  onCorrectAnswerChange,
   onCorrectVariantsChange,
   onSuccessMessageChange,
   onFailureMessageChange,
   onMediaUpload,
   onMediaRemove,
   onMediaMove,
-  onStartConnection,
-  onRemoveBlock,
-  isConnecting
+  onRemoveBlock
 }) => {
   const correctVariantsStr = Array.isArray(block.correctAnswerVariants)
     ? block.correctAnswerVariants.join(', ')
@@ -57,21 +48,17 @@ const TriviaBlock = ({
         </div>
       </div>
 
-      <label className="quiz-question">
-        Текст блока (вопрос или задание)
-      </label>
       <textarea
         value={block.message || ''}
         onChange={(e) => onMessageChange(e.target.value)}
         placeholder="Введите текст викторины..."
-        className="quiz-message textarea trivia-input"
+        className="quiz-question"
         onClick={(e) => e.stopPropagation()}
       />
 
-      {/* Медиафайлы */}
-      <div className="media-section trivia-section">
+      <div className="media-section">
         <div className="media-header">
-          <span>📎 Медиафайлы ({block.mediaFiles?.length || 0})</span>
+          <span>📎 Медиафайлы ({block.mediaFiles?.length || 0}):</span>
           <input
             type="file"
             id={`trivia-media-${block.id}`}
@@ -144,68 +131,37 @@ const TriviaBlock = ({
         )}
       </div>
 
-      <label className="quiz-question">
-        Правильный ответ
-      </label>
-      <input
-        type="text"
-        className="trivia-input"
-        value={block.correctAnswer || ''}
-        onChange={(e) => onCorrectAnswerChange(e.target.value)}
-        placeholder="Например: Москва"
-        onClick={(e) => e.stopPropagation()}
-      />
-      <p className="quiz-message hint trivia-hint">
-        Учитываются разные формулировки и пробелы (регистр и лишние пробелы игнорируются).
-      </p>
+      <div className="quiz-answers">
+        <h4>Правильный ответ:</h4>
+        <input
+          type="text"
+          value={correctVariantsStr}
+          onChange={handleCorrectVariantsChange}
+          placeholder="Москва, мск, столица"
+          className="quiz-question"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
 
-      <label className="quiz-question">
-        Другие варианты правильного ответа (через запятую)
-      </label>
-      <input
-        type="text"
-        className="trivia-input"
-        value={correctVariantsStr}
-        onChange={handleCorrectVariantsChange}
-        placeholder="Москва, мск, столица"
-        onClick={(e) => e.stopPropagation()}
-      />
-
-      <label className="quiz-message">
-        🏆 Текст при правильном ответе
-      </label>
-      <textarea
-        value={block.successMessage || ''}
-        onChange={(e) => onSuccessMessageChange(e.target.value)}
-        placeholder="Поздравляем! Верно!"
-        className="quiz-message textarea trivia-input"
-        onClick={(e) => e.stopPropagation()}
-      />
-
-      <label className="quiz-message">
-        ❌ Текст при неправильном ответе
-      </label>
-      <textarea
-        value={block.failureMessage || ''}
-        onChange={(e) => onFailureMessageChange(e.target.value)}
-        placeholder="Попробуйте ещё раз."
-        className="quiz-message textarea trivia-input"
-        onClick={(e) => e.stopPropagation()}
-      />
-
-      {/* Точка соединения «При правильном ответе» */}
-      <div className="quiz-navigation" style={{ marginTop: '0.5rem' }}>
-        <button
-          type="button"
-          className="nav-button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onStartConnection('trivia_success', e);
-          }}
-          title="При правильном ответе перейти к этому блоку"
-        >
-          ✅ При правильном ответе →
-        </button>
+      <div className="quiz-messages">
+        <div className="quiz-message">
+          <label>🏆 Текст при правильном ответе:</label>
+          <textarea
+            value={block.successMessage || ''}
+            onChange={(e) => onSuccessMessageChange(e.target.value)}
+            placeholder="Поздравляем! Верно!"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+        <div className="quiz-message">
+          <label>❌ Текст при неправильном ответе:</label>
+          <textarea
+            value={block.failureMessage || ''}
+            onChange={(e) => onFailureMessageChange(e.target.value)}
+            placeholder="Попробуйте ещё раз."
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       </div>
     </div>
   );
