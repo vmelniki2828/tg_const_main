@@ -138,7 +138,7 @@ const TriviaBlock = ({
           value={correctVariantsStr}
           onChange={handleCorrectVariantsChange}
           placeholder="Москва, мск, столица"
-          className="quiz-question"
+          className="trivia-correct-input"
           onClick={(e) => e.stopPropagation()}
         />
       </div>

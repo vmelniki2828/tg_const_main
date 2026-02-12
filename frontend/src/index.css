@@ -1264,6 +1264,20 @@ body {
   animation: fadeInScale 0.3s ease-out;
 }
 
+.trivia-correct-input {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  height: auto;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.75rem;
+  margin: 0;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 1rem;
+  resize: none;
+}
+
 .quiz-block {
   min-width: 400px;
   max-width: 500px;
