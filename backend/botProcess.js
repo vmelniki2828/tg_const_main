@@ -1816,6 +1816,26 @@ function setupBotHandlers(bot, blocks, connections) {
       
       // Викторина: проверка текстового ответа (нормализация: регистр, пробелы, Unicode)
       if (currentBlock && currentBlock.type === 'trivia') {
+        try {
+          const alreadyPassed = await TriviaStats.findOne({
+            botId,
+            userId,
+            blockId: currentBlockId,
+            success: true
+          });
+          if (alreadyPassed) {
+            await ctx.reply('Вы уже проходили эту викторину!');
+            userCurrentBlock.set(userId, 'start');
+            const startBlock = dialogMap.get('start');
+            if (startBlock) {
+              const { keyboard, inlineKeyboard } = await createKeyboardWithBack(startBlock.buttons, userId, 'start');
+              await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
+            }
+            return;
+          }
+        } catch (e) {
+          console.error('❌ Error checking trivia already passed:', e);
+        }
         const normalizeAnswer = (str) => {
           if (str == null || typeof str !== 'string') return '';
           return String(str)
@@ -2229,6 +2249,24 @@ function setupBotHandlers(bot, blocks, connections) {
             
       // Переходим к следующему блоку
               const nextBlock = dialogMap.get(nextBlockId);
+              
+      // Викторина: если пользователь уже проходил её — не пускаем
+      if (nextBlock.type === 'trivia') {
+        try {
+          const alreadyPassed = await TriviaStats.findOne({
+            botId,
+            userId,
+            blockId: nextBlockId,
+            success: true
+          });
+          if (alreadyPassed) {
+            await ctx.reply('Вы уже проходили эту викторину!');
+            return;
+          }
+        } catch (e) {
+          console.error('❌ Error checking trivia already passed:', e);
+        }
+      }
               
       // Добавляем текущий блок в историю (только если следующий блок не квиз)
       if (nextBlock.type !== 'quiz') {
