@@ -300,6 +300,7 @@ function App() {
         {showTriviaStats && (
           <TriviaStats
             blocks={flowEditorRef.current?.getState()?.blocks || []}
+            botId={selectedBotId}
             onClose={() => setShowTriviaStats(false)}
           />
         )}

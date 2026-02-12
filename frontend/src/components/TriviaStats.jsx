@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import './QuizStats.css';
 import config from '../config';
 
-const TriviaStats = ({ blocks, onClose }) => {
+const TriviaStats = ({ blocks, botId, onClose }) => {
   const [stats, setStats] = useState({});
+  const [promoCodesStats, setPromoCodesStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedTrivia, setSelectedTrivia] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('date');
+  const [promoCodesListCollapsed, setPromoCodesListCollapsed] = useState(false);
 
   useEffect(() => {
     fetchStats();
@@ -21,6 +23,26 @@ const TriviaStats = ({ blocks, onClose }) => {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
       setStats(data);
+
+      const triviaBlocks = (blocks || []).filter(b => b.type === 'trivia');
+      const promoCodesData = {};
+      for (const trivia of triviaBlocks) {
+        try {
+          if (!botId) {
+            promoCodesData[trivia.id] = { hasPromoCodes: false, totalPromoCodes: 0, availablePromoCodes: 0, usedPromoCodes: 0, promoCodesList: [] };
+            continue;
+          }
+          const promoResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${trivia.id}?botId=${botId}`);
+          if (promoResponse.ok) {
+            promoCodesData[trivia.id] = await promoResponse.json();
+          } else {
+            promoCodesData[trivia.id] = { hasPromoCodes: false, totalPromoCodes: 0, availablePromoCodes: 0, usedPromoCodes: 0, promoCodesList: [] };
+          }
+        } catch (e) {
+          promoCodesData[trivia.id] = { hasPromoCodes: false, totalPromoCodes: 0, availablePromoCodes: 0, usedPromoCodes: 0, promoCodesList: [] };
+        }
+      }
+      setPromoCodesStats(promoCodesData);
     } catch (err) {
       console.error('Ошибка загрузки статистики викторин:', err);
       setError(err.message);
@@ -195,6 +217,62 @@ const TriviaStats = ({ blocks, onClose }) => {
                           <div className="stat-label">Успешность</div>
                         </div>
                       </div>
+
+                      <div className="promo-codes-stats">
+                        <h4>🎁 Статистика промокодов (ваучеров):</h4>
+                        {(() => {
+                          const promoStats = promoCodesStats[selectedTrivia.id];
+                          if (!promoStats || !promoStats.hasPromoCodes) {
+                            return <p className="no-promocodes">Промокоды не загружены для этой викторины. Выберите бота и откройте статистику снова.</p>;
+                          }
+                          return (
+                            <div className="promo-stats-overview">
+                              <div className="promo-stat-card">
+                                <div className="stat-number">{promoStats.totalPromoCodes}</div>
+                                <div className="stat-label">Всего</div>
+                              </div>
+                              <div className="promo-stat-card available">
+                                <div className="stat-number">{promoStats.availablePromoCodes}</div>
+                                <div className="stat-label">Доступно</div>
+                              </div>
+                              <div className="promo-stat-card used">
+                                <div className="stat-number">{promoStats.usedPromoCodes}</div>
+                                <div className="stat-label">Выдано</div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="promo-codes-list">
+                        <div className="section-header" onClick={() => setPromoCodesListCollapsed(!promoCodesListCollapsed)}>
+                          <h4>📋 Список промокодов:</h4>
+                          <button type="button" className="collapse-btn">{promoCodesListCollapsed ? '▼' : '▲'}</button>
+                        </div>
+                        {!promoCodesListCollapsed && (() => {
+                          const promoStats = promoCodesStats[selectedTrivia.id];
+                          if (!promoStats || !promoStats.hasPromoCodes || !promoStats.promoCodesList?.length) {
+                            return <p className="no-promocodes">Нет промокодов для отображения</p>;
+                          }
+                          return (
+                            <div className="promocodes-grid">
+                              {promoStats.promoCodesList.map((promoCode, index) => (
+                                <div key={index} className={`promocode-item ${promoCode.activated ? 'used' : 'available'}`}>
+                                  <div className="promocode-code"><strong>{promoCode.code}</strong></div>
+                                  <div className="promocode-status">
+                                    {promoCode.activated ? (
+                                      <span className="status-used">✅ Выдан: {promoCode.activatedBy ?? '—'}</span>
+                                    ) : (
+                                      <span className="status-available">⏳ Доступен</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+
                       <div className="user-attempts">
                         <h4>Попытки пользователей:</h4>
                         <div className="attempts-controls">
