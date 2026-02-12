@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const { User, QuizStats, PromoCode, Loyalty, LoyaltyConfig, LoyaltyPromoCode } = require('./models');
+const { User, QuizStats, TriviaStats, PromoCode, Loyalty, LoyaltyConfig, LoyaltyPromoCode } = require('./models');
 const {
   trackActiveUser,
   trackStartCommand,
@@ -1827,6 +1827,18 @@ function setupBotHandlers(bot, blocks, connections) {
         const userNormalized = normalizeAnswer(messageText);
         const variants = (currentBlock.correctAnswerVariants || []).map(normalizeAnswer).filter(Boolean);
         const isCorrect = variants.length > 0 && variants.some(v => userNormalized === v);
+        
+        try {
+          await TriviaStats.create({
+            botId,
+            userId,
+            blockId: currentBlockId,
+            success: isCorrect,
+            userAnswer: messageText || ''
+          });
+        } catch (err) {
+          console.error('❌ TriviaStats save error:', err);
+        }
         
         if (isCorrect) {
           await ctx.reply(currentBlock.successMessage || 'Поздравляем! Верно!');

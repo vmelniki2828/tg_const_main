@@ -75,6 +75,16 @@ const QuizStatsSchema = new mongoose.Schema({
 // Создаем индекс для быстрого поиска
 QuizStatsSchema.index({ botId: 1, userId: 1, blockId: 1 }, { unique: true });
 
+const TriviaStatsSchema = new mongoose.Schema({
+  botId: { type: String, required: true },
+  userId: { type: Number, required: true },
+  blockId: { type: String, required: true },
+  success: { type: Boolean, required: true },
+  userAnswer: { type: String, default: '' },
+  completedAt: { type: Date, default: Date.now }
+});
+TriviaStatsSchema.index({ botId: 1, blockId: 1 });
+
 const PromoCodeSchema = new mongoose.Schema({
   botId: { type: String, required: true },
   code: { type: String, required: true },
@@ -300,6 +310,7 @@ module.exports = {
   Bot: mongoose.model('Bot', BotSchema),
   User: mongoose.model('User', UserSchema),
   QuizStats: mongoose.model('QuizStats', QuizStatsSchema),
+  TriviaStats: mongoose.model('TriviaStats', TriviaStatsSchema),
   PromoCode: mongoose.model('PromoCode', PromoCodeSchema),
   Loyalty: mongoose.model('Loyalty', LoyaltySchema),
   LoyaltyConfig: mongoose.model('LoyaltyConfig', LoyaltyConfigSchema),

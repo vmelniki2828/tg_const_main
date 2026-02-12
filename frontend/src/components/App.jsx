@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import FlowEditor from './FlowEditor';
 import BotsList from './BotsList';
 import QuizStats from './QuizStats';
+import TriviaStats from './TriviaStats';
 import LoyaltyProgram from './LoyaltyProgram';
 import SourceStatistics from './SourceStatistics';
 import Giveaways from './Giveaways';
@@ -13,10 +14,12 @@ function App() {
   const [error, setError] = useState(null);
   const [botStatus, setBotStatus] = useState(null);
   const [showStats, setShowStats] = useState(false);
+  const [showTriviaStats, setShowTriviaStats] = useState(false);
   const [showLoyalty, setShowLoyalty] = useState(false);
   const [showSourceStats, setShowSourceStats] = useState(false);
   const [showGiveaways, setShowGiveaways] = useState(false);
   const [quizDropdownOpen, setQuizDropdownOpen] = useState(false);
+  const [statsDropdownOpen, setStatsDropdownOpen] = useState(false);
   const flowEditorRef = useRef();
 
   // Функция для получения статуса бота
@@ -196,12 +199,48 @@ function App() {
               </div>
             )}
           </div>
-          <button 
-            onClick={() => setShowStats(true)}
-            className="editor-button stats-button"
-          >
-            📊 Статистика квизов
-          </button>
+          <div style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setStatsDropdownOpen(!statsDropdownOpen)}
+              onBlur={() => setTimeout(() => setStatsDropdownOpen(false), 150)}
+              className="editor-button stats-button"
+            >
+              📊 Статистика квизов ▾
+            </button>
+            {statsDropdownOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: '4px',
+                  background: '#fff',
+                  border: '1px solid #ddd',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  zIndex: 100,
+                  minWidth: '200px'
+                }}
+              >
+                <button
+                  type="button"
+                  className="editor-button stats-button"
+                  style={{ display: 'block', width: '100%', textAlign: 'left', borderRadius: 0 }}
+                  onClick={() => { setShowStats(true); setStatsDropdownOpen(false); }}
+                >
+                  📊 Статистика квизов
+                </button>
+                <button
+                  type="button"
+                  className="editor-button"
+                  style={{ display: 'block', width: '100%', textAlign: 'left', borderRadius: 0 }}
+                  onClick={() => { setShowTriviaStats(true); setStatsDropdownOpen(false); }}
+                >
+                  🎲 Статистика викторин
+                </button>
+              </div>
+            )}
+          </div>
           <button 
             onClick={() => setShowLoyalty(true)}
             className="editor-button loyalty-button"
@@ -255,6 +294,13 @@ function App() {
             blocks={flowEditorRef.current?.getState()?.blocks || []}
             botId={selectedBotId}
             onClose={() => setShowStats(false)}
+          />
+        )}
+        
+        {showTriviaStats && (
+          <TriviaStats
+            blocks={flowEditorRef.current?.getState()?.blocks || []}
+            onClose={() => setShowTriviaStats(false)}
           />
         )}
         

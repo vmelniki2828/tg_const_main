@@ -7,7 +7,8 @@ const { spawn } = require('child_process');
 const multer = require('multer');
 const mongoose = require('mongoose');
 const { 
-  QuizStats, 
+  QuizStats,
+  TriviaStats,
   Bot, 
   User, 
   PromoCode, 
@@ -684,6 +685,58 @@ app.get('/api/quiz-stats', async (req, res) => {
   } catch (error) {
     console.error('❌ Error getting quiz stats:', error);
     res.status(500).json({ error: 'Failed to get quiz stats' });
+  }
+});
+
+// Эндпоинт для получения статистики викторин
+app.get('/api/trivia-stats', async (req, res) => {
+  try {
+    const records = await TriviaStats.find({});
+    const stats = {};
+    for (const record of records) {
+      const blockId = record.blockId;
+      if (!stats[blockId]) {
+        stats[blockId] = {
+          totalAttempts: 0,
+          successfulCompletions: 0,
+          failedAttempts: 0,
+          userAttempts: []
+        };
+      }
+      stats[blockId].totalAttempts++;
+      if (record.success) {
+        stats[blockId].successfulCompletions++;
+      } else {
+        stats[blockId].failedAttempts++;
+      }
+      let userInfo = { userName: 'Пользователь', userLastName: '', username: '' };
+      try {
+        const user = await User.findOne({ botId: record.botId, userId: record.userId });
+        if (user) {
+          userInfo = {
+            userName: user.firstName || 'Пользователь',
+            userLastName: user.lastName || '',
+            username: user.username || ''
+          };
+        }
+      } catch (e) {
+        console.error('❌ Error fetching user for trivia stats:', e);
+      }
+      const completedAt = record.completedAt && typeof record.completedAt.getTime === 'function' ? record.completedAt : new Date();
+      stats[blockId].userAttempts.push({
+        userId: record.userId,
+        userName: userInfo.userName,
+        userLastName: userInfo.userLastName,
+        username: userInfo.username,
+        success: record.success,
+        userAnswer: record.userAnswer || '',
+        timestamp: completedAt.getTime()
+      });
+    }
+    res.json(stats);
+  } catch (error) {
+    console.error('❌ Error getting trivia stats:', error);
+    res.status(500).json({ error: 'Failed to get trivia stats' });
   }
 });
 
