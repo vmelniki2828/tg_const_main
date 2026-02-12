@@ -1819,19 +1819,12 @@ function setupBotHandlers(bot, blocks, connections) {
         const isCorrect = (correctMain && userNormalized === correctMain) || variants.some(v => v && userNormalized === v);
         
         if (isCorrect) {
-          const connectionKey = `${String(currentBlockId)}_trivia_success`;
-          const nextBlockId = connectionMap.get(connectionKey);
-          const nextBlock = nextBlockId ? dialogMap.get(nextBlockId) : null;
           await ctx.reply(currentBlock.successMessage || 'Поздравляем! Верно!');
-          if (nextBlock) {
-            let userHistory = userNavigationHistory.get(userId) || [];
-            userHistory.push(currentBlockId);
-            userNavigationHistory.set(userId, userHistory);
-            userCurrentBlock.set(userId, nextBlockId);
-            const { keyboard, inlineKeyboard } = await createKeyboardWithBack(nextBlock.buttons, userId, nextBlockId);
-            await sendMediaMessage(ctx, nextBlock.message, nextBlock.mediaFiles, keyboard, inlineKeyboard);
-          } else {
-            userCurrentBlock.set(userId, currentBlockId);
+          userCurrentBlock.set(userId, 'start');
+          const startBlock = dialogMap.get('start');
+          if (startBlock) {
+            const { keyboard, inlineKeyboard } = await createKeyboardWithBack(startBlock.buttons, userId, 'start');
+            await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
           }
         } else {
           await ctx.reply(currentBlock.failureMessage || 'Попробуйте ещё раз.');

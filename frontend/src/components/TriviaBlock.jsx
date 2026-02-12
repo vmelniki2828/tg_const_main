@@ -64,13 +64,12 @@ const TriviaBlock = ({
         value={block.message || ''}
         onChange={(e) => onMessageChange(e.target.value)}
         placeholder="Введите текст викторины..."
-        className="quiz-message textarea"
+        className="quiz-message textarea trivia-input"
         onClick={(e) => e.stopPropagation()}
-        style={{ minHeight: '70px', marginBottom: '0.75rem' }}
       />
 
       {/* Медиафайлы */}
-      <div className="media-section" style={{ marginBottom: '1rem' }}>
+      <div className="media-section trivia-section">
         <div className="media-header">
           <span>📎 Медиафайлы ({block.mediaFiles?.length || 0})</span>
           <input
@@ -150,13 +149,13 @@ const TriviaBlock = ({
       </label>
       <input
         type="text"
+        className="trivia-input"
         value={block.correctAnswer || ''}
         onChange={(e) => onCorrectAnswerChange(e.target.value)}
         placeholder="Например: Москва"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', marginBottom: '0.5rem', padding: '0.5rem' }}
       />
-      <p className="quiz-message hint" style={{ fontSize: '0.85em', color: '#666', marginBottom: '1rem' }}>
+      <p className="quiz-message hint trivia-hint">
         Учитываются разные формулировки и пробелы (регистр и лишние пробелы игнорируются).
       </p>
 
@@ -165,11 +164,11 @@ const TriviaBlock = ({
       </label>
       <input
         type="text"
+        className="trivia-input"
         value={correctVariantsStr}
         onChange={handleCorrectVariantsChange}
         placeholder="Москва, мск, столица"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', marginBottom: '1rem', padding: '0.5rem' }}
       />
 
       <label className="quiz-message">
@@ -179,9 +178,8 @@ const TriviaBlock = ({
         value={block.successMessage || ''}
         onChange={(e) => onSuccessMessageChange(e.target.value)}
         placeholder="Поздравляем! Верно!"
-        className="quiz-message textarea"
+        className="quiz-message textarea trivia-input"
         onClick={(e) => e.stopPropagation()}
-        style={{ minHeight: '50px', marginBottom: '1rem' }}
       />
 
       <label className="quiz-message">
@@ -191,9 +189,8 @@ const TriviaBlock = ({
         value={block.failureMessage || ''}
         onChange={(e) => onFailureMessageChange(e.target.value)}
         placeholder="Попробуйте ещё раз."
-        className="quiz-message textarea"
+        className="quiz-message textarea trivia-input"
         onClick={(e) => e.stopPropagation()}
-        style={{ minHeight: '50px', marginBottom: '1rem' }}
       />
 
       {/* Точка соединения «При правильном ответе» */}

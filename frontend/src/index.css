@@ -1251,6 +1251,55 @@ body {
   animation: fadeInScale 0.3s ease-out;
 }
 
+/* Стили для блока викторины */
+.dialog-block.trivia {
+  width: 400px;
+  min-width: 400px;
+  max-width: 500px;
+  background: white;
+  border: 2px solid #9b59b6;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+  animation: fadeInScale 0.3s ease-out;
+}
+
+.trivia-block {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.trivia-block input[type="text"],
+.trivia-block textarea {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem;
+}
+
+.trivia-block textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.trivia-block .trivia-input {
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 1rem;
+}
+
+.trivia-block .trivia-section {
+  margin-bottom: 1rem;
+}
+
+.trivia-block .trivia-hint {
+  font-size: 0.85em;
+  color: #666;
+  margin-bottom: 1rem;
+}
+
 .quiz-block {
   min-width: 400px;
   max-width: 500px;
