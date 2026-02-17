@@ -254,7 +254,8 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
         reject(err);
       });
     
-    // Добавляем таймаут для процесса (5 минут)
+    // Добавляем таймаут для процесса (15 минут — на слабом сервере кодирование может быть долгим)
+    const TIMEOUT_MS = 15 * 60 * 1000;
     const timeout = setTimeout(() => {
       try {
         if (ffmpegProcess.ffmpegProc && !ffmpegProcess.ffmpegProc.killed) {
@@ -264,8 +265,8 @@ async function generateRouletteVideo(winners, outputPath, allParticipants = null
       } catch (err) {
         console.error('⚠️ Ошибка при завершении процесса по таймауту:', err);
       }
-      reject(new Error('Таймаут генерации видео (превышено 5 минут)'));
-    }, 5 * 60 * 1000);
+      reject(new Error(`Таймаут генерации видео (превышено ${TIMEOUT_MS / 60000} минут)`));
+    }, TIMEOUT_MS);
     
     ffmpegProcess.on('end', () => clearTimeout(timeout));
     ffmpegProcess.on('error', () => clearTimeout(timeout));
