@@ -56,13 +56,60 @@ try {
 // Кэш для промокодов
 const promoCodeCache = new Map();
 
+/** Экранирование текста для Telegram HTML */
+function escapeTelegramHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeTelegramHref(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Ссылки: [видимый текст](url). URL можно без https:// — добавится автоматически.
+ * Остальной текст экранируется как HTML.
+ */
+function formatMessageWithMarkdownLinksToHtml(text) {
+  if (text == null || text === '') return '';
+  const str = String(text);
+  const linkRe = /\[([^\]]*)\]\(([^)]+)\)/g;
+  let out = '';
+  let last = 0;
+  let m;
+  while ((m = linkRe.exec(str)) !== null) {
+    out += escapeTelegramHtml(str.slice(last, m.index));
+    const hrefRaw = m[2].trim();
+    let href = hrefRaw;
+    if (!/^https?:\/\//i.test(href)) {
+      if (/^javascript:/i.test(href) || /^data:/i.test(href)) {
+        out += escapeTelegramHtml(m[0]);
+        last = m.index + m[0].length;
+        continue;
+      }
+      href = 'https://' + href;
+    }
+    out += '<a href="' + escapeTelegramHref(href) + '">' + escapeTelegramHtml(m[1]) + '</a>';
+    last = m.index + m[0].length;
+  }
+  out += escapeTelegramHtml(str.slice(last));
+  return out;
+}
+
 // Функция для отправки медиафайлов (оптимизированная)
 async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboard = []) {
   const fs = require('fs');
   const path = require('path');
-  
+  const htmlMessage = formatMessageWithMarkdownLinksToHtml(message || '');
+  const parseModeHtml = { parse_mode: 'HTML' };
+
   console.log(`🔍 DEBUG: sendMediaMessage called with:`);
-  console.log(`  - message: ${message.substring(0, 50)}...`);
+  const msgPreview = String(message || '');
+  console.log(`  - message: ${msgPreview.length > 50 ? msgPreview.substring(0, 50) + '...' : msgPreview}`);
   console.log(`  - mediaFiles: ${mediaFiles ? mediaFiles.length : 0} files`);
   console.log(`  - keyboard: ${keyboard.length} rows`);
   console.log(`  - inlineKeyboard: ${inlineKeyboard.length} rows`);
@@ -84,8 +131,9 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
       console.log(`🔍 DEBUG: Sending text message with reply markup:`, JSON.stringify(replyMarkup));
       
       // Добавляем timeout для отправки сообщения
-      const sendPromise = ctx.reply(message, {
-        reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
+      const sendPromise = ctx.reply(htmlMessage, {
+        reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined,
+        ...parseModeHtml
       });
       
       // Timeout 10 секунд
@@ -122,8 +170,9 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
         console.log(`🔍 DEBUG: Sending fallback text message`);
         
         // Добавляем timeout для отправки сообщения
-        const sendPromise = ctx.reply(message, {
-          reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
+        const sendPromise = ctx.reply(htmlMessage, {
+          reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined,
+          ...parseModeHtml
         });
         
         // Timeout 10 секунд
@@ -146,8 +195,9 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
       }
 
       const options = {
-        caption: message,
-        reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
+        caption: htmlMessage,
+        reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined,
+        ...parseModeHtml
       };
 
       console.log(`🔍 DEBUG: Sending media with options:`, JSON.stringify(options));
@@ -208,8 +258,9 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
         }
         
         // Добавляем timeout для отправки сообщения
-        const sendPromise = ctx.reply(message, {
-          reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
+        const sendPromise = ctx.reply(htmlMessage, {
+          reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined,
+          ...parseModeHtml
         });
         
         // Timeout 10 секунд
@@ -248,9 +299,16 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
       
       console.log(`🔍 DEBUG: Sending media group with ${mediaGroup.length} files`);
       
+      // Подпись и parse_mode только на первом элементе альбома (требование Telegram API)
+      const mediaGroupWithCaption =
+        htmlMessage !== ''
+          ? mediaGroup.map((item, i) =>
+              i === 0 ? { ...item, caption: htmlMessage, ...parseModeHtml } : item
+            )
+          : mediaGroup;
+
       // Добавляем timeout для отправки медиагруппы
-      const sendGroupPromise = ctx.replyWithMediaGroup(mediaGroup, {
-        caption: message,
+      const sendGroupPromise = ctx.replyWithMediaGroup(mediaGroupWithCaption, {
         reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
       });
       
@@ -290,8 +348,9 @@ async function sendMediaMessage(ctx, message, mediaFiles, keyboard, inlineKeyboa
       }
       
       // Добавляем timeout для fallback
-      const sendPromise = ctx.reply(message, {
-        reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined
+      const sendPromise = ctx.reply(htmlMessage, {
+        reply_markup: Object.keys(replyMarkup).length > 0 ? replyMarkup : undefined,
+        ...parseModeHtml
       });
       
       const timeoutPromise = new Promise((_, reject) => {
@@ -1884,8 +1943,11 @@ function setupBotHandlers(bot, blocks, connections) {
         
         if (isCorrect) {
           const successText = currentBlock.successMessage || 'Поздравляем! Верно!';
-          const fullMessage = promoCode ? `${successText}\n\n🎁 Ваш ваучер: \`${promoCode}\`` : successText;
-          await ctx.reply(fullMessage, promoCode ? { parse_mode: 'Markdown' } : {});
+          let fullHtml = formatMessageWithMarkdownLinksToHtml(successText);
+          if (promoCode) {
+            fullHtml += '\n\n🎁 Ваш ваучер: <code>' + escapeTelegramHtml(promoCode) + '</code>';
+          }
+          await ctx.reply(fullHtml, { parse_mode: 'HTML' });
           userCurrentBlock.set(userId, 'start');
           const startBlock = dialogMap.get('start');
           if (startBlock) {
@@ -1893,7 +1955,10 @@ function setupBotHandlers(bot, blocks, connections) {
             await sendMediaMessage(ctx, startBlock.message, startBlock.mediaFiles, keyboard, inlineKeyboard);
           }
         } else {
-          await ctx.reply(currentBlock.failureMessage || 'Попробуйте ещё раз.');
+          await ctx.reply(
+            formatMessageWithMarkdownLinksToHtml(currentBlock.failureMessage || 'Попробуйте ещё раз.'),
+            { parse_mode: 'HTML' }
+          );
         }
         return;
       }
@@ -2089,21 +2154,21 @@ function setupBotHandlers(bot, blocks, connections) {
              }
            }
            
-           // Отправляем финальное сообщение
-           let finalMessage;
+           // Отправляем финальное сообщение (HTML: ссылки [текст](url), промокод в <code>)
+           const statsSuffix = `\n\n📊 Статистика:\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+           let finalHtml;
            if (correctAnswers === totalQuestions) {
-             // Все ответы правильные - показываем сообщение об успехе
              const successMessage = quizBlock.finalSuccessMessage || '🏆 Поздравляем! Вы успешно прошли квиз!';
-             const statsMessage = `\n\n📊 Статистика:\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
-             const promoMessage = promoCode ? `\n\n🎁 Ваш промокод: \`${promoCode}\`` : '';
-             
-             finalMessage = successMessage + statsMessage + promoMessage;
-                  } else {
-             // Не все ответы правильные - показываем сообщение о неудаче
-             finalMessage = `${quizBlock.finalFailureMessage || '❌ Квест завершен. Попробуйте еще раз!'}\n\n📊 Статистика:\n✅ Правильных ответов: ${correctAnswers}/${totalQuestions}\n📈 Процент: ${percentage}%\n⏱️ Время прохождения: ${completionTime} сек`;
+             finalHtml = formatMessageWithMarkdownLinksToHtml(successMessage) + escapeTelegramHtml(statsSuffix);
+             if (promoCode) {
+               finalHtml += '\n\n🎁 Ваш промокод: <code>' + escapeTelegramHtml(promoCode) + '</code>';
+             }
+           } else {
+             const failMsg = quizBlock.finalFailureMessage || '❌ Квест завершен. Попробуйте еще раз!';
+             finalHtml = formatMessageWithMarkdownLinksToHtml(failMsg) + escapeTelegramHtml(statsSuffix);
            }
-          
-          await ctx.reply(finalMessage, { parse_mode: 'Markdown' });
+
+          await ctx.reply(finalHtml, { parse_mode: 'HTML' });
           
           // Если настроено возвращение в начало
           if (quizBlock.returnToStartOnComplete) {

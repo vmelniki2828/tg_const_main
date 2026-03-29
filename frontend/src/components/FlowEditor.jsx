@@ -1181,7 +1181,8 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                 <textarea
                   value={block.message}
                   onChange={(e) => updateMessage(block.id, e.target.value)}
-                  placeholder="Введите сообщение..."
+                  placeholder="Введите сообщение. Ссылка: [Гугл](google.com) или [Сайт](https://example.com)"
+                  title="Кликабельная ссылка в Telegram: [видимый текст](адрес). Адрес можно без https://"
                   style={{ width: '100%', minHeight: '80px', marginBottom: '1rem' }}
                   onClick={(e) => e.stopPropagation()}
                 />

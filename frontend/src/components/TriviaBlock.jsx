@@ -86,7 +86,8 @@ const TriviaBlock = ({
       <textarea
         value={block.message || ''}
         onChange={(e) => onMessageChange(e.target.value)}
-        placeholder="Введите текст викторины..."
+        placeholder="Текст викторины. Ссылка: [Гугл](google.com)"
+        title="Кликабельная ссылка: [видимый текст](адрес), https можно не указывать"
         className="quiz-question"
         onClick={(e) => e.stopPropagation()}
       />
@@ -222,7 +223,8 @@ const TriviaBlock = ({
           <textarea
             value={block.successMessage || ''}
             onChange={(e) => onSuccessMessageChange(e.target.value)}
-            placeholder="Поздравляем! Верно!"
+            placeholder="Поздравляем! Верно! Ссылка: [Подробнее](site.com)"
+            title="Ссылка: [текст](url)"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
@@ -231,7 +233,8 @@ const TriviaBlock = ({
           <textarea
             value={block.failureMessage || ''}
             onChange={(e) => onFailureMessageChange(e.target.value)}
-            placeholder="Попробуйте ещё раз."
+            placeholder="Попробуйте ещё раз. Ссылка: [Подсказка](site.com)"
+            title="Ссылка: [текст](url)"
             onClick={(e) => e.stopPropagation()}
           />
         </div>

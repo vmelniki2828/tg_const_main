@@ -143,7 +143,8 @@ const QuizBlock = ({
         <textarea
           value={currentQuestion.message}
           onChange={(e) => onMessageChange(e.target.value)}
-          placeholder="Введите вопрос..."
+          placeholder="Вопрос. Ссылка: [статья](https://site.com)"
+          title="Кликабельная ссылка: [видимый текст](адрес)"
           className="quiz-question"
           onClick={(e) => e.stopPropagation()}
         />
@@ -215,7 +216,8 @@ const QuizBlock = ({
           <textarea
             value={block.finalSuccessMessage || ''}
             onChange={(e) => onUpdateFinalMessage(e.target.value)}
-            placeholder="🎉 Поздравляем! Вы успешно прошли квиз!"
+            placeholder="🎉 Поздравляем! Ссылка: [Подарок](site.com)"
+            title="Ссылка: [текст](url)"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
@@ -224,7 +226,8 @@ const QuizBlock = ({
           <textarea
             value={block.finalFailureMessage || ''}
             onChange={(e) => onUpdateFinalFailureMessage(e.target.value)}
-            placeholder="❌ К сожалению, вы не прошли квиз. Нужно ответить правильно на все вопросы."
+            placeholder="❌ Не прошли квиз. Ссылка: [Повторить](site.com)"
+            title="Ссылка: [текст](url)"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
