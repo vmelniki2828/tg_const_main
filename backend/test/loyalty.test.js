@@ -149,7 +149,10 @@ test('historical member not found is skipped without awarding or changing subscr
   membership = Object.assign(new Error('secret token'), { response: {
     error_code: 400, description: 'Bad Request: member not found'
   } });
-  assert.equal((await check(u, c)).status, 'member_unavailable');
+  for (const description of ['Bad Request: member not found', 'Bad Request: PARTICIPANT_ID_INVALID']) {
+    membership.response.description = description;
+    assert.equal((await check(u, c)).status, 'member_unavailable');
+  }
   assert.equal((await User.findOne({ userId: 1 })).isSubscribed, true);
   assert.equal(await LoyaltyPromoCode.countDocuments({ activated: true }), 0);
   membership.response.description = 'Bad Request: chat not found';

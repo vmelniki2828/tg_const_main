@@ -90,7 +90,8 @@ function createLoyaltyService({ User, Loyalty, LoyaltyPromoCode, telegramForBot,
         // Telegram may no longer know a historical member. Skip this user,
         // without changing stored subscription state or hiding channel/API errors.
         if (error.response?.error_code === 400 &&
-          error.response?.description === 'Bad Request: member not found') {
+          ['Bad Request: member not found', 'Bad Request: PARTICIPANT_ID_INVALID']
+            .includes(error.response?.description)) {
           return { ...result, status: 'member_unavailable' };
         }
         throw error;

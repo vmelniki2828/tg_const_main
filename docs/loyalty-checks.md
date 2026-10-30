@@ -21,7 +21,7 @@ Historical flags alone never count as a voucher, and empty stock remains retryab
 No notification messages are sent by the checker.
 The User and Loyalty schemas retain the existing production unique indexes on
 `botId, userId`. Tests also initialize indexes over the historical index definitions.
-Telegram's specific `member not found` response skips that historical member
+Telegram's specific `member not found` and `PARTICIPANT_ID_INVALID` responses skip that historical member
 without changing subscription state; network, channel, and permission errors remain errors.
 Repeat cycles verify real allocations and skip writes when both flag records
 are already synchronized.
