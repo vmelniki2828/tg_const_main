@@ -19,6 +19,12 @@ Assignments are atomic, protected by a sparse unique allocation key, and reward
 flags are synchronized afterward. A failed flag write can safely be retried.
 Historical flags alone never count as a voucher, and empty stock remains retryable.
 No notification messages are sent by the checker.
+The User and Loyalty schemas retain the existing production unique indexes on
+`botId, userId`. Tests also initialize indexes over the historical index definitions.
+Telegram's specific `member not found` response skips that historical member
+without changing subscription state; network, channel, and permission errors remain errors.
+Repeat cycles verify real allocations and skip writes when both flag records
+are already synchronized.
 
 Automatic checks use batches of 50 every five seconds, without overlap, and
 keyset pagination with a snapshot boundary. A cycle is not a promise of immediate

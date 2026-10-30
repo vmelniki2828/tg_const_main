@@ -25,6 +25,7 @@ function createLoyaltySweep({ User, LoyaltyConfig, service, botId, publish, batc
         try {
           const result = await service.checkUser(botId, user, config);
           progress.errors += result.errors;
+          if (result.error) progress.error = result.error;
         } catch (error) {
           progress.errors++;
           progress.error = safeError(error);

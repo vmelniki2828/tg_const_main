@@ -83,13 +83,36 @@ function createLoyaltyService({ User, Loyalty, LoyaltyPromoCode, telegramForBot,
     if (config.channelSettings?.isRequired) {
       const channel = normalizeChannel(config.channelSettings.channelId);
       const telegram = await telegramForBot(botId);
-      const member = await telegram.getChatMember(channel, user.userId);
+      let member;
+      try {
+        member = await telegram.getChatMember(channel, user.userId);
+      } catch (error) {
+        // Telegram may no longer know a historical member. Skip this user,
+        // without changing stored subscription state or hiding channel/API errors.
+        if (error.response?.error_code === 400 &&
+          error.response?.description === 'Bad Request: member not found') {
+          return { ...result, status: 'member_unavailable' };
+        }
+        throw error;
+      }
       const subscribed = isMember(member);
       if (!subscribed) return { ...result, status: 'not_subscribed' };
     } else if (!user.isSubscribed) {
       return { ...result, status: 'not_subscribed' };
     }
+    // Most passes revisit already issued rewards. Verify the actual allocations
+    // once, and avoid writing the same flags for every period on every cycle.
+    const [assigned, flags] = await Promise.all([
+      LoyaltyPromoCode.find({ botId, activatedBy: user.userId, activated: true, period: { $in: due } })
+        .select('period').lean(),
+      Loyalty.findOne({ botId, userId: user.userId }).select('rewards').lean()
+    ]);
+    const assignedPeriods = new Set(assigned.map(voucher => voucher.period));
     for (const period of due) {
+      if (assignedPeriods.has(period) && user.loyaltyRewards?.[period] && flags?.rewards?.[period]) {
+        result.alreadyIssued++;
+        continue;
+      }
       try {
         const status = await allocate(botId, user.userId, period);
         if (status === 'issued') result.issued++;

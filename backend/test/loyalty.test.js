@@ -38,6 +38,20 @@ async function stock(count = 1, period = '1m') {
 }
 const check = (u, c = config, p) => service.checkUser('b', u, c, p);
 
+test('schema indexes remain compatible with historical production unique indexes', async () => {
+  const connection = await mongoose.createConnection(mongo.getUri('legacy_indexes'), { autoIndex: false }).asPromise();
+  try {
+    for (const name of ['User', 'Loyalty']) {
+      const model = connection.model(name, models[name].schema.clone());
+      await model.createCollection();
+      await model.collection.createIndex({ botId: 1, userId: 1 }, { unique: true });
+      // Model.init() uses this same index creation path on production startup.
+      await model.createIndexes();
+      assert.equal((await model.collection.indexes()).find(i => i.name === 'botId_1_userId_1').unique, true);
+    }
+  } finally { await connection.dropDatabase(); await connection.close(); }
+});
+
 test('eligible boundary assigns exactly one voucher and persists both flag collections', async () => {
   const u = await user(); await stock();
   assert.equal((await check(u)).issued, 1);
@@ -64,6 +78,16 @@ test('historical voucher repairs stale flags without issuing another code', asyn
   assert.equal((await check(u)).alreadyIssued, 1);
   assert.equal(await LoyaltyPromoCode.countDocuments({ activated: true }), 1);
   assert.equal(await Loyalty.countDocuments({ botId: 'b', userId: 1 }), 1);
+});
+
+test('repeat sweep verifies actual allocations but does not rewrite synchronized flags', async () => {
+  await user(); await stock(); await check(await User.findOne({ userId: 1 }).lean());
+  const readonly = createLoyaltyService({ ...models, now: () => now,
+    User: { updateMany: () => { throw new Error('must not rewrite flags'); } } });
+  const result = await readonly.checkUser('b', await User.findOne({ userId: 1 }).lean(), config);
+  assert.equal(result.alreadyIssued, 1);
+  assert.equal(result.errors, 0);
+  assert.equal(await LoyaltyPromoCode.countDocuments({ activated: true }), 1);
 });
 test('20 concurrent requests for the same user cannot allocate duplicates', async () => {
   const u = await user(); await stock(20);
@@ -117,6 +141,19 @@ test('DNS, timeout, API errors propagate as errors, never as not subscribed', as
     await assert.rejects(check(u, { ...config, channelSettings: { isRequired: true, channelId: '@channel' } }));
   }
   assert.equal(await LoyaltyPromoCode.countDocuments({ activated: true }), 0);
+});
+
+test('historical member not found is skipped without awarding or changing subscription; channel errors remain failures', async () => {
+  await stock(); const u = await user();
+  const c = { ...config, channelSettings: { isRequired: true, channelId: '@channel' } };
+  membership = Object.assign(new Error('secret token'), { response: {
+    error_code: 400, description: 'Bad Request: member not found'
+  } });
+  assert.equal((await check(u, c)).status, 'member_unavailable');
+  assert.equal((await User.findOne({ userId: 1 })).isSubscribed, true);
+  assert.equal(await LoyaltyPromoCode.countDocuments({ activated: true }), 0);
+  membership.response.description = 'Bad Request: chat not found';
+  await assert.rejects(check(u, c));
 });
 test('bad channel and unsupported period never award', async () => {
   const u = await user(); await stock();
@@ -241,4 +278,14 @@ test('automatic checker publishes errors and disabled state without allocating',
   assert(!JSON.stringify(progress).includes('secret'));
   await LoyaltyConfig.updateOne({ botId: 'b' }, { isEnabled: false });
   await sweep.runBatch(); assert.equal(progress.at(-1).status, 'disabled');
+});
+
+test('automatic checker exposes allocation errors instead of a stale membership error', async () => {
+  await user(); await LoyaltyConfig.create({ botId: 'b', ...config });
+  const progress = [];
+  const sweep = createLoyaltySweep({ User, LoyaltyConfig, botId: 'b', publish: p => progress.push(p),
+    service: { checkUser: async () => ({ errors: 2, error: 'Ошибка проверки/выдачи (86)' }) } });
+  await sweep.runBatch();
+  assert.equal(progress.at(-1).errors, 2);
+  assert.equal(progress.at(-1).error, 'Ошибка проверки/выдачи (86)');
 });

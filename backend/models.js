@@ -56,7 +56,7 @@ const UserSchema = new mongoose.Schema({
   totalSessions: { type: Number, default: 0 } // Количество сессий
 });
 
-UserSchema.index({ botId: 1, userId: 1 });
+UserSchema.index({ botId: 1, userId: 1 }, { unique: true });
 UserSchema.index({ botId: 1, _id: 1 });
 UserSchema.index({ botId: 1, isSubscribed: 1, _id: 1 });
 
@@ -114,7 +114,7 @@ const LoyaltySchema = new mongoose.Schema({
   }
 });
 
-LoyaltySchema.index({ botId: 1, userId: 1 });
+LoyaltySchema.index({ botId: 1, userId: 1 }, { unique: true });
 LoyaltySchema.index({ identityKey: 1 }, { unique: true, sparse: true });
 
 // Схема для конфигурации программы лояльности

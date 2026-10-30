@@ -3,7 +3,8 @@ import React from 'react';
 const states = { running: 'Проверка идет', completed: 'Проверка завершена', failed: 'Проверка остановлена из-за ошибки',
   interrupted: 'Проверка прервана', cancelled: 'Проверка остановлена' };
 const reasons = { not_started: 'Участие еще не начато', not_due: 'Срок награды еще не наступил или период отключен',
-  not_subscribed: 'Не подписаны на канал', disabled: 'Программа отключена' };
+  not_subscribed: 'Не подписаны на канал', member_unavailable: 'Telegram не нашел участника канала',
+  disabled: 'Программа отключена' };
 
 export default function LoyaltyCheckProgress({ job, automatic, onCancel }) {
   return <div aria-live="polite" style={{ margin: '12px 0', padding: 12, background: '#eef6fb', borderRadius: 8 }}>
