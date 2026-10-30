@@ -73,8 +73,9 @@ backend/state.json
 backend/quizStats.json
 backend/last.txt
 
-# Docker
-.dockerignore
-
 # PM2
 .pm2/
+
+# Local browser test artifacts
+.playwright-cli/
+output/playwright/

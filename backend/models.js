@@ -51,10 +51,14 @@ const UserSchema = new mongoose.Schema({
   // Поля для отслеживания активного времени
   sourceActiveTime: { type: Number, default: 0 }, // Общее активное время в миллисекундах (только для firstSource)
   lastActivityTime: Date, // Время последнего действия
-  lastActivityAction: { type: String, enum: ['message', 'callback', 'command'], default: null }, // Тип последнего действия
+  lastActivityAction: { type: String, enum: ['message', 'callback', 'command', null], default: null }, // Тип последнего действия
   sessionStartTime: Date, // Время начала текущей сессии
   totalSessions: { type: Number, default: 0 } // Количество сессий
 });
+
+UserSchema.index({ botId: 1, userId: 1 });
+UserSchema.index({ botId: 1, _id: 1 });
+UserSchema.index({ botId: 1, isSubscribed: 1, _id: 1 });
 
 const QuizStatsSchema = new mongoose.Schema({
   botId: { type: String, required: true },
@@ -98,6 +102,7 @@ const PromoCodeSchema = new mongoose.Schema({
 const LoyaltySchema = new mongoose.Schema({
   botId: { type: String, required: true },
   userId: { type: Number, required: true },
+  identityKey: String,
   rewards: {
     '1m': { type: Boolean, default: false },
     '24h': { type: Boolean, default: false },
@@ -108,6 +113,9 @@ const LoyaltySchema = new mongoose.Schema({
     '360d': { type: Boolean, default: false }
   }
 });
+
+LoyaltySchema.index({ botId: 1, userId: 1 });
+LoyaltySchema.index({ identityKey: 1 }, { unique: true, sparse: true });
 
 // Схема для конфигурации программы лояльности
 const LoyaltyConfigSchema = new mongoose.Schema({
@@ -163,11 +171,35 @@ const LoyaltyPromoCodeSchema = new mongoose.Schema({
   activated: { type: Boolean, default: false },
   activatedBy: Number,
   activatedAt: Date,
+  allocationKey: String,
   createdAt: { type: Date, default: Date.now }
 });
 
 // Индекс для быстрого поиска доступных промокодов
 LoyaltyPromoCodeSchema.index({ botId: 1, period: 1, activated: 1 });
+LoyaltyPromoCodeSchema.index({ allocationKey: 1 }, { unique: true, sparse: true });
+LoyaltyPromoCodeSchema.index({ botId: 1, activatedBy: 1, period: 1, activated: 1 });
+
+const LoyaltyCheckJobSchema = new mongoose.Schema({
+  botId: { type: String, required: true },
+  status: { type: String, required: true },
+  period: String,
+  total: { type: Number, default: 0 },
+  checked: { type: Number, default: 0 },
+  processed: { type: Number, default: 0 },
+  issued: { type: Number, default: 0 },
+  alreadyIssued: { type: Number, default: 0 },
+  noStock: { type: Number, default: 0 },
+  errorCount: { type: Number, default: 0 },
+  skipped: { type: mongoose.Schema.Types.Mixed, default: {} },
+  currentUser: Number,
+  error: String,
+  cancelRequested: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now },
+  finishedAt: Date
+});
+LoyaltyCheckJobSchema.index({ botId: 1 }, { unique: true, partialFilterExpression: { status: 'running' } });
+LoyaltyCheckJobSchema.index({ botId: 1, createdAt: -1 });
 
 // Индекс для уникальности промокода в рамках периода (разрешаем дублирование между периодами)
 LoyaltyPromoCodeSchema.index({ botId: 1, period: 1, code: 1 }, { unique: true });
@@ -308,6 +340,7 @@ GiveawaySchema.index({ botId: 1, createdAt: -1 });
 GiveawaySchema.index({ botId: 1, status: 1 });
 
 module.exports = {
+  LoyaltyCheckJob: mongoose.model('LoyaltyCheckJob', LoyaltyCheckJobSchema),
   Bot: mongoose.model('Bot', BotSchema),
   User: mongoose.model('User', UserSchema),
   QuizStats: mongoose.model('QuizStats', QuizStatsSchema),

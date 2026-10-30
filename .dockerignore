@@ -1,0 +1,21 @@
+# Source-control metadata and local dependencies are not required in the image.
+.git
+node_modules
+**/node_modules
+
+# Runtime data is mounted into the backend container and must never be baked
+# into an application image.
+backend/uploads
+backend/promocodes
+backend/backups
+backend/state.json
+backend/editorState.json
+backend/quizStats.json
+
+# Secrets and local-only artifacts.
+.env
+.env.*
+*.log
+coverage
+build
+dist

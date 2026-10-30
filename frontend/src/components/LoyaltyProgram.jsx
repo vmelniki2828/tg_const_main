@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import LoyaltyCheckProgress from './LoyaltyCheckProgress';
 import './LoyaltyProgram.css';
 import config from '../config';
 
@@ -28,6 +29,42 @@ const LoyaltyProgram = ({ botId, onClose }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [forceChecking, setForceChecking] = useState(false);
+  const [checkJob, setCheckJob] = useState(null);
+  const [automaticProgress, setAutomaticProgress] = useState(null);
+  const requestVersion = useRef(0);
+  const startingCheck = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    let timer;
+    requestVersion.current++;
+    setCheckJob(null);
+    setAutomaticProgress(null);
+    setForceChecking(false);
+    const poll = async () => {
+      const version = requestVersion.current;
+      try {
+        const response = await fetch(`${config.API_BASE_URL}/api/loyalty-check/${botId}`);
+        if (!response.ok) throw new Error('Не удалось получить прогресс проверки. Повторяем подключение.');
+        const data = await response.json();
+        if (active && version === requestVersion.current) {
+          setCheckJob(data.job);
+          setForceChecking(startingCheck.current || data.job?.status === 'running');
+        }
+        const autoResponse = await fetch(`${config.API_BASE_URL}/api/loyalty-auto-progress/${botId}`);
+        if (autoResponse.ok) {
+          const autoData = await autoResponse.json();
+          if (active) setAutomaticProgress(autoData.progress);
+        }
+      } catch (error) {
+        if (active) setError(error.message);
+      } finally {
+        if (active) timer = setTimeout(poll, 2000);
+      }
+    };
+    poll();
+    return () => { active = false; clearTimeout(timer); };
+  }, [botId]);
 
   useEffect(() => {
     fetchLoyaltyConfig();
@@ -217,35 +254,38 @@ const LoyaltyProgram = ({ botId, onClose }) => {
     }
     
     setForceChecking(true);
+    startingCheck.current = true;
+    const version = ++requestVersion.current;
     setError(null);
     
     try {
       const response = await fetch(`${config.API_BASE_URL}/api/force-give-loyalty-rewards-all/${botId}`, {
         method: 'POST'
       });
+      if (version !== requestVersion.current) return;
       
       if (response.ok) {
         const result = await response.json();
-        console.log('API Response:', result);
-        
-        // Достаем summary из ответа
-        const summary = result.summary || result.statistics || result;
-        
-        const totalUsers = summary.totalUsers || result.totalUsers || 0;
-        const processedUsers = summary.processedUsers || 0;
-        const totalRewards = summary.totalRewardsGiven || 0;
-        const totalErrors = summary.totalErrors || 0;
-        
-        alert(`✅ Проверка завершена!\n\nОбработано пользователей: ${processedUsers}\nВыдано наград: ${totalRewards}\nОшибок: ${totalErrors}`);
+        setCheckJob(result.job);
       } else {
         const errorData = await response.json();
-        alert('Ошибка: ' + errorData.error);
+        setError(errorData.error || 'Не удалось начать проверку');
+        setForceChecking(false);
       }
     } catch (error) {
-      alert('Ошибка проверки: ' + error.message);
-    } finally {
+      setError('Ошибка проверки: ' + error.message);
       setForceChecking(false);
+    } finally {
+      startingCheck.current = false;
     }
+  };
+
+  const handleCancelCheck = async () => {
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-check/${botId}/cancel`, { method: 'POST' });
+      if (!response.ok) throw new Error('Не удалось остановить проверку');
+      setCheckJob((await response.json()).job);
+    } catch (error) { setError(error.message); }
   };
 
   const getPeriodLabel = (period) => {
@@ -430,12 +470,13 @@ const LoyaltyProgram = ({ botId, onClose }) => {
             <h4>ℹ️ Как работает программа лояльности:</h4>
             <ul>
               <li>Бот автоматически отслеживает время подписки каждого пользователя</li>
-              <li>При достижении указанных периодов отправляется поздравление</li>
+              <li>При достижении указанных периодов назначается ваучер; отдельные уведомления отключены</li>
               <li>Если настроен промокод, он автоматически выдается пользователю</li>
               <li>Пользователи, подписанные до запуска бота, считаются подписанными 24 часа</li>
             </ul>
           </div>
 
+          <LoyaltyCheckProgress job={checkJob} automatic={automaticProgress} onCancel={handleCancelCheck} />
           <div className="loyalty-actions">
             <button 
               className="force-check-btn" 

@@ -31,6 +31,14 @@ services:
   # Backend сервис
   backend:
     build: .
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     ports:
       - "3001:3001"
     environment:
@@ -54,12 +62,12 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 2G
+          memory: 4G
         reservations:
           cpus: '1.0'
           memory: 1G
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://157.230.20.252:3001/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -109,4 +117,4 @@ services:
 
 volumes:
   mongodb_data:
-    driver: local 
+    driver: local

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } f
 import QuizBlock from './QuizBlock';
 import TriviaBlock from './TriviaBlock';
 import config from '../config';
+import { shouldPan } from './canvasPan';
 
 const FlowEditor = forwardRef(({ botId }, ref) => {
   // Состояния для редактора
@@ -21,7 +22,9 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
-  const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+  const [handMode, setHandMode] = useState(false);
+  const canvasDrag = useRef(null);
+  const suppressContextMenu = useRef(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -168,33 +171,40 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       setScale(prevScale => Math.min(Math.max(0.5, prevScale * delta), 2));
+    } else {
+      e.preventDefault();
+      setPan(previous => ({ x: previous.x - e.deltaX, y: previous.y - e.deltaY }));
     }
   };
 
   // Начало перетаскивания холста
   const handleCanvasMouseDown = (e) => {
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    if (shouldPan(e, handMode) && !connectingFrom) {
       e.preventDefault();
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      canvasDrag.current = { x: e.clientX, y: e.clientY };
+      suppressContextMenu.current = e.button === 2;
       setIsDraggingCanvas(true);
-      setLastMousePos({ x: e.clientX, y: e.clientY });
     }
   };
 
   // Перетаскивание холста
   const handleCanvasMouseMove = (e) => {
-    if (isDraggingCanvas) {
-      const dx = e.clientX - lastMousePos.x;
-      const dy = e.clientY - lastMousePos.y;
+    if (canvasDrag.current) {
+      const dx = e.clientX - canvasDrag.current.x;
+      const dy = e.clientY - canvasDrag.current.y;
       setPan(prevPan => ({
         x: prevPan.x + dx,
         y: prevPan.y + dy
       }));
-      setLastMousePos({ x: e.clientX, y: e.clientY });
+      canvasDrag.current = { x: e.clientX, y: e.clientY };
     }
   };
 
   // Завершение перетаскивания холста
   const handleCanvasMouseUp = () => {
+    canvasDrag.current = null;
     setIsDraggingCanvas(false);
   };
 
@@ -803,6 +813,11 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
   return (
     <div className="flow-editor">
       <div className="editor-controls">
+        <button type="button" className="editor-button" aria-pressed={handMode}
+          title="Перемещение схемы: ЛКМ по фону, ПКМ или прокрутка тачпада. В режиме руки можно тянуть за блоки."
+          onClick={() => setHandMode(value => !value)}>
+          {handMode ? '✋ Рука включена' : '✋ Перемещение'}
+        </button>
         <button 
           className="editor-button"
           onClick={() => createBlock('message')}
@@ -859,14 +874,18 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
         ref={editorRef}
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
-        onMouseDown={handleCanvasMouseDown}
-        onMouseMove={(e) => {
+        style={{ cursor: isDraggingCanvas ? 'grabbing' : handMode ? 'grab' : undefined, touchAction: 'none' }}
+        onPointerDownCapture={handleCanvasMouseDown}
+        onPointerMove={(e) => {
           handleCanvasMouseMove(e);
           handleMouseMove(e);
         }}
-        onMouseUp={handleCanvasMouseUp}
+        onPointerUp={handleCanvasMouseUp}
+        onPointerCancel={handleCanvasMouseUp}
+        onLostPointerCapture={handleCanvasMouseUp}
+        onContextMenu={(e) => { if (suppressContextMenu.current) { e.preventDefault(); suppressContextMenu.current = false; } }}
         onMouseLeave={() => {
-          handleCanvasMouseUp();
+          if (!canvasDrag.current) handleCanvasMouseUp();
           cancelConnection();
         }}
         onClick={cancelConnection}
@@ -940,7 +959,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                     top: block.position.y,
                     transform: `scale(${1})`
                   }}
-                  draggable={true}
+                  draggable={!handMode}
                   onDragStart={(e) => handleDragStart(e, block.id)}
                   onClick={() => isConnecting && finishConnection(block.id)}
                 >
@@ -980,7 +999,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                     top: block.position.y,
                     transform: `scale(${1})`
                   }}
-                  draggable={true}
+                  draggable={!handMode}
                   onDragStart={(e) => handleDragStart(e, block.id)}
                   onClick={() => isConnecting && finishConnection(block.id)}
                 >
@@ -1010,7 +1029,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
                   top: block.position.y,
                   transform: `scale(${1})`
                 }}
-                draggable={true}
+                draggable={!handMode}
                 onDragStart={(e) => handleDragStart(e, block.id)}
                 onClick={() => isConnecting && finishConnection(block.id)}
               >
@@ -1356,4 +1375,4 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
   );
 });
 
-export default FlowEditor; 
+export default FlowEditor;

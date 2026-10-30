@@ -25,7 +25,7 @@ COPY backend/package*.json ./backend/
 
 # Переходим в папку backend и устанавливаем зависимости
 WORKDIR /app/backend
-RUN npm install
+RUN npm ci --omit=dev
 
 # Возвращаемся в корень и копируем исходный код
 WORKDIR /app
@@ -41,4 +41,4 @@ RUN chmod 755 backend/uploads backend/promocodes backend/backups
 EXPOSE 3001
 
 # Команда для запуска приложения
-CMD ["npm", "start"] 
+CMD ["npm", "start"]

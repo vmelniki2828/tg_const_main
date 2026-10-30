@@ -4,8 +4,9 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "nodemon --config nodemon.json server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "nodemon --config nodemon.json server.js",
+    "test": "node --test test/loyalty.test.js test/botLifecycle.test.js"
   },
   "keywords": [],
   "author": "",
@@ -23,5 +24,8 @@
     "node-telegram-bot-api": "^0.64.0",
     "nodemon": "^3.0.3",
     "telegraf": "^4.15.3"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^10.4.3"
   }
 }
