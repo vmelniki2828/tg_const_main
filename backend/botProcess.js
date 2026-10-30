@@ -1308,8 +1308,7 @@ function setupBotHandlers(bot, blocks, connections) {
 
   // Обработка команды /start
   bot.command('start', async (ctx) => {
-    console.log('[DEBUG] /start ctx:', JSON.stringify(ctx, null, 2));
-    console.log('[DEBUG] /start ctx.from:', ctx.from);
+    console.log('[COMMAND] /start received for user:', ctx.from?.id);
     
     // Обрабатываем параметр start для определения источника
     // В Telegraf параметр start доступен через ctx.startParam или через ctx.message.text
@@ -1443,7 +1442,7 @@ function setupBotHandlers(bot, blocks, connections) {
 
   // Обработка команды /help
   bot.command('help', async (ctx) => {
-    console.log('[DEBUG] /help ctx:', JSON.stringify(ctx, null, 2));
+    console.log('[COMMAND] /help received for user:', ctx.from?.id);
     console.log('[DEBUG] /help ctx.from:', ctx.from);
     await saveUserToMongo(ctx);
     
