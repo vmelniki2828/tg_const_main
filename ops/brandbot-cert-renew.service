@@ -1,0 +1,9 @@
+[Unit]
+Description=Renew Brandbot TLS certificate and reload nginx
+After=network-online.target snap.docker.dockerd.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/brandbot-cert-renew
+TimeoutStartSec=20min

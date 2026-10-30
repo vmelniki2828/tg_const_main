@@ -1,0 +1,13 @@
+[Unit]
+Description=Restrict Docker ingress to HTTP and HTTPS
+After=network-online.target ufw.service snap.docker.dockerd.service
+Wants=network-online.target
+PartOf=snap.docker.dockerd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/brandbot-firewall
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target snap.docker.dockerd.service
