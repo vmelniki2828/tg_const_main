@@ -10,7 +10,7 @@ docker run --rm --name brandbot-certbot-renew --dns 1.1.1.1 --dns 8.8.8.8 \
     -v /home/brandbot-infra/certbot-logs:/var/log/letsencrypt \
     -v /home/brandbot-infra/acme:/var/www/acme \
     certbot/certbot@sha256:bc93cb710b413e6b456d622f9b0133b3e109c0a78c2ed9976af43d209b0a1805 \
-    renew --non-interactive "$@"
+    renew --non-interactive --no-random-sleep-on-renew "$@"
 
 cd /home/tg_const_main
 docker compose exec -T nginx nginx -t
