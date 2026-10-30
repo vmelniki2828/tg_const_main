@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import React, { useState, useEffect } from 'react';
 import './Giveaways.css';
 import config from '../config';
@@ -41,7 +42,7 @@ const Giveaways = ({ botId, onClose }) => {
   const fetchGiveaways = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/giveaways/${botId}`);
       if (response.ok) {
         const data = await response.json();
         setGiveaways(data.giveaways || []);
@@ -162,7 +163,7 @@ const Giveaways = ({ botId, onClose }) => {
     // Автоматически сохраняем на сервер, если розыгрыш уже создан
     if (selectedGiveaway && selectedGiveaway._id) {
       try {
-        const response = await fetch(
+        const response = await apiFetch(
           `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
           {
             method: 'PUT',
@@ -201,7 +202,7 @@ const Giveaways = ({ botId, onClose }) => {
     // Автоматически сохраняем на сервер, если розыгрыш уже создан
     if (selectedGiveaway && selectedGiveaway._id) {
       try {
-        const response = await fetch(
+        const response = await apiFetch(
           `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
           {
             method: 'PUT',
@@ -253,7 +254,7 @@ const Giveaways = ({ botId, onClose }) => {
     // Автоматически сохраняем на сервер, если розыгрыш уже создан
     if (selectedGiveaway && selectedGiveaway._id) {
       try {
-        const response = await fetch(
+        const response = await apiFetch(
           `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
           {
             method: 'PUT',
@@ -292,7 +293,7 @@ const Giveaways = ({ botId, onClose }) => {
     // Автоматически сохраняем на сервер, если розыгрыш уже создан
     if (selectedGiveaway && selectedGiveaway._id) {
       try {
-        const response = await fetch(
+        const response = await apiFetch(
           `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
           {
             method: 'PUT',
@@ -390,7 +391,7 @@ const Giveaways = ({ botId, onClose }) => {
     formData.append('prizeImage', imageFile);
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/prize/${prizeIndex}/upload-image`,
         {
           method: 'POST',
@@ -454,7 +455,7 @@ const Giveaways = ({ botId, onClose }) => {
     formData.append('backgroundImage', backgroundImageFile);
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/upload-background`,
         {
           method: 'POST',
@@ -470,7 +471,7 @@ const Giveaways = ({ botId, onClose }) => {
         document.getElementById('background-image-input').value = '';
         
         // Получаем полные данные розыгрыша из БД, чтобы сохранить участников
-        const fullGiveawayResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`);
+        const fullGiveawayResponse = await apiFetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`);
         if (fullGiveawayResponse.ok) {
           const fullData = await fullGiveawayResponse.json();
           if (fullData.giveaway) {
@@ -509,7 +510,7 @@ const Giveaways = ({ botId, onClose }) => {
       
       // Если розыгрыш еще не создан, создаем его
       if (!giveawayId) {
-        const createResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}`, {
+        const createResponse = await apiFetch(`${config.API_BASE_URL}/api/giveaways/${botId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -539,7 +540,7 @@ const Giveaways = ({ botId, onClose }) => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(
+      const response = await apiFetch(
         `${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}/upload`,
         {
           method: 'POST',
@@ -579,7 +580,7 @@ const Giveaways = ({ botId, onClose }) => {
       
       const method = selectedGiveaway ? 'PUT' : 'POST';
 
-      const response = await fetch(url, {
+      const response = await apiFetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -640,7 +641,7 @@ const Giveaways = ({ botId, onClose }) => {
     // Автоматически сохраняем, если это существующий розыгрыш
     if (selectedGiveaway && selectedGiveaway._id) {
       try {
-        const response = await fetch(
+        const response = await apiFetch(
           `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
           {
             method: 'PUT',
@@ -744,7 +745,7 @@ const Giveaways = ({ botId, onClose }) => {
     // Автосохранение (если розыгрыш уже создан)
     if (selectedGiveaway && selectedGiveaway._id) {
       try {
-        const response = await fetch(
+        const response = await apiFetch(
           `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
           {
             method: 'PUT',
@@ -777,7 +778,7 @@ const Giveaways = ({ botId, onClose }) => {
     }
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}/random-winners`,
         {
           method: 'POST',
@@ -798,7 +799,7 @@ const Giveaways = ({ botId, onClose }) => {
           prizes: data.prizes
         });
         // Обновляем selectedGiveaway
-        const updatedResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`);
+        const updatedResponse = await apiFetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`);
         if (updatedResponse.ok) {
           const updatedData = await updatedResponse.json();
           if (updatedData.giveaway) {
@@ -832,7 +833,7 @@ const Giveaways = ({ botId, onClose }) => {
       
       // Если розыгрыш еще не создан, создаем его
       if (!giveawayId) {
-        const createResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}`, {
+        const createResponse = await apiFetch(`${config.API_BASE_URL}/api/giveaways/${botId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -858,7 +859,7 @@ const Giveaways = ({ botId, onClose }) => {
         }
       } else {
         // Если розыгрыш уже существует, обновляем его перед публикацией
-        const saveResponse = await fetch(
+        const saveResponse = await apiFetch(
           `${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}`,
           {
             method: 'PUT',
@@ -878,7 +879,7 @@ const Giveaways = ({ botId, onClose }) => {
       }
 
       // Получаем актуальные данные розыгрыша перед проверкой победителей
-      const currentGiveawayResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}`);
+      const currentGiveawayResponse = await apiFetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}`);
       let currentGiveaway = null;
       if (currentGiveawayResponse.ok) {
         const currentData = await currentGiveawayResponse.json();
@@ -911,7 +912,7 @@ const Giveaways = ({ botId, onClose }) => {
         try {
           console.log('🎲 [GIVEAWAY] Автоматически выбираем победителей для невыбранных призов...');
           
-          const randomResponse = await fetch(
+          const randomResponse = await apiFetch(
             `${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}/random-winners`,
             {
               method: 'POST',
@@ -932,7 +933,7 @@ const Giveaways = ({ botId, onClose }) => {
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // Получаем актуальные данные после выбора победителей
-            const updatedResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}`);
+            const updatedResponse = await apiFetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}`);
             if (updatedResponse.ok) {
               const updatedData = await updatedResponse.json();
               if (updatedData.giveaway) {
@@ -966,7 +967,7 @@ const Giveaways = ({ botId, onClose }) => {
       }
 
       // Публикуем розыгрыш
-      const response = await fetch(
+      const response = await apiFetch(
         `${config.API_BASE_URL}/api/giveaways/${botId}/${giveawayId}/publish`,
         {
           method: 'POST',
@@ -992,7 +993,7 @@ const Giveaways = ({ botId, onClose }) => {
         setActiveTab('archive');
         
         // Обновляем список и находим завершенный розыгрыш
-        const updatedResponse = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}`);
+        const updatedResponse = await apiFetch(`${config.API_BASE_URL}/api/giveaways/${botId}`);
         if (updatedResponse.ok) {
           const updatedData = await updatedResponse.json();
           const updatedGiveaways = updatedData.giveaways || [];
@@ -1262,7 +1263,7 @@ const Giveaways = ({ botId, onClose }) => {
                                       
                                       // Сохраняем на сервере
                                       if (selectedGiveaway && selectedGiveaway._id) {
-                                        const response = await fetch(
+                                        const response = await apiFetch(
                                           `${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`,
                                           {
                                             method: 'PUT',
@@ -1383,7 +1384,7 @@ const Giveaways = ({ botId, onClose }) => {
                                               setGiveawayData({ ...giveawayData, prizes: updatedPrizes });
                                               // Автосохранение
                                               if (selectedGiveaway && selectedGiveaway._id) {
-                                                fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`, {
+                                                apiFetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`, {
                                                   method: 'PUT',
                                                   headers: { 'Content-Type': 'application/json' },
                                                   body: JSON.stringify({ ...giveawayData, prizes: updatedPrizes })
@@ -1499,7 +1500,7 @@ const Giveaways = ({ botId, onClose }) => {
                                           
                                           // Автосохранение
                                           if (selectedGiveaway && selectedGiveaway._id) {
-                                            const response = await fetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`, {
+                                            const response = await apiFetch(`${config.API_BASE_URL}/api/giveaways/${botId}/${selectedGiveaway._id}`, {
                                               method: 'PUT',
                                               headers: { 'Content-Type': 'application/json' },
                                               body: JSON.stringify({ ...giveawayData, prizes: updatedPrizes })

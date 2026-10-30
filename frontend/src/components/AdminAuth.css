@@ -1,0 +1,42 @@
+.admin-shell { height: 100dvh; display: flex; flex-direction: column; }
+.admin-account-bar { flex: none; display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 18px; background: #172738; color: #fff; border-bottom: 1px solid #314358; }
+.admin-account-bar span { color: #bcd0e2; font-size: 13px; margin-left: 8px; }
+.admin-account-bar nav { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-account-bar button { border: 1px solid #57728c; background: #263d54; color: #fff; padding: 8px 12px; border-radius: 7px; cursor: pointer; }
+.admin-workspace { flex: 1; min-height: 0; overflow: auto; position: relative; }
+.admin-workspace > .app-container { height: 100%; }
+.admin-workspace > .bots-page { height: 100%; box-sizing: border-box; }
+.auth-page { min-height: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 28px 16px; overflow: auto; background: #edf2f7; }
+body > #root > .auth-page { height: 100dvh; }
+.auth-card { width: 100%; max-width: 420px; background: #fff; border: 1px solid #dce4ec; border-radius: 16px; padding: 32px; box-shadow: 0 16px 48px #17324d14; box-sizing: border-box; }
+.auth-card h1, .admin-users-panel h1 { margin: 0 0 12px; font-size: 25px; color: #172738; }
+.auth-card p, .auth-panel-heading p { color: #556779; line-height: 1.5; }
+.auth-eyebrow { color: #24679c; font-size: 11px; font-weight: 700; letter-spacing: 1.3px; margin-bottom: 14px; }
+.auth-card label, .admin-users-panel label { display: flex; flex-direction: column; gap: 6px; margin: 16px 0; font-size: 14px; font-weight: 600; color: #30485c; }
+.auth-card input, .admin-users-panel input, .admin-users-panel select { padding: 10px 12px; border: 1px solid #b6c6d5; border-radius: 7px; font: inherit; box-sizing: border-box; min-width: 0; background: #fff; color: #172738; }
+.auth-card input:focus, .admin-users-panel input:focus, .admin-users-panel select:focus { outline: 2px solid #3684bc; outline-offset: 1px; }
+.auth-card button, .admin-users-panel button { border: 1px solid transparent; border-radius: 7px; padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer; color: #fff; background: #24679c; }
+.auth-card > button { width: 100%; margin-top: 8px; }
+.auth-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.auth-card .auth-secondary, .admin-users-panel .auth-secondary { background: #edf2f7; color: #30485c; border-color: #c5d2df; }
+.admin-users-panel .auth-danger { background: #a73535; }
+.auth-card button:disabled, .admin-users-panel button:disabled { opacity: .5; cursor: default; }
+.auth-card .auth-error, .admin-users-panel .auth-error { color: #942c2c; background: #fff0f0; padding: 10px; border-radius: 7px; }
+.auth-hint { font-size: 12px; font-weight: normal; color: #596b7b; }
+.auth-notice { background: #eaf7ef; color: #24593a; padding: 12px; border-radius: 7px; }
+.auth-banner { background: #fff2d9; color: #694200; padding: 8px 18px; }
+.auth-overlay { position: fixed; inset: 0; z-index: 20000; background: #0b1e32a8; display: flex; justify-content: center; align-items: center; padding: 24px; box-sizing: border-box; overflow: auto; }
+.admin-users-panel { width: 1120px; max-width: 100%; max-height: 100%; overflow: auto; background: #fff; border-radius: 14px; padding: 24px; box-sizing: border-box; }
+.auth-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.admin-create-form { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 12px; padding: 18px; background: #f3f7fa; border-radius: 10px; margin: 18px 0; }
+.admin-create-form h2 { grid-column: 1 / -1; font-size: 17px; margin: 0; }
+.admin-create-form label { margin: 0; }
+.admin-create-form button { justify-self: start; grid-column: 1 / -1; }
+.admin-users-table { overflow-x: auto; }
+.admin-users-table table { width: 100%; border-collapse: collapse; text-align: left; }
+.admin-users-table th { color: #506578; background: #f4f7fa; font-size: 13px; }
+.admin-users-table th, .admin-users-table td { padding: 14px 10px; border-bottom: 1px solid #e1e8ee; vertical-align: top; }
+.admin-users-table td > div { font-size: 13px; margin-top: 5px; }
+.auth-active { color: #226440; }.auth-revoked { color: #a73535; }
+.admin-reset-form { margin-top: 20px; border-top: 1px solid #dce4ec; max-width: 460px; }
+@media (max-width: 760px) { .admin-account-bar { align-items: flex-start; flex-direction: column; }.admin-account-bar span { display: block; margin: 4px 0; }.admin-create-form { grid-template-columns: 1fr; }.auth-overlay { padding: 10px; }.auth-card { padding: 24px; }.auth-panel-heading h1 { font-size: 21px; } }

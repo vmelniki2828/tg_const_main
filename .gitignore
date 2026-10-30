@@ -79,3 +79,5 @@ backend/last.txt
 # Local browser test artifacts
 .playwright-cli/
 output/playwright/
+backend/.local-data/
+backend/.auth.env

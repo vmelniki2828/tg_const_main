@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import React, { useState } from 'react';
 import config from '../config';
 
@@ -41,12 +42,12 @@ const TriviaBlock = ({
     formData.append('botId', botId || '');
     try {
       try {
-        const deleteResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${block.id}?botId=${botId}`, {
+        const deleteResponse = await apiFetch(`${config.API_BASE_URL}/api/quiz-promocodes/${block.id}?botId=${botId}`, {
           method: 'DELETE'
         });
         if (deleteResponse.ok) console.log('🗑️ Старые промокоды для викторины удалены');
       } catch (e) {}
-      const response = await fetch(`${config.API_BASE_URL}/api/upload-promocodes`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/upload-promocodes`, {
         method: 'POST',
         body: formData
       });

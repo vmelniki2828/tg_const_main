@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import React, { useState } from 'react';
 import config from '../config';
 
@@ -8,7 +9,7 @@ const TelegramForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/setup-bot`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/setup-bot`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

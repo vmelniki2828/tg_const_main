@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import React, { useState, useEffect } from 'react';
 import config from '../config';
 
@@ -15,7 +16,7 @@ function SystemStats({ onClose }) {
       setIsLoading(true);
       setError(null);
       
-      const response = await fetch(`${config.API_BASE_URL}/api/system-stats`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/system-stats`);
       if (!response.ok) {
         throw new Error('Не удалось загрузить статистику системы');
       }

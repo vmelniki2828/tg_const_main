@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import React, { useState, useEffect } from 'react';
 import SystemStats from './SystemStats';
 import config from '../config';
@@ -24,13 +25,12 @@ function BotsList({ onSelectBot }) {
     try {
       setIsLoading(true);
       console.log('🔧 Загружаем ботов с URL:', `${config.API_BASE_URL}/api/bots`);
-      const response = await fetch(`${config.API_BASE_URL}/api/bots`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/bots`);
       console.log('🔧 Ответ сервера:', response.status, response.statusText);
       if (!response.ok) {
         throw new Error('Не удалось загрузить список ботов');
       }
       const data = await response.json();
-      console.log('🔧 Полученные данные:', data);
       setBots(data.bots);
     } catch (err) {
       console.error('Error loading bots:', err);
@@ -49,7 +49,7 @@ function BotsList({ onSelectBot }) {
 
     try {
       setIsLoading(true);
-      const response = await fetch(`${config.API_BASE_URL}/api/bots`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/bots`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -100,7 +100,7 @@ function BotsList({ onSelectBot }) {
 
     try {
       setIsLoading(true);
-      const response = await fetch(`${config.API_BASE_URL}/api/bots/${botId}`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/bots/${botId}`, {
         method: 'DELETE',
       });
 
@@ -146,7 +146,7 @@ function BotsList({ onSelectBot }) {
       setIsSavingSettings(true);
       setError(null);
       
-      const response = await fetch(`${config.API_BASE_URL}/api/bots/${selectedBot.id}/settings`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/bots/${selectedBot.id}/settings`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -325,4 +325,4 @@ function BotsList({ onSelectBot }) {
   );
 }
 
-export default BotsList; 
+export default BotsList;

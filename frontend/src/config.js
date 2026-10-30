@@ -1,14 +1,11 @@
-// Конфигурация API с автоматическим определением окружения
-const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const API_BASE_URL = isDevelopment ? 'http://localhost:3001' : 'http://157.230.20.252:3001';
-
-// Отладочная информация
-console.log('🔧 API_BASE_URL:', API_BASE_URL);
-console.log('🔧 Текущий URL:', window.location.href);
-console.log('🔧 Окружение:', isDevelopment ? 'development' : 'production');
+// Keep localhost and 127.0.0.1 consistent so browsers send same-site cookies.
+// Deployment can supply a same-origin API through REACT_APP_API_URL.
+const defaultApi = new URL(window.location.origin);
+defaultApi.port = '3001';
+const API_BASE_URL = (process.env.REACT_APP_API_URL || defaultApi.origin).replace(/\/$/, '');
 
 export const config = {
   API_BASE_URL,
 };
 
-export default config; 
+export default config;

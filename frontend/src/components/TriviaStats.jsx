@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import React, { useState, useEffect } from 'react';
 import './QuizStats.css';
 import config from '../config';
@@ -19,7 +20,7 @@ const TriviaStats = ({ blocks, botId, onClose }) => {
   const fetchStats = async () => {
     try {
       setError(null);
-      const response = await fetch(`${config.API_BASE_URL}/api/trivia-stats`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/trivia-stats`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
       setStats(data);
@@ -32,7 +33,7 @@ const TriviaStats = ({ blocks, botId, onClose }) => {
             promoCodesData[trivia.id] = { hasPromoCodes: false, totalPromoCodes: 0, availablePromoCodes: 0, usedPromoCodes: 0, promoCodesList: [] };
             continue;
           }
-          const promoResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${trivia.id}?botId=${botId}`);
+          const promoResponse = await apiFetch(`${config.API_BASE_URL}/api/quiz-promocodes/${trivia.id}?botId=${botId}`);
           if (promoResponse.ok) {
             promoCodesData[trivia.id] = await promoResponse.json();
           } else {
@@ -70,7 +71,7 @@ const TriviaStats = ({ blocks, botId, onClose }) => {
 
   const exportStatsToFile = async () => {
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/export-trivia-stats`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/export-trivia-stats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stats, blocks: getTriviaBlocks() })

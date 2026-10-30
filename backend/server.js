@@ -42,11 +42,15 @@ try {
 }
 
 const app = express();
+app.disable('x-powered-by');
+if (process.env.AUTH_TRUST_PROXY) {
+  app.set('trust proxy', process.env.AUTH_TRUST_PROXY.split(',').map(value => value.trim()).filter(Boolean));
+}
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Подключение к MongoDB
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://157.230.20.252:27017/tg_const_main';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/tg_const_main';
 mongoose.connect(MONGO_URI, { 
   useNewUrlParser: true, 
   useUnifiedTopology: true,
@@ -94,13 +98,30 @@ mongoose.connection.on('disconnected', () => {
 
 
 // Настройка CORS
+const adminOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://127.0.0.1:3000')
+  .split(',').map(origin => origin.trim()).filter(Boolean);
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: (origin, done) => done(null, !origin || adminOrigins.includes(origin)),
   credentials: true,
   optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
+const MongoStore = require('connect-mongo');
+const { createAdminAuth } = require('./adminAuth');
+const { AdminAccount } = require('./adminModels');
+if (process.env.AUTH_COOKIE_SECURE !== undefined && !['true', 'false'].includes(process.env.AUTH_COOKIE_SECURE)) {
+  throw new Error('AUTH_COOKIE_SECURE must be true or false.');
+}
+const adminAuth = createAdminAuth({ AdminAccount,
+  store: MongoStore.create({ client: mongoose.connection.getClient(), collectionName: 'admin_sessions',
+    autoRemove: 'native', touchAfter: 60 }),
+  secret: process.env.AUTH_SESSION_SECRET,
+  allowedOrigins: adminOrigins,
+  secureCookies: process.env.AUTH_COOKIE_SECURE === undefined ? process.env.NODE_ENV === 'production' :
+    process.env.AUTH_COOKIE_SECURE === 'true'
+});
+adminAuth.install(app);
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
@@ -270,7 +291,7 @@ app.use((error, req, res, next) => {
 });
 
 // Статические файлы для загрузок
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), { cacheControl: false }));
 
 // Эндпоинт для загрузки медиафайлов
 app.post('/api/upload-media', upload.single('media'), async (req, res) => {

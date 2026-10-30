@@ -31,6 +31,8 @@ services:
   # Backend сервис
   backend:
     build: .
+    env_file:
+      - ./backend/.auth.env
     dns:
       - 1.1.1.1
       - 8.8.8.8
@@ -45,7 +47,7 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - HOST=0.0.0.0
-      - CORS_ORIGIN=http://157.230.20.252:3000
+      - CORS_ORIGIN=http://157.230.20.252:3000,http://157.230.20.252
       - MONGO_URI=mongodb://app_user:app_password@mongodb:27017/tg_const_main?authSource=tg_const_main
     volumes:
       - ./backend/uploads:/app/backend/uploads

@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import React, { useState, useEffect } from 'react';
 import './QuizStats.css';
 import config from '../config';
@@ -24,7 +25,7 @@ const QuizStats = ({ blocks, botId, onClose }) => {
     try {
       setError(null); // Сбрасываем ошибку при новой попытке
       console.log('📊 Загружаем статистику квизов...');
-      const response = await fetch(`${config.API_BASE_URL}/api/quiz-stats`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/quiz-stats`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -62,7 +63,7 @@ const QuizStats = ({ blocks, botId, onClose }) => {
             };
             continue;
           }
-          const promoResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${quiz.id}?botId=${botId}`);
+          const promoResponse = await apiFetch(`${config.API_BASE_URL}/api/quiz-promocodes/${quiz.id}?botId=${botId}`);
           if (promoResponse.ok) {
             const promoData = await promoResponse.json();
             promoCodesData[quiz.id] = promoData;
@@ -174,7 +175,7 @@ const QuizStats = ({ blocks, botId, onClose }) => {
 
   const exportStatsToFile = async () => {
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/export-quiz-stats`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/export-quiz-stats`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

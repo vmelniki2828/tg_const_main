@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import React, { useState, useEffect, useRef } from 'react';
 import LoyaltyCheckProgress from './LoyaltyCheckProgress';
 import './LoyaltyProgram.css';
@@ -44,14 +45,14 @@ const LoyaltyProgram = ({ botId, onClose }) => {
     const poll = async () => {
       const version = requestVersion.current;
       try {
-        const response = await fetch(`${config.API_BASE_URL}/api/loyalty-check/${botId}`);
+        const response = await apiFetch(`${config.API_BASE_URL}/api/loyalty-check/${botId}`);
         if (!response.ok) throw new Error('Не удалось получить прогресс проверки. Повторяем подключение.');
         const data = await response.json();
         if (active && version === requestVersion.current) {
           setCheckJob(data.job);
           setForceChecking(startingCheck.current || data.job?.status === 'running');
         }
-        const autoResponse = await fetch(`${config.API_BASE_URL}/api/loyalty-auto-progress/${botId}`);
+        const autoResponse = await apiFetch(`${config.API_BASE_URL}/api/loyalty-auto-progress/${botId}`);
         if (autoResponse.ok) {
           const autoData = await autoResponse.json();
           if (active) setAutomaticProgress(autoData.progress);
@@ -73,7 +74,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
 
   const fetchLoyaltyConfig = async () => {
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-config/${botId}`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/loyalty-config/${botId}`);
       if (response.ok) {
         const config = await response.json();
         setLoyaltyConfig(prev => ({
@@ -91,7 +92,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
 
   const fetchChannelSettings = async () => {
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-channel/${botId}`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/loyalty-channel/${botId}`);
       if (response.ok) {
         const data = await response.json();
         setLoyaltyConfig(prev => ({
@@ -106,7 +107,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
 
   const fetchLoyaltyPromoCodes = async (period) => {
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-promocodes/${botId}/${period}`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/loyalty-promocodes/${botId}/${period}`);
       if (response.ok) {
         const data = await response.json();
         setLoyaltyPromoCodes(prev => ({
@@ -125,7 +126,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
     
     try {
       // Сохраняем основную конфигурацию лояльности
-      const loyaltyResponse = await fetch(`${config.API_BASE_URL}/api/loyalty-config/${botId}`, {
+      const loyaltyResponse = await apiFetch(`${config.API_BASE_URL}/api/loyalty-config/${botId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -134,7 +135,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
       });
 
       // Сохраняем настройки канала
-      const channelResponse = await fetch(`${config.API_BASE_URL}/api/loyalty-channel/${botId}`, {
+      const channelResponse = await apiFetch(`${config.API_BASE_URL}/api/loyalty-channel/${botId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -183,7 +184,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
     formData.append('promocodes', file);
     
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-promocodes/${botId}/${period}`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/loyalty-promocodes/${botId}/${period}`, {
         method: 'POST',
         body: formData
       });
@@ -207,7 +208,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
     }
     
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-promocodes/${botId}/${period}`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/loyalty-promocodes/${botId}/${period}`, {
         method: 'DELETE'
       });
       
@@ -226,7 +227,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
 
   const handleExportStats = async () => {
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/export-loyalty-stats/${botId}`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/export-loyalty-stats/${botId}`);
       
       if (response.ok) {
         const blob = await response.blob();
@@ -259,7 +260,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
     setError(null);
     
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/force-give-loyalty-rewards-all/${botId}`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/force-give-loyalty-rewards-all/${botId}`, {
         method: 'POST'
       });
       if (version !== requestVersion.current) return;
@@ -282,7 +283,7 @@ const LoyaltyProgram = ({ botId, onClose }) => {
 
   const handleCancelCheck = async () => {
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/loyalty-check/${botId}/cancel`, { method: 'POST' });
+      const response = await apiFetch(`${config.API_BASE_URL}/api/loyalty-check/${botId}/cancel`, { method: 'POST' });
       if (!response.ok) throw new Error('Не удалось остановить проверку');
       setCheckJob((await response.json()).job);
     } catch (error) { setError(error.message); }

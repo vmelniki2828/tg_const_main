@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import React, { useState } from 'react';
 import config from '../config';
 
@@ -39,7 +40,7 @@ const QuizBlock = ({
     try {
       // Сначала удаляем старые промокоды
       try {
-        const deleteResponse = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${block.id}?botId=${botId}`, {
+        const deleteResponse = await apiFetch(`${config.API_BASE_URL}/api/quiz-promocodes/${block.id}?botId=${botId}`, {
           method: 'DELETE'
         });
         
@@ -54,7 +55,7 @@ const QuizBlock = ({
       formData.append('botId', botId);
 
       // Затем загружаем новые промокоды
-      const response = await fetch(`${config.API_BASE_URL}/api/upload-promocodes`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/upload-promocodes`, {
         method: 'POST',
         body: formData,
       });

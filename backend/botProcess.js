@@ -9,7 +9,7 @@ const {
   trackBlockEnterWithPath
 } = require('./statisticsUtils');
 const mongoose = require('mongoose');
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://157.230.20.252:27017/tg_const_main';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/tg_const_main';
 const mongoOptions = {
   useNewUrlParser: true, 
   useUnifiedTopology: true,

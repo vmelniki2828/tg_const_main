@@ -11,6 +11,8 @@ backend/backups
 backend/state.json
 backend/editorState.json
 backend/quizStats.json
+backend/.local-data
+backend/.auth.env
 
 # Secrets and local-only artifacts.
 .env
@@ -19,3 +21,5 @@ backend/quizStats.json
 coverage
 build
 dist
+output/playwright
+.playwright-cli

@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import QuizBlock from './QuizBlock';
 import TriviaBlock from './TriviaBlock';
@@ -39,7 +40,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
       try {
         setIsLoading(true);
         setError(null);
-        const response = await fetch(`${config.API_BASE_URL}/api/bots/${botId}`);
+        const response = await apiFetch(`${config.API_BASE_URL}/api/bots/${botId}`);
         if (!response.ok) {
           throw new Error('Не удалось загрузить состояние бота');
         }
@@ -435,7 +436,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
     const blockToRemove = blocks.find(block => block.id === blockId);
     if (blockToRemove && blockToRemove.type === 'quiz') {
       try {
-        const response = await fetch(`${config.API_BASE_URL}/api/quiz-promocodes/${blockId}`, {
+        const response = await apiFetch(`${config.API_BASE_URL}/api/quiz-promocodes/${blockId}`, {
           method: 'DELETE'
         });
         
@@ -499,7 +500,7 @@ const FlowEditor = forwardRef(({ botId }, ref) => {
       const formData = new FormData();
       formData.append('media', file);
 
-      const response = await fetch(`${config.API_BASE_URL}/api/upload-media`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/upload-media`, {
         method: 'POST',
         body: formData
       });

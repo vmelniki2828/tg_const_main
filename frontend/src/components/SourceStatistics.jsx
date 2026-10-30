@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import React, { useState, useEffect } from 'react';
 import config from '../config';
 import './SourceStatistics.css';
@@ -56,7 +57,7 @@ function SourceStatistics({ botId }) {
         url += '?' + params.toString();
       }
       
-      const response = await fetch(url);
+      const response = await apiFetch(url);
       if (!response.ok) {
         throw new Error('Не удалось загрузить статистику');
       }
@@ -73,7 +74,7 @@ function SourceStatistics({ botId }) {
   const handleExport = async () => {
     try {
       setIsExporting(true);
-      const response = await fetch(`${config.API_BASE_URL}/api/statistics/export/${botId}`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/api/statistics/export/${botId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,7 +125,7 @@ function SourceStatistics({ botId }) {
         url += '?' + params.toString();
       }
       
-      const response = await fetch(url);
+      const response = await apiFetch(url);
       if (!response.ok) {
         throw new Error('Не удалось загрузить список пользователей');
       }
@@ -170,7 +171,7 @@ function SourceStatistics({ botId }) {
 
   const loadActiveUsers = async () => {
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/statistics/active-users/${botId}?period=${activePeriod}`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/statistics/active-users/${botId}?period=${activePeriod}`);
       if (!response.ok) throw new Error('Не удалось загрузить активных пользователей');
       const data = await response.json();
       setActiveUsersData(data);
@@ -183,7 +184,7 @@ function SourceStatistics({ botId }) {
   const loadDailyStats = async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const response = await fetch(`${config.API_BASE_URL}/api/statistics/daily/${botId}?date=${today}`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/statistics/daily/${botId}?date=${today}`);
       if (!response.ok) throw new Error('Не удалось загрузить ежедневную статистику');
       const data = await response.json();
       setDailyStats(data);
@@ -194,7 +195,7 @@ function SourceStatistics({ botId }) {
 
   const loadPopularBlocks = async () => {
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/statistics/popular-blocks/${botId}?limit=20`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/statistics/popular-blocks/${botId}?limit=20`);
       if (!response.ok) throw new Error('Не удалось загрузить популярные блоки');
       const data = await response.json();
       setPopularBlocks(data);
@@ -206,7 +207,7 @@ function SourceStatistics({ botId }) {
 
   const loadPopularButtons = async () => {
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/statistics/popular-buttons/${botId}?limit=20`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/statistics/popular-buttons/${botId}?limit=20`);
       if (!response.ok) throw new Error('Не удалось загрузить популярные кнопки');
       const data = await response.json();
       setPopularButtons(data);
@@ -223,7 +224,7 @@ function SourceStatistics({ botId }) {
     }
     try {
       setIsLoadingUsers(true);
-      const response = await fetch(`${config.API_BASE_URL}/api/statistics/user-path/${botId}/${userId}?limit=200`);
+      const response = await apiFetch(`${config.API_BASE_URL}/api/statistics/user-path/${botId}/${userId}?limit=200`);
       if (!response.ok) throw new Error('Не удалось загрузить маршрут пользователя');
       const data = await response.json();
       setUserPath(data);
